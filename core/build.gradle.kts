@@ -36,8 +36,9 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// Coverage gate for the protocol module. Start at 70 % line coverage and raise as the module grows;
-// protocol code is expected to end near 90 % because it is driven by known-answer tests.
+// Coverage gate for the protocol module. Known-answer tests drive the parsers, so the module sits
+// above 95 % line coverage; the floor is 85 % to leave room for defensive branches that need a
+// misbehaving relay to reach.
 kover {
     reports {
         total {
@@ -46,7 +47,7 @@ kover {
             verify {
                 onCheck = true
                 rule("core line coverage") {
-                    minBound(70)
+                    minBound(85)
                 }
             }
         }

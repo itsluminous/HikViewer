@@ -130,6 +130,16 @@ class DemuxerTest {
         }
 
         @Test
+        fun `after 400 undetectable packets HEVC is assumed and the buffer is released`() {
+            val demuxer = RtpDemuxer()
+            val opaque = byteArrayOf(0x02, 0x01, 0x77) // header-encrypted-looking payload, no markers
+            var out = emptyList<NalUnit>()
+            repeat(401) { out = demuxer.feed(rtp(opaque)) }
+            assertThat(demuxer.codecHint).isEqualTo(VideoCodec.H265)
+            assertThat(out).hasSize(401)
+        }
+
+        @Test
         fun `hevc FU and AP`() {
             val demuxer = RtpDemuxer()
             val vps = byteArrayOf(0x40, 0x01, 0x0C, 1, 2, 3)

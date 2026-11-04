@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
  * counter; a gap in the video sequence drops the fragmented NAL being assembled rather than gluing
  * the halves (with AES-ECB a missing fragment would shift every following 16-byte block and turn the
  * rest of the NAL into noise). Until the codec is known, packets are buffered (at most
- * [MAX_UNDECIDED_PACKETS]) because FU/aggregation parsing depends on it.
+ * [MAX_UNDECIDED_PACKETS], then HEVC is assumed) because FU/aggregation parsing depends on it.
  */
 public class RtpDemuxer(
     codec: VideoCodec? = null,
@@ -42,16 +42,13 @@ public class RtpDemuxer(
         undecided += packet
         val payload = runCatching { payload(packet) }.getOrNull()
         val detected = payload?.takeIf { it.isNotEmpty() }?.let { detectCodec(it[0]) }
-        if (detected == null) {
-            if (undecided.size > MAX_UNDECIDED_PACKETS) {
-                droppedPackets += undecided.size
-                undecided.clear()
-            }
-            return emptyList()
-        }
-        codecHint = detected
+        if (detected == null && undecided.size <= MAX_UNDECIDED_PACKETS) return emptyList()
+        // No unambiguous marker in hundreds of packets: the headers are probably encrypted too. Fall
+        // back to HEVC as the reference client does; single-NAL packets pass through unchanged either way.
+        val codec = detected ?: VideoCodec.H265
+        codecHint = codec
         val out = ArrayList<NalUnit>()
-        undecided.forEach { out += depacketize(it, detected) }
+        undecided.forEach { out += depacketize(it, codec) }
         undecided.clear()
         return out
     }

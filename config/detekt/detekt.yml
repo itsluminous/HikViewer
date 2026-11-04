@@ -47,6 +47,11 @@ naming:
     ignoreAnnotated: ['Test', 'ParameterizedTest']
 
 style:
+  ThrowsCount:
+    # Protocol parsers validate several preconditions per function (magic, length, range); splitting
+    # each check into its own function hides the frame layout instead of documenting it.
+    max: 4
+    excludeGuardClauses: true
   MagicNumber:
     # Protocol parsing is full of fixed offsets and header constants; tests are full of expected values.
     excludes: ['**/test/**', '**/androidTest/**']

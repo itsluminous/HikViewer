@@ -62,13 +62,8 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           out=dist
           mkdir -p "$out"
-          for apk in app/build/outputs/apk/release/*.apk; do
-            name=$(basename "$apk")
-            # app-universal-release.apk -> HikViewer-1.2.3-universal.apk
-            abi=${name#app-}
-            abi=${abi%-release.apk}
-            cp "$apk" "$out/HikViewer-$version-$abi.apk"
-          done
+          # One universal APK (no ABI splits: the app has no native code).
+          cp app/build/outputs/apk/release/app-release.apk "$out/HikViewer-$version-universal.apk"
           (cd "$out" && sha256sum *.apk > "HikViewer-$version-SHA256SUMS.txt")
           ls -l "$out"
           echo "version=$version" >> "$GITHUB_OUTPUT"

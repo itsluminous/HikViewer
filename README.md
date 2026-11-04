@@ -27,7 +27,7 @@ code. No alarms, no recordings, no 270 MB app.
 - On-device AES decryption of encrypted streams with your verification code (stored encrypted)
 - Adaptive decoding: hardware decoders for the focused/hero tile, software for the rest, keyframe-only
   tiles when the TV runs out of CPU/RAM
-- Phone and tablet support (touch); universal APK and per-ABI APKs
+- Phone and tablet support (touch); a single universal APK (no ABI splits)
 -->
 
 ## How it works

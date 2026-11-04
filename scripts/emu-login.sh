@@ -8,7 +8,7 @@ SERIAL="${1:?emulator serial, e.g. emulator-5554}"
 ENV_FILE="${2:-$(dirname "$0")/../local.env}"
 case "$SERIAL" in emulator-*) ;; *) echo "refusing to target non-emulator $SERIAL" >&2; exit 2;; esac
 ADB="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/platform-tools/adb -s $SERIAL"
-APK="$(dirname "$0")/../app/build/outputs/apk/debug/app-universal-debug.apk"
+APK="$(dirname "$0")/../app/build/outputs/apk/debug/app-debug.apk"
 PKG=com.itsluminous.hikviewer.debug
 
 mobile=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mobile"])' "$ENV_FILE")

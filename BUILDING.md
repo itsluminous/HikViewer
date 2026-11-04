@@ -41,9 +41,9 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-17.jdk/Conten
 ./gradlew ktlintFormat             # auto-fix formatting findings
 ```
 
-Builds produce a universal APK plus one APK per ABI (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`).
-There is no native code, so the universal APK is the one to install; the splits are a convenience for
-the release page.
+Builds produce one universal APK per build type (`app/build/outputs/apk/debug/app-debug.apk`,
+`app/build/outputs/apk/release/app-release.apk`). There are no ABI splits: the app has no native code,
+so a per-ABI APK would only be a smaller-looking copy of the same thing.
 
 ## Quality gates
 
@@ -78,7 +78,7 @@ adb wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sl
 Then install and run:
 
 ```sh
-adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-universal-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s emulator-5554 shell am start -n com.itsluminous.hikviewer.debug/com.itsluminous.hikviewer.ui.login.LoginActivity
 ```
 
@@ -128,7 +128,7 @@ keytool -genkeypair -v -keystore release.jks -alias hikviewer -keyalg RSA -keysi
 ### GitHub releases
 
 Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds, signs and attaches the universal
-and per-ABI APKs plus a `SHA256SUMS` file to a GitHub release. Signing uses these repository secrets;
+APK plus a `SHA256SUMS` file to a GitHub release. Signing uses these repository secrets;
 when they are missing the APKs are debug-signed:
 
 | Secret | Value |

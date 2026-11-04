@@ -63,17 +63,9 @@ android {
         }
     }
 
-    // We have no native code, so the universal APK is small. Per-ABI splits are kept because
-    // they are free and let the release job attach them too.
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
-    }
-
+    // One universal APK per build type (`app-debug.apk`, `app-release.apk`) and no ABI splits:
+    // the app ships no native code, so a per-ABI APK would be the same bytes behind a manifest
+    // filter and only confuse sideloading.
     buildFeatures {
         viewBinding = true
         buildConfig = false

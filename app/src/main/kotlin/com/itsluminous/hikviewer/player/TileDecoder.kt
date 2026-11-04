@@ -127,23 +127,23 @@ open class TileDecoder(
 
     private fun drain() {
         while (true) {
-            val c: MediaCodec
-            val index: Int
-            val unit: AccessUnit
+            // The copy stays under the lock: a release() on another thread frees the codec's
+            // direct input buffers, and a put() into one of those after that is a native fault
+            // (SIGSEGV in memcpy, seen when Back left fullscreen mid-frame), not an exception.
             synchronized(lock) {
-                c = codec ?: return
+                val c = codec ?: return
                 if (released || !started || freeInputs.isEmpty() || pending.isEmpty()) return
-                index = freeInputs.pollFirst()
-                unit = pending.pollFirst()
+                val index = freeInputs.pollFirst()
+                val unit = pending.pollFirst()
                 inputAccepted = true
                 lastInputAtMillis = System.nanoTime() / NANOS_PER_MILLI
+                val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return
+                buffer.clear()
+                val size = minOf(unit.data.size, buffer.remaining())
+                buffer.put(unit.data, 0, size)
+                val pts = unit.presentationTimeUs ?: 0L
+                runCatching { c.queueInputBuffer(index, 0, size, pts, 0) }
             }
-            val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return
-            buffer.clear()
-            val size = minOf(unit.data.size, buffer.remaining())
-            buffer.put(unit.data, 0, size)
-            val pts = unit.presentationTimeUs ?: 0L
-            runCatching { c.queueInputBuffer(index, 0, size, pts, 0) }
         }
     }
 

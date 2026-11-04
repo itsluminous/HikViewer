@@ -12,3 +12,4 @@ local.properties
 .kotlin/
 captures/
 keystore.properties
+.screenshots

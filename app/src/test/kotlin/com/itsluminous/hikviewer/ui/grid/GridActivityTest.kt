@@ -381,6 +381,46 @@ class GridActivityTest {
         }
     }
 
+    @Test
+    fun `a pointer drag swaps the lifted tile with the tile under it and releasing drops`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val lifted = grid.childAtPosition(0) as CameraTileView
+                a.onTileAction(0, TileAction.MOVE)
+
+                fun centre(position: Int): Pair<Float, Float> {
+                    val v = grid.childAtPosition(position)!!
+                    val origin = IntArray(2).also(grid::getLocationOnScreen)
+                    return (origin[0] + (v.left + v.right) / 2f) to (origin[1] + (v.top + v.bottom) / 2f)
+                }
+
+                fun touch(
+                    action: Int,
+                    position: Int,
+                ) {
+                    val (x, y) = centre(position)
+                    val now = android.os.SystemClock.uptimeMillis()
+                    a.dispatchTouchEvent(android.view.MotionEvent.obtain(now, now, action, x, y, 0))
+                    ShadowLooper.idleMainLooper()
+                }
+                touch(android.view.MotionEvent.ACTION_DOWN, 0)
+                touch(android.view.MotionEvent.ACTION_MOVE, 2) // drag over the third tile
+                assertThat(grid.childAtPosition(2)).isSameInstanceAs(lifted)
+                assertThat(grid.names().take(3)).containsExactly("Camera 3", "Camera 2", "Camera 1").inOrder()
+                assertThat(a.isMoving).isTrue()
+                touch(android.view.MotionEvent.ACTION_UP, 2)
+                assertThat(a.isMoving).isFalse()
+                assertThat(lifted.lifted).isFalse()
+                assertThat(shadowOf(a).nextStartedActivity).isNull() // the release was a drop, not a tap
+                assertThat(
+                    app.graph.arrangementStore
+                        .order(GridLayoutMode.AUTO)!!
+                        .first(),
+                ).endsWith("/3")
+            }
+        }
+    }
+
     private inline fun <reified VM : androidx.lifecycle.ViewModel> GridActivity.viewModels() =
         lazy { androidx.lifecycle.ViewModelProvider(this)[VM::class.java] }
 }

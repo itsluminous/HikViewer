@@ -25,10 +25,13 @@ comments:
     searchProtectedFunction: false
 
 complexity:
+  ComplexCondition:
+    # Bitstream parsers compare several header fields in one guard; splitting them hides the spec layout.
+    threshold: 5
   LongParameterList:
     # Protocol frames and settings models legitimately carry many fields; constructors are exempt.
     constructorThreshold: 10
-    functionThreshold: 6
+    functionThreshold: 7
     ignoreDefaultParameters: true
     ignoreDataClasses: true
     ignoreAnnotatedParameter: ['Inject']
@@ -47,6 +50,9 @@ naming:
     ignoreAnnotated: ['Test', 'ParameterizedTest']
 
 style:
+  LoopWithTooManyJumpStatements:
+    # Container demux loops legitimately `break` on "need more data" and `continue` on "skip this unit".
+    maxJumpCount: 2
   ThrowsCount:
     # Protocol parsers validate several preconditions per function (magic, length, range); splitting
     # each check into its own function hides the frame layout instead of documenting it.
@@ -55,7 +61,8 @@ style:
   MagicNumber:
     # Protocol parsing is full of fixed offsets and header constants; tests are full of expected values.
     excludes: ['**/test/**', '**/androidTest/**']
-    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '8', '16', '32', '64', '100', '1000']
+    # Byte offsets up to 9 are header-field positions in RTP/PES/TS parsing and read best inline.
+    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '16', '32', '64', '100', '1000']
     ignoreHashCodeFunction: true
     ignorePropertyDeclaration: true
     ignoreLocalVariableDeclaration: false
@@ -70,7 +77,8 @@ style:
     maxLineLength: 120
     excludeCommentStatements: true
   ReturnCount:
-    max: 3
+    # Parsers return early per branch (need more data / skip / done); 5 keeps them flat and readable.
+    max: 5
     excludeGuardClauses: true
   UnusedPrivateMember:
     active: true

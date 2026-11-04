@@ -315,6 +315,38 @@ class GridActivityTest {
     }
 
     @Test
+    fun `the menu's Playback entry opens the playback screen for that tile's camera`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tile = grid.getChildAt(2) as CameraTileView
+                tile.performLongClick()
+                val popup =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                val playback = TileAction.entries.indexOf(TileAction.PLAYBACK)
+                assertThat(
+                    popup.menu
+                        .getItem(playback)
+                        .title
+                        .toString(),
+                ).isEqualTo(a.getString(R.string.tile_action_playback))
+                popup.menu.performIdentifierAction(playback, 0)
+                ShadowLooper.idleMainLooper()
+                val started =
+                    org.robolectric.Shadows
+                        .shadowOf(a)
+                        .nextStartedActivity
+                assertThat(started.component?.className)
+                    .isEqualTo(com.itsluminous.hikviewer.ui.playback.PlaybackActivity::class.java.name)
+                assertThat(
+                    started.getStringExtra(com.itsluminous.hikviewer.ui.playback.PlaybackActivity.EXTRA_CAMERA_KEY),
+                ).isEqualTo("${FakeCloudServices.SERIAL}/3")
+                assertThat(a.isMoving).isFalse()
+            }
+        }
+    }
+
+    @Test
     fun `D-pad swaps the lifted tile with its neighbour, OK drops and persists, players stay`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->

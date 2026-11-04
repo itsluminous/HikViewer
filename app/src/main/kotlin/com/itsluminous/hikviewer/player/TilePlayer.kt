@@ -234,6 +234,9 @@ class TilePlayer(
                     decoderDisabled = false
                     stateFlow.value = TileState.Connecting
                 }
+                // A playback window ran out: keep the last picture on the surface; the owner
+                // decides whether to open the next window.
+                is StreamStatus.Ended -> Unit
             }
         }
     }

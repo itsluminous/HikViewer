@@ -24,6 +24,7 @@ import com.itsluminous.hikviewer.player.TileState
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
+import com.itsluminous.hikviewer.ui.playback.PlaybackActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -244,6 +245,12 @@ class GridActivity : AppCompatActivity() {
         fullscreen.launch(FullscreenActivity.intent(this, index))
     }
 
+    private fun openPlayback(position: Int) {
+        val camera = (viewModel.state.value as? GridUiState.Ready)?.cameras?.getOrNull(position) ?: return
+        viewModel.focusedIndex = position
+        startActivity(PlaybackActivity.intent(this, camera.key))
+    }
+
     private fun showLayoutMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         GridLayoutMode.entries.forEachIndexed { i, mode -> menu.menu.add(0, i, i, mode.labelRes) }
@@ -274,6 +281,7 @@ class GridActivity : AppCompatActivity() {
     ) {
         when (action) {
             TileAction.MOVE -> beginMove(position)
+            TileAction.PLAYBACK -> openPlayback(position)
         }
     }
 

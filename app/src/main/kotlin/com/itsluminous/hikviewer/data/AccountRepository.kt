@@ -3,6 +3,8 @@ package com.itsluminous.hikviewer.data
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.Device
+import com.itsluminous.hikviewer.core.playback.PlaybackWindow
+import com.itsluminous.hikviewer.core.playback.RecordSegment
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.core.stream.StreamStatus
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.time.LocalDate
 
 /** Devices and their channels, as last fetched from the cloud. */
 data class CameraInventory(
@@ -82,6 +85,19 @@ class AccountRepository(
         quality: StreamQuality,
         onStatus: (StreamStatus) -> Unit = {},
     ): Flow<AccessUnit> = requireAccount().openStream(camera, quality, settingsStore.verificationCode, onStatus)
+
+    /** Recorded segments of [camera] on [day], recorder-local. */
+    suspend fun searchRecordings(
+        camera: Camera,
+        day: LocalDate,
+    ): List<RecordSegment> = requireAccount().searchRecordings(camera, day)
+
+    /** Opens a playback window through the bound account with the stored verification code. */
+    fun openPlayback(
+        camera: Camera,
+        window: PlaybackWindow,
+        onStatus: (StreamStatus) -> Unit = {},
+    ): Flow<AccessUnit> = requireAccount().openPlayback(camera, window, settingsStore.verificationCode, onStatus)
 
     /** Server logout (best effort), then forgets session and settings. */
     suspend fun logout() {

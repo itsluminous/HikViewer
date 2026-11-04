@@ -27,6 +27,15 @@
     <string name="tile_retry">Retry</string>
     <string name="tile_fps">%1$d fps</string>
     <string name="tile_action_move">Move</string>
+    <string name="tile_action_playback">Playback</string>
+    <string name="playback_help">▲▼ pick control · ◀ ▶ seek 10 s (hold: 1 min) · OK pause · speeds other than 1x skip between keyframes (recorder time)</string>
+    <string name="playback_bar_description">Recorded footage of the day; tap to seek</string>
+    <string name="playback_loading">Listing recordings…</string>
+    <string name="playback_no_recordings">No recordings on this day</string>
+    <string name="playback_ended">End of recordings</string>
+    <string name="playback_error">Could not list recordings</string>
+    <string name="playback_paused">Paused</string>
+    <string name="playback_date_chip">◀ %1$s ▶</string>
     <string name="grid_move_hint">Moving: ◀ ▲ ▼ ▶ swap · OK drop · Back cancel</string>
 
     <!-- Layouts -->

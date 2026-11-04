@@ -8,12 +8,17 @@ import com.itsluminous.hikviewer.core.auth.Session
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.Device
 import com.itsluminous.hikviewer.core.devices.DeviceRepository
+import com.itsluminous.hikviewer.core.playback.PlaybackStream
+import com.itsluminous.hikviewer.core.playback.PlaybackWindow
+import com.itsluminous.hikviewer.core.playback.RecordSegment
+import com.itsluminous.hikviewer.core.playback.RecordingSearch
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.LiveStream
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.core.stream.StreamStatus
 import com.itsluminous.hikviewer.core.stream.VtduTokenProvider
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 
 /**
  * The slice of the Hik-Connect cloud the app uses, behind an interface so UI tests can swap in a
@@ -50,6 +55,20 @@ interface CloudAccount {
         onStatus: (StreamStatus) -> Unit,
     ): Flow<AccessUnit>
 
+    /** Recorded segments of [camera] on [day] (recorder date); see [RecordingSearch.segmentsOn]. */
+    suspend fun searchRecordings(
+        camera: Camera,
+        day: LocalDate,
+    ): List<RecordSegment>
+
+    /** Cold flow of decrypted recorded pictures over [window], completing at its end; see [PlaybackStream.open]. */
+    fun openPlayback(
+        camera: Camera,
+        window: PlaybackWindow,
+        verificationCode: String?,
+        onStatus: (StreamStatus) -> Unit,
+    ): Flow<AccessUnit>
+
     /** Server-side logout; failures are ignored. */
     suspend fun logout()
 }
@@ -81,6 +100,8 @@ private class HikConnectAccount(
     // The VTM page list is fetched once per stream open; LiveStream calls the lambda lazily so a
     // stale relay assignment is picked up on the next reconnect without a restart.
     private val live = LiveStream(pageList = { devices.vtmPageList() }, tokens = tokens)
+    private val playback = PlaybackStream(pageList = { devices.vtmPageList() }, tokens = tokens)
+    private val recordings = RecordingSearch(session)
 
     override suspend fun listDevices(): List<Device> = devices.listDevices()
 
@@ -92,6 +113,18 @@ private class HikConnectAccount(
         verificationCode: String?,
         onStatus: (StreamStatus) -> Unit,
     ): Flow<AccessUnit> = live.open(camera, quality, verificationCode, onStatus)
+
+    override suspend fun searchRecordings(
+        camera: Camera,
+        day: LocalDate,
+    ): List<RecordSegment> = recordings.segmentsOn(camera, day)
+
+    override fun openPlayback(
+        camera: Camera,
+        window: PlaybackWindow,
+        verificationCode: String?,
+        onStatus: (StreamStatus) -> Unit,
+    ): Flow<AccessUnit> = playback.open(camera, window, verificationCode, onStatus)
 
     override suspend fun logout() = session.logout()
 }

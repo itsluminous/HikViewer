@@ -14,4 +14,7 @@ enum class TileAction(
 ) {
     /** Pick the tile up and swap it with its neighbours. */
     MOVE(R.string.tile_action_move),
+
+    /** Open the camera's recorded footage. */
+    PLAYBACK(R.string.tile_action_playback),
 }

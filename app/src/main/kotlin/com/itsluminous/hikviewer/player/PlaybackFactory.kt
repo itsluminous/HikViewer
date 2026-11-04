@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.player
 
 import android.view.Surface
+import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
@@ -8,9 +9,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
 /**
- * Builds [PlaybackCoordinator]s for the screens. The two seams that touch `MediaCodec` — codec
- * name lookup and [TileDecoder] construction — are constructor parameters so tests can run whole
- * Activities under Robolectric with recording stand-ins.
+ * Builds [PlaybackCoordinator]s (grids) and single [TilePlayer]s (recorded playback) for the
+ * screens. The two seams that touch `MediaCodec` — codec name lookup and [TileDecoder]
+ * construction — are constructor parameters so tests can run whole Activities under Robolectric
+ * with recording stand-ins.
  */
 class PlaybackFactory(
     private val pickCodec: (String, Boolean) -> String? = CodecNames::pick,
@@ -36,4 +38,26 @@ class PlaybackFactory(
         tickMillis = tickMillis,
         dispatcher = dispatcher,
     )
+
+    /**
+     * One player on the hardware decoder, for a screen that shows a single stream without a
+     * budget (recorded playback is 720p HEVC, which only hardware can decode). The caller owns
+     * start/stop and the watchdog [TilePlayer.tick]; [tickMillis] is the suggested period.
+     */
+    fun createSinglePlayer(
+        camera: Camera,
+        opener: StreamOpener,
+        quality: StreamQuality = StreamQuality.MAIN,
+    ): TilePlayer = TilePlayer(
+        camera = camera,
+        opener = opener,
+        pool = poolFactory(),
+        quality = quality,
+        pickCodec = pickCodec,
+        decoderFactory = decoderFactory,
+        dispatcher = dispatcher,
+    ).also { it.mode = TileMode.HW_LIVE }
+
+    /** Suggested watchdog period for players created here. */
+    val watchdogMillis: Long get() = tickMillis
 }

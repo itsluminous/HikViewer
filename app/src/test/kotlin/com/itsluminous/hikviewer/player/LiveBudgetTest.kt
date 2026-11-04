@@ -29,7 +29,7 @@ class LiveBudgetTest {
         assertThat(budget.sample(2_000, 10)).isEqualTo(7)
         // The lag clock restarts after a demotion so tiles are shed one at a time.
         assertThat(budget.sample(2_500, 10)).isEqualTo(7)
-        assertThat(budget.sample(4_000, 10)).isEqualTo(6)
+        assertThat(budget.sample(12_000, 10)).isEqualTo(6)
         assertThat(log.filter { "demote" in it }).hasSize(2)
         assertThat(log.first()).contains("ceiling=8")
     }
@@ -61,10 +61,77 @@ class LiveBudgetTest {
         assertThat(budget.liveLimit).isEqualTo(4)
         var t = 0L
         repeat(10) {
-            t += LiveBudget.LAG_DEMOTE_MILLIS
+            t += LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
             budget.sample(t, 99)
         }
         assertThat(budget.liveLimit).isEqualTo(LiveBudget.MIN_LIVE)
+    }
+
+    @Test
+    fun `changes in either direction are at least ten seconds apart`() {
+        val budget = LiveBudget(caps())
+        // Persistent lag: the second and third demotions wait for the hysteresis window, not 2 s.
+        budget.sample(0, 30)
+        assertThat(budget.sample(2_000, 30)).isEqualTo(7)
+        assertThat(budget.sample(4_000, 30)).isEqualTo(7)
+        assertThat(budget.sample(11_999, 30)).isEqualTo(7)
+        assertThat(budget.sample(12_000, 30)).isEqualTo(6)
+        // Headroom right after a demotion: the promotion also honours the window.
+        budget.sample(12_500, 0)
+        assertThat(budget.sample(12_500 + LiveBudget.HEADROOM_PROMOTE_MILLIS, 0)).isEqualTo(7)
+        // Lag again right after the promotion: no immediate flip back.
+        val promotedAt = 12_500 + LiveBudget.HEADROOM_PROMOTE_MILLIS
+        budget.sample(promotedAt + 100, 30)
+        assertThat(budget.sample(promotedAt + LiveBudget.LAG_DEMOTE_MILLIS + 100, 30)).isEqualTo(7)
+        assertThat(budget.sample(promotedAt + LiveBudget.MIN_CHANGE_INTERVAL_MILLIS, 30)).isEqualTo(6)
+    }
+
+    @Test
+    fun `a promotion that relapses doubles the calm the next one needs, a lasting one resets it`() {
+        val budget = LiveBudget(caps())
+        var t = 0L
+        budget.sample(t, 30)
+        t += LiveBudget.LAG_DEMOTE_MILLIS
+        assertThat(budget.sample(t, 30)).isEqualTo(7)
+        // Calm → promote after the default 15 s.
+        t += 1_000
+        budget.sample(t, 0)
+        t += LiveBudget.HEADROOM_PROMOTE_MILLIS
+        assertThat(budget.sample(t, 0)).isEqualTo(8)
+        // Lags again within the relapse window → demoted, and the calm requirement doubles.
+        t += LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+        budget.sample(t, 30)
+        t += LiveBudget.LAG_DEMOTE_MILLIS
+        assertThat(budget.sample(t, 30)).isEqualTo(7)
+        assertThat(budget.headroomMillis).isEqualTo(LiveBudget.HEADROOM_PROMOTE_MILLIS * 2)
+        t += 1_000
+        budget.sample(t, 0)
+        t += LiveBudget.HEADROOM_PROMOTE_MILLIS
+        assertThat(budget.sample(t, 0)).isEqualTo(7)
+        t += LiveBudget.HEADROOM_PROMOTE_MILLIS
+        assertThat(budget.sample(t, 0)).isEqualTo(8)
+        // This promotion holds past the relapse window: the requirement goes back to the default.
+        t += LiveBudget.RELAPSE_MILLIS
+        budget.sample(t, 0)
+        assertThat(budget.headroomMillis).isEqualTo(LiveBudget.HEADROOM_PROMOTE_MILLIS)
+    }
+
+    @Test
+    fun `relapse back-off is capped`() {
+        val budget = LiveBudget(caps())
+        var t = 0L
+        repeat(10) {
+            budget.sample(t, 30)
+            t += LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+            budget.sample(t, 30)
+            t += 1_000
+            budget.sample(t, 0)
+            t += budget.headroomMillis
+            budget.sample(t, 0)
+            t += LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+        }
+        assertThat(budget.headroomMillis).isAtMost(LiveBudget.MAX_HEADROOM_MILLIS)
+        assertThat(budget.headroomMillis).isGreaterThan(LiveBudget.HEADROOM_PROMOTE_MILLIS)
     }
 
     @Test

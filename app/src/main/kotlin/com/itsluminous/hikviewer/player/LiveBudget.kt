@@ -8,7 +8,12 @@ package com.itsluminous.hikviewer.player
  * 12 sagged into the low-memory killer. The dynamic part watches the decoders' input queues: when
  * frames pile up for [LAG_DEMOTE_MILLIS] the device cannot keep up, so the lowest-priority live tile
  * is demoted; after [HEADROOM_PROMOTE_MILLIS] without lag one tile is promoted again, never above
- * the static ceiling. Pure Kotlin so the thresholds are unit-testable; the caller feeds time.
+ * the static ceiling. Consecutive changes are at least [MIN_CHANGE_INTERVAL_MILLIS] apart in either
+ * direction: every change re-creates decoders, so a limit that oscillates faster than that makes
+ * tiles flicker instead of helping. A promotion that lags again within [RELAPSE_MILLIS] was
+ * premature, so each relapse doubles the calm period the next promotion must wait for (up to
+ * [MAX_HEADROOM_MILLIS]); a promotion that holds resets it. Pure Kotlin so the thresholds are
+ * unit-testable; the caller feeds time.
  */
 class LiveBudget(
     capabilities: DeviceCapabilities,
@@ -24,6 +29,12 @@ class LiveBudget(
 
     private var lagSince: Long? = null
     private var calmSince: Long? = null
+    private var lastChangeAt: Long? = null
+    private var lastPromotionAt: Long? = null
+
+    /** Calm time currently required before promoting; grows on relapses. */
+    var headroomMillis: Long = HEADROOM_PROMOTE_MILLIS
+        private set
 
     init {
         onDecision(
@@ -40,24 +51,56 @@ class LiveBudget(
         nowMillis: Long,
         maxQueuedFrames: Int,
     ): Int {
-        if (maxQueuedFrames > LAG_FRAMES) {
-            calmSince = null
-            val since = lagSince ?: nowMillis.also { lagSince = it }
-            if (nowMillis - since >= LAG_DEMOTE_MILLIS && liveLimit > MIN_LIVE) {
-                liveLimit--
-                lagSince = nowMillis
-                onDecision("live budget: demote, queue=$maxQueuedFrames frames, limit=$liveLimit")
-            }
-        } else {
-            lagSince = null
-            val since = calmSince ?: nowMillis.also { calmSince = it }
-            if (nowMillis - since >= HEADROOM_PROMOTE_MILLIS && liveLimit < ceiling) {
-                liveLimit++
-                calmSince = nowMillis
-                onDecision("live budget: promote, limit=$liveLimit")
-            }
-        }
+        val settled = lastChangeAt?.let { nowMillis - it >= MIN_CHANGE_INTERVAL_MILLIS } ?: true
+        if (maxQueuedFrames > LAG_FRAMES) onLag(nowMillis, maxQueuedFrames, settled) else onCalm(nowMillis, settled)
         return liveLimit
+    }
+
+    private fun onLag(
+        nowMillis: Long,
+        maxQueuedFrames: Int,
+        settled: Boolean,
+    ) {
+        calmSince = null
+        val since = lagSince ?: nowMillis.also { lagSince = it }
+        if (nowMillis - since >= LAG_DEMOTE_MILLIS &&
+            liveLimit > MIN_LIVE &&
+            settled
+        ) {
+            demote(nowMillis, maxQueuedFrames)
+        }
+    }
+
+    private fun onCalm(
+        nowMillis: Long,
+        settled: Boolean,
+    ) {
+        lagSince = null
+        val since = calmSince ?: nowMillis.also { calmSince = it }
+        lastPromotionAt?.let { if (nowMillis - it >= RELAPSE_MILLIS) headroomMillis = HEADROOM_PROMOTE_MILLIS }
+        if (nowMillis - since >= headroomMillis && liveLimit < ceiling && settled) promote(nowMillis)
+    }
+
+    private fun demote(
+        nowMillis: Long,
+        maxQueuedFrames: Int,
+    ) {
+        liveLimit--
+        lagSince = nowMillis
+        lastChangeAt = nowMillis
+        val relapse = lastPromotionAt?.let { nowMillis - it < RELAPSE_MILLIS } == true
+        if (relapse) headroomMillis = minOf(headroomMillis * 2, MAX_HEADROOM_MILLIS)
+        lastPromotionAt = null
+        val note = if (relapse) ", next promotion after ${headroomMillis / MILLIS_PER_SECOND} s calm" else ""
+        onDecision("live budget: demote, queue=$maxQueuedFrames frames, limit=$liveLimit$note")
+    }
+
+    private fun promote(nowMillis: Long) {
+        liveLimit++
+        calmSince = nowMillis
+        lastChangeAt = nowMillis
+        lastPromotionAt = nowMillis
+        onDecision("live budget: promote, limit=$liveLimit")
     }
 
     /** Thresholds. */
@@ -73,6 +116,17 @@ class LiveBudget(
 
         /** The focused tile is always live. */
         const val MIN_LIVE: Int = 1
+
+        /** Two limit changes are never closer than this; each one re-creates decoders. */
+        const val MIN_CHANGE_INTERVAL_MILLIS: Long = 10_000
+
+        /** A demotion this soon after a promotion means the promotion was premature. */
+        const val RELAPSE_MILLIS: Long = 60_000
+
+        /** Longest calm period a relapsing device is made to wait before the next promotion. */
+        const val MAX_HEADROOM_MILLIS: Long = 240_000
+
+        private const val MILLIS_PER_SECOND = 1_000L
 
         private const val MB = 1024L * 1024L
         private const val LOW_RAM_CEILING = 4

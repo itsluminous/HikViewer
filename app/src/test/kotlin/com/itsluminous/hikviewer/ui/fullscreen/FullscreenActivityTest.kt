@@ -113,4 +113,34 @@ class FullscreenActivityTest {
             ).isEqualTo(StreamQuality.MAIN)
         }
     }
+
+    @Test
+    fun `switch-camera hint shows on entry, hides after the idle time and returns on a key`() {
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                val hint = a.findViewById<android.view.View>(R.id.hint)
+                assertThat(hint.visibility).isEqualTo(android.view.View.VISIBLE)
+                ShadowLooper.idleMainLooper(
+                    app.graph.topBarAutoHideMillis + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
+                assertThat(hint.visibility).isEqualTo(android.view.View.INVISIBLE)
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+                assertThat(hint.visibility).isEqualTo(android.view.View.VISIBLE)
+                ShadowLooper.idleMainLooper(
+                    app.graph.topBarAutoHideMillis / 2,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+                ShadowLooper.idleMainLooper(
+                    app.graph.topBarAutoHideMillis / 2 + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
+                assertThat(hint.visibility).isEqualTo(android.view.View.VISIBLE) // the second key restarted the timer
+                ShadowLooper.idleMainLooper(app.graph.topBarAutoHideMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(hint.visibility).isEqualTo(android.view.View.INVISIBLE)
+            }
+        }
+    }
 }

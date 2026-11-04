@@ -20,6 +20,7 @@ import com.itsluminous.hikviewer.databinding.ActivityGridBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
+import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
@@ -28,12 +29,12 @@ import kotlinx.coroutines.launch
 
 /**
  * The camera grid. Tiles are [CameraTileView]s inside a [CameraGridLayout]; the hidden top bar is
- * driven by [TopBarController] from `dispatchKeyEvent` and hover events so it appears on any input
+ * driven by an [InactivityTimer] from `dispatchKeyEvent` and hover events so it appears on any input
  * without stealing focus. Back leaves the app (this is the root of the task once logged in).
  */
 class GridActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGridBinding
-    private lateinit var topBar: TopBarController
+    private lateinit var topBar: InactivityTimer
     private val tileJobs = mutableListOf<Job>()
     private var pendingFocus: Int? = null
 
@@ -69,7 +70,7 @@ class GridActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityGridBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        topBar = TopBarController(binding.topBar, AppGraph.of(this).topBarAutoHideMillis)
+        topBar = InactivityTimer(binding.topBar, AppGraph.of(this).topBarAutoHideMillis)
         binding.grid.portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         binding.grid.onTopEdgeUp = {
             topBar.onUserActivity()

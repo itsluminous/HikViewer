@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
@@ -13,15 +15,19 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.databinding.ActivityFullscreenBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
  * Shows one camera edge to edge. LEFT/RIGHT (or tapping the left/right third of the screen on a
- * phone) switch camera; Back returns the index to the grid so the same tile regains focus.
+ * phone) switch camera; Back returns the index to the grid so the same tile regains focus. The
+ * "switch camera" hint appears on entry and on any key, pointer or touch, and hides after the
+ * same idle time as the grid's top bar.
  */
 class FullscreenActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFullscreenBinding
+    private lateinit var hint: InactivityTimer
     private var stateJob: Job? = null
 
     private val viewModel: FullscreenViewModel by viewModels {
@@ -48,6 +54,12 @@ class FullscreenActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.tile.isFocusable = false
         binding.tile.isClickable = false
+        hint = InactivityTimer(binding.hint, AppGraph.of(this).topBarAutoHideMillis)
+        hint.onUserActivity()
+        binding.root.setOnHoverListener { _, _ ->
+            hint.onUserActivity()
+            false
+        }
         binding.leftZone.setOnClickListener { viewModel.step(-1) }
         binding.rightZone.setOnClickListener { viewModel.step(+1) }
         lifecycleScope.launch {
@@ -65,7 +77,23 @@ class FullscreenActivity : AppCompatActivity() {
 
     override fun onStop() {
         viewModel.onStop()
+        hint.hideNow()
         super.onStop()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) hint.onUserActivity()
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) hint.onUserActivity()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (ev.isFromSource(InputDevice.SOURCE_MOUSE)) hint.onUserActivity()
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     override fun onKeyDown(

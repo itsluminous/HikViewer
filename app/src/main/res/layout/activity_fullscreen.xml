@@ -27,7 +27,9 @@
         android:contentDescription="@string/fullscreen_hint"
         android:focusable="false" />
 
+    <!-- Shown on any key or pointer event, hidden 5 s later (same InactivityTimer as the grid's top bar). -->
     <TextView
+        android:id="@+id/hint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"

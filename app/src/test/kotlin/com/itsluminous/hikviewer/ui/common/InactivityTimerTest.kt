@@ -1,4 +1,4 @@
-package com.itsluminous.hikviewer.ui.grid
+package com.itsluminous.hikviewer.ui.common
 
 import android.view.View
 import android.widget.Button
@@ -10,7 +10,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class TopBarControllerTest {
+class InactivityTimerTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val bar = FrameLayout(context)
     private val button =
@@ -22,7 +22,7 @@ class TopBarControllerTest {
     /** A manual scheduler standing in for `postDelayed`. */
     private var scheduled: Pair<Runnable, Long>? = null
     private val controller =
-        TopBarController(
+        InactivityTimer(
             bar,
             autoHideMillis = 5_000,
             schedule = { r, ms -> scheduled = r to ms },

@@ -11,9 +11,11 @@ import com.itsluminous.hikviewer.R
  *
  * A custom `ViewGroup` rather than `GridLayout`/`RecyclerView` because the tiles are a fixed, small
  * set of `SurfaceView`s that must never be recycled (recreating a surface restarts its decoder) and
- * because the hero tile spans cells. Children are laid out in index order; children past the
- * shape's capacity are hidden. [onTopEdgeUp] lets the screen route UP from the top row to its top
- * bar, which the default focus search cannot reach because the bar is invisible until a key arrives.
+ * because the hero tile spans cells. Children fill the grid positions in index order unless
+ * [order] says otherwise: rearranging tiles changes [order], never the child list, because
+ * detaching a `SurfaceView` destroys its surface. Children past the shape's capacity are hidden.
+ * [onTopEdgeUp] lets the screen route UP from the top row to its top bar, which the default focus
+ * search cannot reach because the bar is invisible until a key arrives.
  */
 class CameraGridLayout
     @JvmOverloads
@@ -40,6 +42,27 @@ class CameraGridLayout
         /** Called when UP is pressed on a tile in the top row; returns the view to focus, or null. */
         var onTopEdgeUp: (() -> View?)? = null
 
+        /**
+         * Child index shown at each grid position (`order[position] = childIndex`), or null for
+         * children in index order. A child the list does not name is hidden.
+         */
+        var order: List<Int>? = null
+            set(value) {
+                if (field == value) return
+                field = value
+                requestLayout()
+            }
+
+        /** The child shown at grid [position], or null. */
+        fun childAtPosition(position: Int): View? = getChildAt(order?.getOrNull(position) ?: position)
+
+        /** The grid position of [child], or -1 when it is not a child or [order] hides it. */
+        fun positionOf(child: View): Int {
+            val index = indexOfChild(child)
+            if (index < 0) return -1
+            return order?.indexOf(index) ?: index
+        }
+
         private val gap = resources.getDimensionPixelSize(R.dimen.tile_gap)
 
         /** The shape used by the last layout pass. */
@@ -56,7 +79,7 @@ class CameraGridLayout
             val rects = GridGeometry.rects(shape, width, height, gap)
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
-                val rect = rects.getOrNull(i)
+                val rect = rects.getOrNull(positionOf(child))
                 if (rect == null) {
                     child.visibility = GONE
                     continue
@@ -79,8 +102,9 @@ class CameraGridLayout
         ) {
             val rects = GridGeometry.rects(shape, r - l, b - t, gap)
             for (i in 0 until childCount) {
-                val rect = rects.getOrNull(i) ?: continue
-                getChildAt(i).layout(rect.left, rect.top, rect.right, rect.bottom)
+                val child = getChildAt(i)
+                val rect = rects.getOrNull(positionOf(child)) ?: continue
+                child.layout(rect.left, rect.top, rect.right, rect.bottom)
             }
         }
 
@@ -89,15 +113,31 @@ class CameraGridLayout
             direction: Int,
         ): View? {
             if (direction == FOCUS_UP && focused != null) {
-                val index = indexOfChild(focused)
-                if (index >= 0 && shape.cells.getOrNull(index)?.row == 0) {
+                val position = positionOf(focused)
+                if (position >= 0 && shape.cells.getOrNull(position)?.row == 0) {
                     onTopEdgeUp?.invoke()?.let { return it }
                 }
             }
             return super.focusSearch(focused, direction)
         }
 
-        /** Index of the tile at cell ([column], [row]), or -1. */
+        /**
+         * Grid position one step from [position] in direction ([dx], [dy]) in cells, measured from
+         * that tile's top-left cell and stepping past its own span; -1 at the grid's edge.
+         */
+        fun neighbour(
+            position: Int,
+            dx: Int,
+            dy: Int,
+        ): Int {
+            val cell = shape.cells.getOrNull(position) ?: return -1
+            val column = if (dx > 0) cell.column + cell.columnSpan else cell.column + dx
+            val row = if (dy > 0) cell.row + cell.rowSpan else cell.row + dy
+            val target = tileAt(column, row)
+            return if (target == position || target >= childCount) -1 else target
+        }
+
+        /** Grid position of the tile at cell ([column], [row]), or -1. */
         fun tileAt(
             column: Int,
             row: Int,

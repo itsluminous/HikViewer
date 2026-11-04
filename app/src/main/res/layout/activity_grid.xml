@@ -23,6 +23,21 @@
         android:textColor="@color/on_background"
         android:textSize="20sp" />
 
+    <!-- Shown only while a tile is being moved. -->
+    <TextView
+        android:id="@+id/move_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="12dp"
+        android:background="@drawable/label_background"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="3dp"
+        android:text="@string/grid_move_hint"
+        android:textColor="@color/on_background"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"

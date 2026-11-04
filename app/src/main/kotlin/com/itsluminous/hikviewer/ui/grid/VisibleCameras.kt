@@ -17,14 +17,4 @@ object VisibleCameras {
         val byKey = all.associateBy { it.key }
         return chosenKeys.mapNotNull(byKey::get)
     }
-
-    /** Index of the hero camera in [visible]: the chosen key when shown, else the first tile. */
-    fun heroIndex(
-        visible: List<Camera>,
-        heroKey: String?,
-    ): Int? {
-        if (visible.isEmpty()) return null
-        val index = visible.indexOfFirst { it.key == heroKey }
-        return if (index >= 0) index else 0
-    }
 }

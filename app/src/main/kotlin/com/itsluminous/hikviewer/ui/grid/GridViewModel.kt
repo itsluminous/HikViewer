@@ -6,6 +6,7 @@ import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.VerificationCode
 import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.CameraInventory
+import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.PlaybackCoordinator
 import kotlinx.coroutines.Job
@@ -27,7 +28,7 @@ sealed class GridUiState {
         val cameras: List<Camera>,
         /** Chosen layout (AUTO resolves in the view). */
         val layout: GridLayoutMode,
-        /** Hero tile index, null when there are no tiles. */
+        /** Hero tile index (always position 0; the hero layout spans it), null when there are no tiles. */
         val heroIndex: Int?,
         /** True when a verification code must be asked for before streams can start. */
         val needsCode: Boolean,
@@ -46,7 +47,8 @@ sealed class GridUiState {
 }
 
 /**
- * Owns the camera list, the chosen layout, the verification-code gate and the [PlaybackCoordinator].
+ * Owns the camera list, the chosen layout and its tile arrangement, the verification-code gate and
+ * the [PlaybackCoordinator].
  * Playback follows the Activity's started state through [onStart]/[onStop] so every decoder and
  * socket is released when the screen is not visible, as the brief requires.
  *
@@ -58,6 +60,7 @@ sealed class GridUiState {
 class GridViewModel(
     private val account: AccountRepository,
     private val settings: SettingsStore,
+    private val arrangement: GridArrangementStore,
     /** Created lazily by the Activity's graph; a factory so tests can inject fakes. */
     coordinatorFactory: (GridViewModel) -> PlaybackCoordinator,
 ) : ViewModel() {
@@ -94,30 +97,58 @@ class GridViewModel(
         }
     }
 
-    /** Re-reads settings (layout, visible cameras, hero) and reconfigures the tiles. */
+    /** Re-reads settings (last layout, visible cameras, that layout's arrangement) and reconfigures the tiles. */
     fun applySettings() {
         val inv = inventory ?: return
-        val cameras = VisibleCameras.resolve(inv.cameras, settings.visibleCameraKeys)
-        val hero = VisibleCameras.heroIndex(cameras, settings.heroCameraKey)
+        val layout = arrangement.lastLayout
+        val visibleCameras = VisibleCameras.resolve(inv.cameras, settings.visibleCameraKeys)
+        val cameras = GridArrangement.apply(visibleCameras, arrangement.order(layout))
+        val hero = if (cameras.isEmpty()) null else 0
         val needsCode = inv.needsVerificationCode && !codeAccepted(inv)
         stateFlow.value =
             GridUiState.Ready(
                 cameras,
-                settings.gridLayout,
+                layout,
                 hero,
                 needsCode,
                 showNames = settings.showCameraNames,
                 showFrameRate = settings.showFrameRate,
             )
         playback.setCameras(cameras)
-        playback.heroIndex = if (settings.gridLayout == GridLayoutMode.HERO) hero else null
+        playback.heroIndex = if (layout == GridLayoutMode.HERO) hero else null
         playback.focusedIndex = focusedIndex.coerceIn(0, (cameras.size - 1).coerceAtLeast(0))
         if (visible && !needsCode) playback.start()
     }
 
-    /** Switches the layout and persists it. */
+    /** Switches the layout and persists it; the layout's own arrangement comes back with it. */
     fun setLayout(mode: GridLayoutMode) {
-        settings.gridLayout = mode
+        arrangement.lastLayout = mode
+        applySettings()
+    }
+
+    /**
+     * Exchanges the tiles at [from] and [to] and persists the result for the current layout (in
+     * the hero layout, moving a tile to position 0 makes it the hero). Players follow their
+     * cameras, so nothing reconnects. Returns the arrangement as it was, for a Back-cancel.
+     */
+    fun moveTile(
+        from: Int,
+        to: Int,
+    ): List<String>? {
+        val s = stateFlow.value as? GridUiState.Ready ?: return null
+        val keys = s.cameras.map { it.key }
+        val next = GridArrangement.swapped(keys, from, to)
+        if (next == keys) return keys
+        arrangement.setOrder(s.layout, next)
+        focusedIndex = to
+        applySettings()
+        return keys
+    }
+
+    /** Puts [keys] back as the current layout's arrangement (Back during a move). */
+    fun restoreArrangement(keys: List<String>) {
+        val s = stateFlow.value as? GridUiState.Ready ?: return
+        arrangement.setOrder(s.layout, keys)
         applySettings()
     }
 

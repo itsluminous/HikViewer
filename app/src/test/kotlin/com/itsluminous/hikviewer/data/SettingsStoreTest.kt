@@ -4,7 +4,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.core.stream.StreamQuality
-import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -19,9 +18,7 @@ class SettingsStoreTest {
 
     @Test
     fun `defaults match the brief`() {
-        assertThat(store.gridLayout).isEqualTo(GridLayoutMode.AUTO)
         assertThat(store.visibleCameraKeys).isNull()
-        assertThat(store.heroCameraKey).isNull()
         assertThat(store.fullscreenQuality).isEqualTo(StreamQuality.SUB)
         assertThat(store.verificationCode).isNull()
         assertThat(store.showCameraNames).isFalse()
@@ -41,15 +38,11 @@ class SettingsStoreTest {
 
     @Test
     fun `values round-trip`() {
-        store.gridLayout = GridLayoutMode.HERO
         store.visibleCameraKeys = listOf("A/1", "A/3")
-        store.heroCameraKey = "A/3"
         store.fullscreenQuality = StreamQuality.MAIN
         store.verificationCode = "ABCDEF"
         val again = SettingsStore(prefs)
-        assertThat(again.gridLayout).isEqualTo(GridLayoutMode.HERO)
         assertThat(again.visibleCameraKeys).containsExactly("A/1", "A/3").inOrder()
-        assertThat(again.heroCameraKey).isEqualTo("A/3")
         assertThat(again.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
         assertThat(again.verificationCode).isEqualTo("ABCDEF")
     }
@@ -66,19 +59,17 @@ class SettingsStoreTest {
     fun `unknown stored enum names fall back to defaults`() {
         prefs
             .edit()
-            .putString("gridLayout", "SPIRAL")
             .putString("fullscreenQuality", "4K")
             .commit()
-        assertThat(store.gridLayout).isEqualTo(GridLayoutMode.AUTO)
         assertThat(store.fullscreenQuality).isEqualTo(StreamQuality.SUB)
     }
 
     @Test
     fun `clear wipes everything`() {
         store.verificationCode = "x"
-        store.heroCameraKey = "y"
+        store.visibleCameraKeys = listOf("y")
         store.clear()
         assertThat(store.verificationCode).isNull()
-        assertThat(store.heroCameraKey).isNull()
+        assertThat(store.visibleCameraKeys).isNull()
     }
 }

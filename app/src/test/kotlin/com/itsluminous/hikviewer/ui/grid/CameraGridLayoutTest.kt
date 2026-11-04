@@ -108,4 +108,44 @@ class CameraGridLayoutTest {
         grid.portrait = true
         assertThat(grid.isLayoutRequested).isTrue()
     }
+
+    @Test
+    fun `order places children by position without reparenting, and hides the unlisted`() {
+        fill(4)
+        grid.mode = GridLayoutMode.GRID_3X3
+        val first = grid.getChildAt(0)
+        val last = grid.getChildAt(3)
+        grid.order = listOf(3, 1, 2) // child 3 shown first, child 0 not shown
+        layout()
+        val rects = GridGeometry.rects(grid.shape, 1920, 1080, gap)
+        assertThat(grid.childAtPosition(0)).isSameInstanceAs(last)
+        assertThat(grid.positionOf(last)).isEqualTo(0)
+        assertThat(last.left to last.top).isEqualTo(rects[0].left to rects[0].top)
+        assertThat(grid.positionOf(first)).isEqualTo(-1)
+        assertThat(first.visibility).isEqualTo(View.GONE)
+        assertThat(grid.indexOfChild(last)).isEqualTo(3)
+        grid.order = null
+        layout()
+        assertThat(grid.childAtPosition(0)).isSameInstanceAs(first)
+        assertThat(first.visibility).isEqualTo(View.VISIBLE)
+    }
+
+    @Test
+    fun `neighbour steps one cell in a direction and stops at the edges`() {
+        fill(12)
+        grid.mode = GridLayoutMode.GRID_4X3
+        layout()
+        assertThat(grid.neighbour(0, +1, 0)).isEqualTo(1)
+        assertThat(grid.neighbour(0, 0, +1)).isEqualTo(4)
+        assertThat(grid.neighbour(0, -1, 0)).isEqualTo(-1)
+        assertThat(grid.neighbour(0, 0, -1)).isEqualTo(-1)
+        assertThat(grid.neighbour(11, +1, 0)).isEqualTo(-1)
+        assertThat(grid.neighbour(5, -1, 0)).isEqualTo(4)
+        grid.mode = GridLayoutMode.HERO
+        layout()
+        // Hero spans 2x2 at top-left: RIGHT from it skips its own span, DOWN from tile 1 lands on it.
+        assertThat(grid.neighbour(0, +1, 0)).isEqualTo(1)
+        assertThat(grid.neighbour(0, 0, +1)).isEqualTo(grid.tileAt(0, 2))
+        assertThat(grid.neighbour(grid.tileAt(1, 2), 0, -1)).isEqualTo(0)
+    }
 }

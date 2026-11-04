@@ -3,11 +3,11 @@ package com.itsluminous.hikviewer.data
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.itsluminous.hikviewer.core.stream.StreamQuality
-import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 
 /**
- * User settings: grid layout, visible cameras and their order, hero camera, fullscreen quality and
- * the video verification code. Kept in encrypted preferences because of the verification code.
+ * User settings: visible cameras and their order, fullscreen quality, tile overlays and the video
+ * verification code. Kept in encrypted preferences because of the verification code. The grid
+ * layout and per-layout tile positions live in [GridArrangementStore] on the same preferences.
  *
  * Camera references are [com.itsluminous.hikviewer.core.devices.Camera.key] strings
  * (`serial/channel`), which survive renames on the recorder.
@@ -15,13 +15,6 @@ import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 class SettingsStore(
     private val prefs: SharedPreferences,
 ) {
-    /** Chosen grid layout; AUTO picks by camera count. */
-    var gridLayout: GridLayoutMode
-        get() =
-            prefs.getString(KEY_LAYOUT, null)?.let { runCatching { GridLayoutMode.valueOf(it) }.getOrNull() }
-                ?: GridLayoutMode.AUTO
-        set(value) = prefs.edit { putString(KEY_LAYOUT, value.name) }
-
     /**
      * Ordered keys of the cameras shown in the grid, or null when the user never chose (the grid
      * then shows every camera with a signal, in channel order).
@@ -32,11 +25,6 @@ class SettingsStore(
             prefs.edit {
                 if (value == null) remove(KEY_VISIBLE) else putString(KEY_VISIBLE, value.joinToString(SEPARATOR))
             }
-
-    /** Camera shown 2x in the hero layout; null means the first visible camera. */
-    var heroCameraKey: String?
-        get() = prefs.getString(KEY_HERO, null)
-        set(value) = prefs.edit { if (value == null) remove(KEY_HERO) else putString(KEY_HERO, value) }
 
     /** Stream used in fullscreen. SUB is the default: the HEVC main stream needs a hardware decoder. */
     var fullscreenQuality: StreamQuality
@@ -68,9 +56,7 @@ class SettingsStore(
 
     private companion object {
         const val SEPARATOR = ","
-        const val KEY_LAYOUT = "gridLayout"
         const val KEY_VISIBLE = "visibleCameras"
-        const val KEY_HERO = "heroCamera"
         const val KEY_QUALITY = "fullscreenQuality"
         const val KEY_VERIFICATION_CODE = "verificationCode"
         const val KEY_SHOW_NAMES = "showCameraNames"

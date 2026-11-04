@@ -16,9 +16,11 @@ import com.itsluminous.hikviewer.player.TileState
  * nothing has been drawn yet, and a dim scrim with a centred Retry while the stream is down.
  *
  * Focus is made unmistakable on a TV viewed from the couch: the tile scales up 6 %, draws a 4 dp
- * accent border and rises above its neighbours, animated over 120 ms. A mouse pointer entering
- * the tile requests focus so hover behaves like D-pad navigation; click/OK/tap are the normal
- * click. The surface is handed to the owner through [onSurface] whenever it is created or destroyed.
+ * accent border and rises above its neighbours, animated over 120 ms. A tile picked up for a
+ * move ([lifted]) scales 10 % and rises further. A mouse pointer entering the tile requests focus
+ * so hover behaves like D-pad navigation; click/OK/tap are the normal click and a long press
+ * (held OK, long click or long touch) is the long click, which the grid turns into a menu. The
+ * surface is handed to the owner through [onSurface] whenever it is created or destroyed.
  */
 class CameraTileView
     @JvmOverloads
@@ -37,11 +39,20 @@ class CameraTileView
         /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
         val showsRetry: Boolean get() = binding.errorOverlay.visibility == VISIBLE
 
+        /** True while the user is moving this tile: lifted above its neighbours. */
+        var lifted: Boolean = false
+            set(value) {
+                if (field == value) return
+                field = value
+                applyTransform(animate = true)
+            }
+
         init {
             binding.name.visibility = GONE
             isFocusable = true
             isFocusableInTouchMode = false
             isClickable = true
+            isLongClickable = true
             setBackgroundResource(R.drawable.tile_background)
             binding.surface.setZOrderMediaOverlay(false)
             binding.surface.holder.addCallback(
@@ -113,20 +124,44 @@ class CameraTileView
             previouslyFocusedRect: android.graphics.Rect?,
         ) {
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
-            val scale = if (gainFocus) FOCUS_SCALE else 1f
-            animate()
-                .scaleX(scale)
-                .scaleY(scale)
-                .translationZ(if (gainFocus) resources.getDimension(R.dimen.tile_focus_elevation) else 0f)
-                .setDuration(FOCUS_ANIMATION_MILLIS)
-                .start()
+            applyTransform(animate = true)
             binding.focusFrame.visibility = if (gainFocus) VISIBLE else INVISIBLE
+        }
+
+        private fun applyTransform(animate: Boolean) {
+            val scale =
+                when {
+                    lifted -> LIFT_SCALE
+                    isFocused -> FOCUS_SCALE
+                    else -> 1f
+                }
+            val z =
+                when {
+                    lifted -> resources.getDimension(R.dimen.tile_lift_elevation)
+                    isFocused -> resources.getDimension(R.dimen.tile_focus_elevation)
+                    else -> 0f
+                }
+            if (animate) {
+                animate()
+                    .scaleX(scale)
+                    .scaleY(scale)
+                    .translationZ(z)
+                    .setDuration(FOCUS_ANIMATION_MILLIS)
+                    .start()
+            } else {
+                scaleX = scale
+                scaleY = scale
+                translationZ = z
+            }
         }
 
         /** Focus visuals. */
         companion object {
             /** 6 % larger when focused. */
             const val FOCUS_SCALE: Float = 1.06f
+
+            /** 10 % larger while being moved. */
+            const val LIFT_SCALE: Float = 1.1f
 
             /** Focus animation length. */
             const val FOCUS_ANIMATION_MILLIS: Long = 120

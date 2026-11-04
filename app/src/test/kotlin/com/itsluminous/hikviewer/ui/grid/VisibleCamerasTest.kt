@@ -23,13 +23,4 @@ class VisibleCamerasTest {
         assertThat(visible.map { it.channelNo }).containsExactly(3, 2).inOrder()
         assertThat(VisibleCameras.resolve(cams, emptyList())).isEmpty()
     }
-
-    @Test
-    fun `hero index falls back to the first tile`() {
-        val visible = VisibleCameras.resolve(cams, null)
-        assertThat(VisibleCameras.heroIndex(visible, "S/3")).isEqualTo(1)
-        assertThat(VisibleCameras.heroIndex(visible, "S/2")).isEqualTo(0)
-        assertThat(VisibleCameras.heroIndex(visible, null)).isEqualTo(0)
-        assertThat(VisibleCameras.heroIndex(emptyList(), "S/1")).isNull()
-    }
 }

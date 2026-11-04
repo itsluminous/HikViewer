@@ -216,7 +216,7 @@ class GridActivityTest {
                 vm.setLayout(GridLayoutMode.HERO)
                 ShadowLooper.idleMainLooper()
                 assertThat(grid.mode).isEqualTo(GridLayoutMode.HERO)
-                assertThat(app.graph.settingsStore.gridLayout).isEqualTo(GridLayoutMode.HERO)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO)
             }
         }
     }
@@ -274,6 +274,109 @@ class GridActivityTest {
                 val message = a.findViewById<TextView>(R.id.message)
                 assertThat(message.visibility).isEqualTo(View.VISIBLE)
                 assertThat(message.text.toString()).isEqualTo(a.getString(R.string.grid_empty))
+            }
+        }
+    }
+
+    private fun GridActivity.key(keyCode: Int) {
+        dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        ShadowLooper.idleMainLooper()
+    }
+
+    private fun CameraGridLayout.names() = (0 until childCount).map {
+        (childAtPosition(it) as CameraTileView).cameraName.toString()
+    }
+
+    @Test
+    fun `long press opens a menu whose Move lifts the tile`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tile = grid.getChildAt(0) as CameraTileView
+                assertThat(tile.isLongClickable).isTrue()
+                assertThat(tile.performLongClick()).isTrue()
+                val popup =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                assertThat(popup.menu.size()).isEqualTo(TileAction.entries.size)
+                assertThat(
+                    popup.menu
+                        .getItem(0)
+                        .title
+                        .toString(),
+                ).isEqualTo(a.getString(R.string.tile_action_move))
+                popup.menu.performIdentifierAction(0, 0)
+                ShadowLooper.idleMainLooper()
+                assertThat(a.isMoving).isTrue()
+                assertThat(tile.lifted).isTrue()
+                assertThat(a.findViewById<View>(R.id.move_hint).visibility).isEqualTo(View.VISIBLE)
+            }
+        }
+    }
+
+    @Test
+    fun `D-pad swaps the lifted tile with its neighbour, OK drops and persists, players stay`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                awaitUi {
+                    cloud.accounts
+                        .single()
+                        .opened.size == 12
+                }
+                val vm = a.viewModels<GridViewModel>().value
+                val players = vm.playback.players.value
+                val lifted = grid.getChildAt(0) as CameraTileView
+                a.onTileAction(0, TileAction.MOVE)
+                a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                assertThat(grid.names().take(3)).containsExactly("Camera 2", "Camera 1", "Camera 3").inOrder()
+                assertThat(grid.childAtPosition(1)).isSameInstanceAs(lifted) // the view moved, not its camera
+                assertThat(lifted.lifted).isTrue()
+                assertThat(lifted.isFocused).isTrue()
+                a.key(KeyEvent.KEYCODE_DPAD_DOWN)
+                assertThat(grid.childAtPosition(5)).isSameInstanceAs(lifted)
+                assertThat(grid.names()[1]).isEqualTo("Camera 6")
+                a.key(KeyEvent.KEYCODE_DPAD_CENTER)
+                assertThat(a.isMoving).isFalse()
+                assertThat(lifted.lifted).isFalse()
+                assertThat(a.findViewById<View>(R.id.move_hint).visibility).isEqualTo(View.GONE)
+                assertThat(shadowOf(a).nextStartedActivity).isNull() // OK dropped, it did not open fullscreen
+                val serial = FakeCloudServices.SERIAL
+                assertThat(
+                    app.graph.arrangementStore
+                        .order(GridLayoutMode.AUTO)!!
+                        .take(2),
+                ).containsExactly("$serial/2", "$serial/6")
+                    .inOrder()
+                assertThat(vm.playback.players.value).containsExactlyElementsIn(players)
+                assertThat(cloud.accounts.single().opened).hasSize(12)
+            }
+        }
+    }
+
+    @Test
+    fun `Back cancels a move and restores the arrangement, and the arrangement is per layout`() {
+        val serial = FakeCloudServices.SERIAL
+        app.graph.arrangementStore.setOrder(GridLayoutMode.HERO, listOf("$serial/4"))
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val lifted = grid.getChildAt(2) as CameraTileView
+                a.onTileAction(2, TileAction.MOVE)
+                a.key(KeyEvent.KEYCODE_DPAD_LEFT)
+                a.key(KeyEvent.KEYCODE_DPAD_LEFT)
+                assertThat(grid.childAtPosition(0)).isSameInstanceAs(lifted)
+                a.key(KeyEvent.KEYCODE_BACK)
+                assertThat(a.isFinishing).isFalse()
+                assertThat(a.isMoving).isFalse()
+                assertThat(grid.names().take(3)).containsExactly("Camera 1", "Camera 2", "Camera 3").inOrder()
+                assertThat(grid.childAtPosition(2)).isSameInstanceAs(lifted)
+                assertThat(lifted.isFocused).isTrue()
+                val vm = a.viewModels<GridViewModel>().value
+                vm.setLayout(GridLayoutMode.HERO)
+                ShadowLooper.idleMainLooper()
+                assertThat(grid.names().take(2)).containsExactly("Camera 4", "Camera 1").inOrder()
+                vm.setLayout(GridLayoutMode.AUTO)
+                ShadowLooper.idleMainLooper()
+                assertThat(grid.names().take(2)).containsExactly("Camera 1", "Camera 2").inOrder()
             }
         }
     }

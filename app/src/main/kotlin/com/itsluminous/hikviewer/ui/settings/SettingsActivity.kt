@@ -15,10 +15,12 @@ import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.VerificationCode
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.AccountRepository
+import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.ui.grid.GridArrangement
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.VerificationCodeDialog
 import com.itsluminous.hikviewer.ui.login.LoginActivity
@@ -33,6 +35,7 @@ import kotlinx.coroutines.launch
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settings: SettingsStore
+    private lateinit var arrangement: GridArrangementStore
     private lateinit var account: AccountRepository
     private lateinit var editor: CameraOrderEditor
     private var allCameras: List<Camera> = emptyList()
@@ -41,6 +44,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val graph = AppGraph.of(this)
         settings = graph.settingsStore
+        arrangement = graph.arrangementStore
         account = graph.account
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -62,16 +66,22 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindLayout() {
         val modes = GridLayoutMode.entries
         binding.layoutSpinner.adapter = spinnerAdapter(modes.map { getString(it.labelRes) })
-        binding.layoutSpinner.setSelection(modes.indexOf(settings.gridLayout))
-        binding.layoutSpinner.onItemSelected { settings.gridLayout = modes[it] }
+        binding.layoutSpinner.setSelection(modes.indexOf(arrangement.lastLayout))
+        binding.layoutSpinner.onItemSelected { arrangement.lastLayout = modes[it] }
     }
 
+    /** The hero is position 0 of the hero layout's arrangement; picking one here moves it to the front. */
     private fun bindHero() {
         val visible = editor.items.filter { it.visible }.map { it.camera }
+        val arranged = GridArrangement.apply(visible, arrangement.order(GridLayoutMode.HERO))
         binding.heroSpinner.adapter = spinnerAdapter(visible.map { it.name })
-        val current = visible.indexOfFirst { it.key == settings.heroCameraKey }.coerceAtLeast(0)
+        val current = visible.indexOfFirst { it.key == arranged.firstOrNull()?.key }.coerceAtLeast(0)
         if (visible.isNotEmpty()) binding.heroSpinner.setSelection(current)
-        binding.heroSpinner.onItemSelected { settings.heroCameraKey = visible.getOrNull(it)?.key }
+        binding.heroSpinner.onItemSelected { picked ->
+            val key = visible.getOrNull(picked)?.key ?: return@onItemSelected
+            val keys = arranged.map { it.key }
+            arrangement.setOrder(GridLayoutMode.HERO, GridArrangement.movedToFront(keys, keys.indexOf(key)))
+        }
     }
 
     private fun bindCameraList() {

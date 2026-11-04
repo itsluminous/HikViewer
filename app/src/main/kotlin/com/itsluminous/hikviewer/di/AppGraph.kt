@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.CloudServices
+import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.HikConnectCloudServices
 import com.itsluminous.hikviewer.data.SessionStore
 import com.itsluminous.hikviewer.data.SettingsStore
@@ -42,6 +43,9 @@ class AppGraph(
 
     /** Persisted user settings. */
     val settingsStore: SettingsStore = SettingsStore(settingsPrefs)
+
+    /** Last layout and per-layout tile positions; on the settings preferences so logout clears it. */
+    val arrangementStore: GridArrangementStore = GridArrangementStore(settingsPrefs)
 
     /** Login state, device and camera cache, stream access. One per process. */
     val account: AccountRepository = AccountRepository(cloud, sessionStore, settingsStore)

@@ -44,7 +44,7 @@ class GridViewModelTest {
 
     private fun TestScope.viewModel(): GridViewModel {
         kotlinx.coroutines.runBlocking { graph.account.login("a", "secret", Region.INDIA) }
-        return GridViewModel(graph.account, graph.settingsStore) { _ ->
+        return GridViewModel(graph.account, graph.settingsStore, graph.arrangementStore) { _ ->
             graph.playbackFactory.create(
                 opener = { c, q, s -> graph.account.openStream(c, q, s) },
                 capabilities = graph.capabilities,
@@ -97,24 +97,65 @@ class GridViewModelTest {
     @Test
     fun `layout change persists and hero drives the hardware decoder`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
-        graph.settingsStore.heroCameraKey = "${FakeCloudServices.SERIAL}/3"
+        val serial = FakeCloudServices.SERIAL
+        // Camera 3 was moved to the front of the hero layout (position 0 = hero).
+        graph.arrangementStore.setOrder(GridLayoutMode.HERO, listOf("$serial/3", "$serial/1", "$serial/2"))
         val vm = viewModel()
         vm.load()
         dispatcher.scheduler.advanceUntilIdle()
         vm.focusedIndex = 5
         assertThat(vm.playback.heroIndex).isNull()
+        assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1) // the 4x3 arrangement is untouched
         vm.setLayout(GridLayoutMode.HERO)
-        assertThat(graph.settingsStore.gridLayout).isEqualTo(GridLayoutMode.HERO)
+        assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO)
         assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.HERO)
-        assertThat(vm.playback.heroIndex).isEqualTo(2)
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(4)).containsExactly(3, 1, 2, 4).inOrder()
+        assertThat(vm.playback.heroIndex).isEqualTo(0)
         assertThat(
-            vm.playback.players.value[2]
+            vm.playback.players.value[0]
+                .camera.channelNo,
+        ).isEqualTo(3)
+        assertThat(
+            vm.playback.players.value[0]
                 .mode,
         ).isEqualTo(TileMode.HW_LIVE)
         assertThat(
             vm.playback.players.value[5]
                 .mode,
         ).isEqualTo(TileMode.HW_LIVE)
+        vm.playback.release()
+    }
+
+    @Test
+    fun `moving a tile swaps, persists per layout, follows focus and keeps the players`() = runTest(dispatcher) {
+        graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        val vm = viewModel()
+        vm.load()
+        dispatcher.scheduler.advanceUntilIdle()
+        vm.onStart()
+        settle()
+        val before = vm.playback.players.value
+        val origin = vm.moveTile(0, 5)
+        assertThat(origin!!.map { it.substringAfter('/') }.take(2)).containsExactly("1", "2").inOrder()
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(6)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
+        assertThat(vm.focusedIndex).isEqualTo(5)
+        assertThat(graph.arrangementStore.order(GridLayoutMode.AUTO)!!.first()).endsWith("/6")
+        assertThat(graph.arrangementStore.order(GridLayoutMode.HERO)).isNull()
+        // Same TilePlayer objects, reordered: no stream was reopened.
+        assertThat(vm.playback.players.value).containsExactlyElementsIn(before)
+        assertThat(cloud.accounts.single().opened).hasSize(12)
+        // Another layout has its own arrangement; coming back restores this one.
+        vm.setLayout(GridLayoutMode.GRID_4X4)
+        assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1)
+        vm.setLayout(GridLayoutMode.AUTO)
+        assertThat(ready(vm).cameras.first().channelNo).isEqualTo(6)
+        // Back during a move puts the origin back.
+        vm.restoreArrangement(origin)
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(6)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+        // Out-of-range or same-slot moves change nothing.
+        assertThat(vm.moveTile(3, 3)).isEqualTo(ready(vm).cameras.map { it.key })
+        assertThat(vm.moveTile(0, 99)).isEqualTo(ready(vm).cameras.map { it.key })
+        vm.onStop()
         vm.playback.release()
     }
 
@@ -216,7 +257,7 @@ class GridViewModelTest {
     @Test
     fun `cloud failure shows an error state`() = runTest(dispatcher) {
         val vm =
-            GridViewModel(graph.account, graph.settingsStore) { _ ->
+            GridViewModel(graph.account, graph.settingsStore, graph.arrangementStore) { _ ->
                 graph.playbackFactory.create({ c, q, s -> graph.account.openStream(c, q, s) }, graph.capabilities, this)
             }
         vm.load()

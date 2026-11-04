@@ -78,11 +78,15 @@ class SettingsActivityTest {
                 a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
                 a.findViewById<SwitchCompat>(R.id.show_fps).isChecked = true
                 ShadowLooper.idleMainLooper()
-                assertThat(app.graph.settingsStore.gridLayout).isEqualTo(GridLayoutMode.GRID_4X4)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X4)
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
                 assertThat(app.graph.settingsStore.showCameraNames).isTrue()
                 assertThat(app.graph.settingsStore.showFrameRate).isTrue()
-                assertThat(app.graph.settingsStore.heroCameraKey).isEqualTo("$serial/3")
+                // The hero is position 0 of the hero layout's arrangement; the rest keep their order.
+                assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO))
+                    .containsExactly("$serial/3", "$serial/1", "$serial/2")
+                    .inOrder()
+                assertThat(app.graph.arrangementStore.order(GridLayoutMode.AUTO)).isNull()
             }
         }
     }

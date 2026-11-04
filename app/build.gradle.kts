@@ -150,9 +150,8 @@ data class ReleaseSigning(
             fun value(
                 envName: String,
                 propName: String,
-            ): String? =
-                providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
-                    ?: props.getProperty(propName)?.takeIf { it.isNotBlank() }
+            ): String? = providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
+                ?: props.getProperty(propName)?.takeIf { it.isNotBlank() }
 
             val storePath = value("KEYSTORE_FILE", "storeFile") ?: return null
             val storeFile = propertiesFile.parentFile.resolve(storePath)

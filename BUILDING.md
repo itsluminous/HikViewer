@@ -79,15 +79,31 @@ Then install and run:
 
 ```sh
 adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-universal-debug.apk
-adb -s emulator-5554 shell am start -n com.itsluminous.hikviewer.debug/com.itsluminous.hikviewer.MainActivity
+adb -s emulator-5554 shell am start -n com.itsluminous.hikviewer.debug/com.itsluminous.hikviewer.ui.login.LoginActivity
+```
+
+To exercise the real cloud, put your Hik-Connect credentials in a gitignored `local.env`
+(`{"mobile": "91…", "password": "…", "encryption": "…"}`) and let the scripts type them in, so the
+values never reach a shell history or a screenshot:
+
+```sh
+scripts/emu-login.sh emulator-5554      # installs the debug APK, clears data, logs in
+scripts/emu-code.sh  emulator-5554      # answers the "video encryption password" dialog
+adb -s emulator-5554 logcat -s LiveBudget:I TilePlayer:I   # live-tile budget and codec choices
 ```
 
 Instrumented (Espresso) tests run against every connected device, so make sure only the emulator is
-attached, or pin it:
+attached, or pin it. They use a fake cloud (`app/src/sharedTest`) and real `MediaCodec` decoders fed
+from the committed H.264 capture, so no account is needed:
 
 ```sh
 ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest
 ```
+
+Memory check (the brief's budget is 150 MB PSS): with 12 tiles on the 1080p AVD the app process sits
+around 100 MB (`adb shell dumpsys meminfo com.itsluminous.hikviewer.debug | grep "TOTAL PSS"`). On a
+1 GB AVD (`hw.ramSize=1024M`) `LiveBudget` logs `ceiling=4` and demotes tiles to keyframe mode as the
+decoders fall behind.
 
 ## Release signing
 

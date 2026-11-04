@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.settings.SettingsActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Title"
+            android:text="@string/settings_title" />
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:labelFor="@id/layout_spinner"
+            android:text="@string/settings_layout" />
+
+        <Spinner
+            android:id="@+id/layout_spinner"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="48dp" />
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:labelFor="@id/hero_spinner"
+            android:text="@string/settings_hero" />
+
+        <Spinner
+            android:id="@+id/hero_spinner"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="48dp" />
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:text="@string/settings_cameras" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_cameras_help"
+            android:textColor="#B0F2F4F7"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/camera_list"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:text="@string/settings_quality" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/quality_main"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/settings_quality_main"
+            android:textColor="@color/on_background" />
+
+        <Button
+            android:id="@+id/change_code"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/settings_change_code" />
+
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:text="@string/settings_about" />
+
+        <TextView
+            android:id="@+id/about"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/on_background"
+            tools:text="HikViewer 0.1.0" />
+
+        <Button
+            android:id="@+id/logout"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/settings_logout"
+            android:textColor="@color/error_text" />
+    </LinearLayout>
+</ScrollView>

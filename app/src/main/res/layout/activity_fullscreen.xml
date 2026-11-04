@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.fullscreen.FullscreenActivity">
+
+    <com.itsluminous.hikviewer.ui.grid.CameraTileView
+        android:id="@+id/tile"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Touch zones for phones: tap the left/right edge to switch camera. Transparent, not focusable. -->
+    <View
+        android:id="@+id/left_zone"
+        android:layout_width="96dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:contentDescription="@string/fullscreen_hint"
+        android:focusable="false" />
+
+    <View
+        android:id="@+id/right_zone"
+        android:layout_width="96dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:contentDescription="@string/fullscreen_hint"
+        android:focusable="false" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="12dp"
+        android:background="@drawable/label_background"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="3dp"
+        android:text="@string/fullscreen_hint"
+        android:textColor="@color/on_background"
+        android:textSize="12sp" />
+</FrameLayout>

@@ -13,7 +13,7 @@ comments:
   UndocumentedPublicClass:
     # :core uses explicitApi(); every public class is API for :app and deserves a KDoc saying why it exists.
     active: true
-    excludes: ['**/test/**', '**/androidTest/**']
+    excludes: ['**/test/**', '**/androidTest/**', '**/sharedTest/**']
     searchInNestedClass: true
     searchInInnerClass: true
     searchInInnerObject: true
@@ -21,7 +21,7 @@ comments:
     searchInProtectedClass: false
   UndocumentedPublicFunction:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**']
+    excludes: ['**/test/**', '**/androidTest/**', '**/sharedTest/**']
     searchProtectedFunction: false
 
 complexity:
@@ -60,7 +60,7 @@ style:
     excludeGuardClauses: true
   MagicNumber:
     # Protocol parsing is full of fixed offsets and header constants; tests are full of expected values.
-    excludes: ['**/test/**', '**/androidTest/**']
+    excludes: ['**/test/**', '**/androidTest/**', '**/sharedTest/**']
     # Byte offsets up to 9 are header-field positions in RTP/PES/TS parsing and read best inline.
     ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '16', '32', '64', '100', '1000']
     ignoreHashCodeFunction: true

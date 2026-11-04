@@ -90,6 +90,19 @@ android {
         }
     }
 
+    // Fakes shared by the Robolectric and the Espresso tests (FakeCloudServices, SyntheticStream).
+    // The TS fixture is :core's own capture; referencing its directory avoids a 190 KB duplicate.
+    sourceSets {
+        getByName("test") {
+            kotlin.srcDir("src/sharedTest/kotlin")
+            resources.srcDir("../core/src/test/resources")
+        }
+        getByName("androidTest") {
+            kotlin.srcDir("src/sharedTest/kotlin")
+            resources.srcDir("../core/src/test/resources")
+        }
+    }
+
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/LICENSE*", "DebugProbesKt.bin")
     }
@@ -127,6 +140,9 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.material)
+    // HikConnectClient's constructor has an OkHttpClient parameter; Kotlin needs the type to
+    // compile a call that uses the default.
+    implementation(libs.okhttp)
 
     testImplementation(libs.bundles.app.unit.test)
     androidTestImplementation(libs.bundles.app.android.test)
@@ -167,9 +183,12 @@ data class ReleaseSigning(
 }
 
 // Coverage gate for the UI module. Only the debug variant is measured (release has no extra code
-// and running its unit tests twice buys nothing). Start at 50 % line coverage; raise as the UI
-// gets Robolectric coverage. Generated classes (view binding, R) are excluded explicitly:
-// Kover 0.9.1's androidGeneratedClasses() helper excluded every class in this project.
+// and running its unit tests twice buys nothing). Robolectric drives every screen and ViewModel
+// with the fake cloud and recording decoders, so the module sits above 80 % lines; the floor is
+// 75 %. The uncovered remainder is the MediaCodec plumbing (TileDecoder, KeyframeDecoderPool),
+// which only a device can exercise and which the emulator run in BUILDING.md checks. Generated
+// classes (view binding, R) are excluded explicitly: Kover 0.9.1's androidGeneratedClasses()
+// helper excluded every class in this project.
 kover {
     reports {
         filters {
@@ -193,7 +212,7 @@ kover {
             verify {
                 onCheck = true
                 rule("app line coverage") {
-                    minBound(50)
+                    minBound(75)
                 }
             }
         }

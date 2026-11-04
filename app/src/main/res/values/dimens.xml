@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="tile_gap">6dp</dimen>
+    <dimen name="tile_focus_border">4dp</dimen>
+    <dimen name="tile_focus_elevation">8dp</dimen>
+    <dimen name="top_bar_height">56dp</dimen>
+    <dimen name="form_width">420dp</dimen>
+</resources>

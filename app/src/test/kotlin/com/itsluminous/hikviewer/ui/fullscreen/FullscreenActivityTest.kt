@@ -1,0 +1,101 @@
+package com.itsluminous.hikviewer.ui.fullscreen
+
+import android.app.Activity
+import android.view.KeyEvent
+import android.widget.TextView
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.common.truth.Truth.assertThat
+import com.itsluminous.hikviewer.HikViewerApp
+import com.itsluminous.hikviewer.R
+import com.itsluminous.hikviewer.core.auth.Region
+import com.itsluminous.hikviewer.core.stream.StreamQuality
+import com.itsluminous.hikviewer.fakes.FakeCloudServices
+import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.player.TileMode
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLooper
+
+@RunWith(AndroidJUnit4::class)
+class FullscreenActivityTest {
+    private val app = ApplicationProvider.getApplicationContext<HikViewerApp>()
+    private val cloud = FakeCloudServices(cameraCount = 4, signalCount = 3)
+
+    @Before
+    fun setUp() {
+        app.graph = TestGraph.create(app, cloud)
+        kotlinx.coroutines.runBlocking {
+            app.graph.account.login("a", "secret", Region.INDIA)
+            app.graph.account.loadInventory()
+        }
+        app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+    }
+
+    @Test
+    fun `shows the requested camera on a hardware decoder and returns its index`() {
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 1)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 2")
+                val vm = androidx.lifecycle.ViewModelProvider(a)[FullscreenViewModel::class.java]
+                assertThat(
+                    vm.playback.players.value
+                        .single()
+                        .mode,
+                ).isEqualTo(TileMode.HW_LIVE)
+                assertThat(
+                    cloud.accounts
+                        .single()
+                        .opened
+                        .single(),
+                ).isEqualTo(vm.camera to StreamQuality.SUB)
+                a.finish()
+                assertThat(a.isFinishing).isTrue()
+                assertThat(shadowOf(a).resultCode).isEqualTo(Activity.RESULT_OK)
+                assertThat(shadowOf(a).resultIntent.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(1)
+            }
+        }
+    }
+
+    @Test
+    fun `left and right switch camera with wrap-around`() {
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                a.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+                ShadowLooper.idleMainLooper()
+                assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 3")
+                a.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+                a.findViewById<android.view.View>(R.id.right_zone).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 2")
+                // Streams start on worker threads, so only the set is deterministic here.
+                assertThat(
+                    cloud.accounts
+                        .single()
+                        .opened
+                        .map { it.first.channelNo },
+                ).containsExactly(1, 3, 1, 2)
+            }
+        }
+    }
+
+    @Test
+    fun `fullscreen quality setting is honoured`() {
+        app.graph.settingsStore.fullscreenQuality = StreamQuality.MAIN
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use {
+            ShadowLooper.idleMainLooper()
+            assertThat(
+                cloud.accounts
+                    .single()
+                    .opened
+                    .single()
+                    .second,
+            ).isEqualTo(StreamQuality.MAIN)
+        }
+    }
+}

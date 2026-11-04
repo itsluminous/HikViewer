@@ -1,3 +1,65 @@
 <resources>
     <string name="app_name">HikViewer</string>
+
+    <!-- Login -->
+    <string name="login_title">Sign in to Hik-Connect</string>
+    <string name="login_account_hint">Mobile number with country code, e.g. 91XXXXXXXXXX</string>
+    <string name="login_password_hint">Password</string>
+    <string name="login_region_label">Region</string>
+    <string name="login_button">Login</string>
+    <string name="login_error_empty">Enter your account and password</string>
+    <string name="login_error_credentials">Wrong account or password. Check the number includes the country code (e.g. 91XXXXXXXXXX).</string>
+    <string name="login_error_verification">Hik-Connect asks for extra verification (%1$s). Complete it in the official app, then try again.</string>
+    <string name="login_error_server">Hik-Connect error %1$s</string>
+    <string name="login_error_network">Cannot reach Hik-Connect. Check the network.</string>
+    <string name="login_error_redirect">The server keeps redirecting between regions. Try another region.</string>
+    <string name="login_error_expired">Your session expired. Sign in again.</string>
+
+    <!-- Grid -->
+    <string name="grid_loading">Loading cameras…</string>
+    <string name="grid_empty">No cameras with signal. Choose cameras in Settings.</string>
+    <plurals name="grid_live_count">
+        <item quantity="one">%1$d live</item>
+        <item quantity="other">%1$d live</item>
+    </plurals>
+    <string name="grid_layout_button">Layout</string>
+    <string name="tile_connecting">connecting</string>
+    <string name="tile_live">live</string>
+    <string name="tile_keyframe">1 fps</string>
+
+    <!-- Layouts -->
+    <string name="layout_auto">Auto</string>
+    <string name="layout_3x3">3 × 3</string>
+    <string name="layout_4x3">4 × 3</string>
+    <string name="layout_4x4">4 × 4</string>
+    <string name="layout_hero">Hero (1 + N)</string>
+
+    <!-- Verification code -->
+    <string name="code_title">Video encryption password</string>
+    <string name="code_message">This recorder encrypts its streams. Enter the verification code (printed on the recorder, or set in Hik-Connect).</string>
+    <string name="code_hint">Verification code</string>
+    <string name="code_wrong">That code does not match the recorder. Try again.</string>
+    <string name="code_ok">OK</string>
+    <string name="code_cancel">Cancel</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_layout">Grid layout</string>
+    <string name="settings_hero">Hero camera</string>
+    <string name="settings_cameras">Visible cameras and order</string>
+    <string name="settings_cameras_help">OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.</string>
+    <string name="settings_quality">Fullscreen quality</string>
+    <string name="settings_quality_main">Main stream (HEVC, needs a hardware decoder)</string>
+    <string name="settings_change_code">Change encryption password</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_version">HikViewer %1$s — unofficial Hik-Connect client, MIT licence</string>
+    <string name="settings_logout">Logout</string>
+    <string name="settings_logout_confirm">Sign out and forget the saved settings on this device?</string>
+    <string name="settings_camera_signal">signal</string>
+    <string name="settings_camera_no_signal">no signal</string>
+    <string name="settings_moving">moving</string>
+    <string name="settings_handle">⇅</string>
+
+    <!-- Fullscreen -->
+    <string name="fullscreen_hint">◀ ▶ switch camera · Back to grid</string>
 </resources>

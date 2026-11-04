@@ -24,4 +24,15 @@
     <!-- The only raster asset is the Android TV home-screen banner, which the TV guidelines define as
          a single 320x180 xhdpi image. The launcher icon is an adaptive vector. -->
     <issue id="IconMissingDensityFolder" severity="ignore" />
+
+    <!-- INFO/WARN lines (live-budget decisions, codec choice, stream failures) are the diagnostics a
+         user is asked for in a bug report; they fire once per decision, not per frame. -->
+    <issue id="LogConditional" severity="ignore" />
+
+    <!-- Kotlin private members used from anonymous callbacks (MediaCodec.Callback, listeners) compile to
+         synthetic accessors; R8 inlines them in release and the debug cost is a trivial call. -->
+    <issue id="SyntheticAccessor" severity="ignore" />
+
+    <!-- Views are reached through view binding, which Lint's id usage scan does not see. -->
+    <issue id="UnusedIds" severity="ignore" />
 </lint>

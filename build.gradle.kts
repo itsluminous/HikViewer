@@ -48,6 +48,7 @@ subprojects {
                 "src/main/kotlin",
                 "src/test/kotlin",
                 "src/androidTest/kotlin",
+                "src/sharedTest/kotlin",
             ),
         )
     }

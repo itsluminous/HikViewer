@@ -1,0 +1,73 @@
+package com.itsluminous.hikviewer.ui.grid
+
+import android.app.Activity
+import android.text.InputType
+import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import com.itsluminous.hikviewer.R
+
+/**
+ * Asks for the video verification code once per install. The dialog stays open on a wrong code and
+ * shows an inline error, because closing and reopening it on a TV costs a dozen key presses.
+ */
+object VerificationCodeDialog {
+    private var open: AlertDialog? = null
+
+    /** Shows the dialog unless it is already open; [submit] returns true when the code matched. */
+    fun show(
+        activity: Activity,
+        rejected: Boolean,
+        submit: (String) -> Boolean,
+    ) {
+        open?.takeIf { it.isShowing }?.let { return }
+        val padding = activity.resources.getDimensionPixelSize(R.dimen.tile_gap) * 3
+        val input =
+            EditText(activity).apply {
+                id = R.id.code_input
+                hint = activity.getString(R.string.code_hint)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                isSingleLine = true
+            }
+        val error =
+            TextView(activity).apply {
+                id = R.id.code_error
+                setText(R.string.code_wrong)
+                setTextColor(activity.getColor(R.color.error_text))
+                visibility = if (rejected) View.VISIBLE else View.GONE
+            }
+        val content =
+            LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(padding, padding / 2, padding, 0)
+                addView(input)
+                addView(error)
+            }
+        val dialog =
+            AlertDialog
+                .Builder(activity)
+                .setTitle(R.string.code_title)
+                .setMessage(R.string.code_message)
+                .setView(content)
+                .setPositiveButton(R.string.code_ok, null)
+                .setNegativeButton(R.string.code_cancel) { _, _ -> activity.finish() }
+                .setCancelable(false)
+                .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (submit(input.text.toString())) {
+                    dialog.dismiss()
+                } else {
+                    error.visibility = View.VISIBLE
+                    input.selectAll()
+                }
+            }
+            input.requestFocus()
+        }
+        dialog.setOnDismissListener { if (open === dialog) open = null }
+        open = dialog
+        dialog.show()
+    }
+}

@@ -127,7 +127,7 @@ class GridActivity : AppCompatActivity() {
             is GridUiState.Ready -> {
                 if (state.cameras.isEmpty()) binding.message.setText(R.string.grid_empty)
                 binding.grid.mode = state.layout
-                syncTiles(state.cameras)
+                syncTiles(state.cameras, state.showNames, state.showFrameRate)
                 if (state.needsCode) {
                     VerificationCodeDialog.show(
                         this,
@@ -139,7 +139,11 @@ class GridActivity : AppCompatActivity() {
         }
     }
 
-    private fun syncTiles(cameras: List<Camera>) {
+    private fun syncTiles(
+        cameras: List<Camera>,
+        showNames: Boolean,
+        showFrameRate: Boolean,
+    ) {
         val grid = binding.grid
         while (grid.childCount > cameras.size) grid.removeViewAt(grid.childCount - 1)
         while (grid.childCount < cameras.size) {
@@ -149,7 +153,12 @@ class GridActivity : AppCompatActivity() {
             tile.setOnFocusChangeListener { _, focused -> if (focused) viewModel.focusedIndex = index }
             grid.addView(tile)
         }
-        cameras.forEachIndexed { i, camera -> (grid.getChildAt(i) as CameraTileView).cameraName = camera.name }
+        cameras.forEachIndexed { i, camera ->
+            val tile = grid.getChildAt(i) as CameraTileView
+            tile.cameraName = camera.name
+            tile.showName = showNames
+            tile.showFrameRate = showFrameRate
+        }
         restoreFocus()
     }
 
@@ -174,6 +183,7 @@ class GridActivity : AppCompatActivity() {
                         updateLiveCount(players)
                     }
                 }
+            tileJobs += lifecycleScope.launch { player.frameRate.collect { tile.frameRate = it } }
         }
     }
 

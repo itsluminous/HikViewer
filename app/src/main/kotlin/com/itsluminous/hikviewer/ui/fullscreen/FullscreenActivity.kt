@@ -117,7 +117,10 @@ class FullscreenActivity : AppCompatActivity() {
     }
 
     private fun render() {
+        val settings = AppGraph.of(this).settingsStore
         binding.tile.cameraName = viewModel.camera?.name.orEmpty()
+        binding.tile.showName = settings.showCameraNames
+        binding.tile.showFrameRate = settings.showFrameRate
     }
 
     private fun bind(player: com.itsluminous.hikviewer.player.TilePlayer?) {
@@ -130,7 +133,11 @@ class FullscreenActivity : AppCompatActivity() {
             ?.takeIf {
                 it.isValid
             }?.let(player::attachSurface)
-        stateJob = lifecycleScope.launch { player.state.collect(binding.tile::bind) }
+        stateJob =
+            lifecycleScope.launch {
+                launch { player.state.collect(binding.tile::bind) }
+                launch { player.frameRate.collect { binding.tile.frameRate = it } }
+            }
     }
 
     /** Intent plumbing. */

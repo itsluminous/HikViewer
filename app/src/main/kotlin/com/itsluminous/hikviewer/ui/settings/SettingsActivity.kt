@@ -53,6 +53,7 @@ class SettingsActivity : AppCompatActivity() {
         bindHero()
         bindCameraList()
         bindQuality()
+        bindOverlays()
         bindCode()
         bindAbout()
         bindLogout()
@@ -137,6 +138,13 @@ class SettingsActivity : AppCompatActivity() {
         binding.qualityMain.setOnCheckedChangeListener { _, checked ->
             settings.fullscreenQuality = if (checked) StreamQuality.MAIN else StreamQuality.SUB
         }
+    }
+
+    private fun bindOverlays() {
+        binding.showNames.isChecked = settings.showCameraNames
+        binding.showNames.setOnCheckedChangeListener { _, checked -> settings.showCameraNames = checked }
+        binding.showFps.isChecked = settings.showFrameRate
+        binding.showFps.setOnCheckedChangeListener { _, checked -> settings.showFrameRate = checked }
     }
 
     private fun bindCode() {

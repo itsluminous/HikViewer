@@ -84,6 +84,8 @@ class TilePlayer(
 ) : TileDecoder.Listener {
     private val lock = Any()
     private val stateFlow = MutableStateFlow<TileState>(TileState.Connecting)
+    private val frameRateFlow = MutableStateFlow(0f)
+    private val keyframeRate = FrameRateMeter()
     private var surface: Surface? = null
     private var decoder: TileDecoder? = null
     private var decoderConfig: CodecConfig? = null
@@ -97,6 +99,12 @@ class TilePlayer(
 
     /** For the overlay. */
     val state: StateFlow<TileState> = stateFlow.asStateFlow()
+
+    /**
+     * Rendered frames per second, sampled on every [tick] from the live decoder's output callbacks
+     * (or the keyframe submissions of a keyframe-only tile). Drives the optional fps counter.
+     */
+    val frameRate: StateFlow<Float> = frameRateFlow.asStateFlow()
 
     /**
      * Current mode. Live → keyframe releases the private decoder at once (it must free the codec);
@@ -149,6 +157,8 @@ class TilePlayer(
             streaming = false
             releaseDecoderLocked()
             pool.cancel(this)
+            keyframeRate.reset()
+            frameRateFlow.value = 0f
         }
     }
 
@@ -172,13 +182,19 @@ class TilePlayer(
         }
     }
 
-    /** Periodic watchdog; recreates a wedged decoder. Returns true when it had to. */
+    /** Periodic watchdog; recreates a wedged decoder and samples the frame rate. Returns true when it had to. */
     fun tick(nowMillis: Long): Boolean = synchronized(lock) {
         val stalled = decoder?.checkStall(nowMillis) == true
         if (stalled) {
             Log.w(TAG, "${camera.key}: decoder stalled, recreating")
             releaseDecoderLocked()
         }
+        frameRateFlow.value =
+            when {
+                !streaming -> 0f
+                mode.isLive -> decoder?.framesPerSecond(nowMillis) ?: 0f
+                else -> keyframeRate.fps(nowMillis)
+            }
         stalled
     }
 
@@ -246,6 +262,7 @@ class TilePlayer(
             if (!mode.isLive) {
                 if (unit.isKeyframe) {
                     pool.submit(this, target, unit)
+                    keyframeRate.onFrame(clock())
                     pictureShown = true
                     stateFlow.value = TileState.Keyframe
                 }

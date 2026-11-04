@@ -111,6 +111,32 @@ class TilePlayerTest {
     }
 
     @Test
+    fun `frame rate is sampled on tick from the decoder, and from keyframe submissions in keyframe mode`() =
+        runTest(dispatcher) {
+            val p = player()
+            p.attachSurface(surface)
+            p.mode = TileMode.SW_LIVE
+            run(p)
+            assertThat(p.frameRate.value).isEqualTo(0f)
+            decoders.created.single().fps = 24.6f
+            p.tick(1_000)
+            assertThat(p.frameRate.value).isEqualTo(24.6f)
+            p.stop()
+            assertThat(p.frameRate.value).isEqualTo(0f)
+
+            val k = player()
+            k.attachSurface(surface)
+            now = 10_000
+            run(k) // KEYFRAME mode: every keyframe submission at `now` counts as one picture
+            val keyframes = pool.submitted.size
+            k.tick(now + FrameRateMeter.DEFAULT_WINDOW_MILLIS - 1)
+            assertThat(k.frameRate.value)
+                .isWithin(0.01f)
+                .of(keyframes * 1_000f / FrameRateMeter.DEFAULT_WINDOW_MILLIS)
+            k.stop()
+        }
+
+    @Test
     fun `keyframe mode hands keyframes to the pool`() = runTest(dispatcher) {
         val p = player()
         p.attachSurface(surface)

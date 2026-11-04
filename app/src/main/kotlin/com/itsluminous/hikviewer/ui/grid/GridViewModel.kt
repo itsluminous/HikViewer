@@ -33,6 +33,10 @@ sealed class GridUiState {
         val needsCode: Boolean,
         /** True when the last code the user typed was wrong. */
         val codeRejected: Boolean = false,
+        /** Settings → Show camera names. */
+        val showNames: Boolean = false,
+        /** Settings → Show frame rate. */
+        val showFrameRate: Boolean = false,
     ) : GridUiState()
 
     /** The cloud could not be read. */
@@ -96,7 +100,15 @@ class GridViewModel(
         val cameras = VisibleCameras.resolve(inv.cameras, settings.visibleCameraKeys)
         val hero = VisibleCameras.heroIndex(cameras, settings.heroCameraKey)
         val needsCode = inv.needsVerificationCode && !codeAccepted(inv)
-        stateFlow.value = GridUiState.Ready(cameras, settings.gridLayout, hero, needsCode)
+        stateFlow.value =
+            GridUiState.Ready(
+                cameras,
+                settings.gridLayout,
+                hero,
+                needsCode,
+                showNames = settings.showCameraNames,
+                showFrameRate = settings.showFrameRate,
+            )
         playback.setCameras(cameras)
         playback.heroIndex = if (settings.gridLayout == GridLayoutMode.HERO) hero else null
         playback.focusedIndex = focusedIndex.coerceIn(0, (cameras.size - 1).coerceAtLeast(0))

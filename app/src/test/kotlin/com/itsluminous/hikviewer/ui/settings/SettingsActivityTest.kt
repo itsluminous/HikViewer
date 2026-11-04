@@ -64,7 +64,7 @@ class SettingsActivityTest {
     }
 
     @Test
-    fun `layout spinner, quality switch and hero spinner write the store`() {
+    fun `layout spinner, quality and overlay switches and hero spinner write the store`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
                 a
@@ -73,9 +73,15 @@ class SettingsActivityTest {
                     ).setSelection(GridLayoutMode.entries.indexOf(GridLayoutMode.GRID_4X4))
                 a.findViewById<SwitchCompat>(R.id.quality_main).isChecked = true
                 a.findViewById<Spinner>(R.id.hero_spinner).setSelection(2)
+                assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isFalse()
+                assertThat(a.findViewById<SwitchCompat>(R.id.show_fps).isChecked).isFalse()
+                a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
+                a.findViewById<SwitchCompat>(R.id.show_fps).isChecked = true
                 ShadowLooper.idleMainLooper()
                 assertThat(app.graph.settingsStore.gridLayout).isEqualTo(GridLayoutMode.GRID_4X4)
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
+                assertThat(app.graph.settingsStore.showCameraNames).isTrue()
+                assertThat(app.graph.settingsStore.showFrameRate).isTrue()
                 assertThat(app.graph.settingsStore.heroCameraKey).isEqualTo("$serial/3")
             }
         }

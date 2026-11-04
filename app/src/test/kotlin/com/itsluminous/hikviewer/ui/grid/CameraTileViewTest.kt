@@ -86,4 +86,20 @@ class CameraTileViewTest {
         assertThat(gutter).isEqualTo(onePx)
         assertThat(context.resources.getDimensionPixelSize(R.dimen.tile_focus_border)).isGreaterThan(gutter)
     }
+
+    @Test
+    fun `name and fps overlays are hidden by default and toggle on`() {
+        val name = tile.findViewById<TextView>(R.id.name)
+        val fps = tile.findViewById<TextView>(R.id.fps)
+        assertThat(name.visibility).isEqualTo(View.GONE)
+        assertThat(fps.visibility).isEqualTo(View.GONE)
+        tile.showName = true
+        tile.showFrameRate = true
+        tile.frameRate = 24.6f
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        assertThat(fps.visibility).isEqualTo(View.VISIBLE)
+        assertThat(fps.text.toString()).isEqualTo("25 fps")
+        tile.showName = false
+        assertThat(name.visibility).isEqualTo(View.GONE)
+    }
 }

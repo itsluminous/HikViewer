@@ -55,12 +55,16 @@ open class TileDecoder(
     private var firstOutputSeen = false
     private var lastOutputAtMillis = 0L
     private var lastInputAtMillis = 0L
+    private val frameRate = FrameRateMeter()
 
     /** Frames queued and not yet handed to the codec; the lag signal. */
     open val queuedFrames: Int get() = synchronized(lock) { pending.size }
 
     /** True once a frame has been rendered. */
     val hasOutput: Boolean get() = synchronized(lock) { firstOutputSeen }
+
+    /** Pictures rendered per second, measured from the codec's output callbacks. */
+    open fun framesPerSecond(nowMillis: Long): Float = synchronized(lock) { frameRate.fps(nowMillis) }
 
     /** Configures and starts the codec. Throws `MediaCodec.CodecException`/`IOException` on failure. */
     open fun start() {
@@ -162,6 +166,7 @@ open class TileDecoder(
                 synchronized(lock) {
                     if (released) return
                     lastOutputAtMillis = System.nanoTime() / NANOS_PER_MILLI
+                    frameRate.onFrame(lastOutputAtMillis)
                     first = !firstOutputSeen
                     firstOutputSeen = true
                 }

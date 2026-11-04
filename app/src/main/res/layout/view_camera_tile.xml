@@ -24,6 +24,22 @@
         android:textSize="14sp"
         tools:text="Gate" />
 
+    <!-- Optional rendered-fps counter (Settings → Show frame rate). -->
+    <TextView
+        android:id="@+id/fps"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|top"
+        android:layout_margin="6dp"
+        android:background="@drawable/label_background"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="1dp"
+        android:textColor="@color/on_background"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:text="25 fps"
+        tools:visibility="visible" />
+
     <ProgressBar
         android:id="@+id/spinner"
         style="?android:attr/progressBarStyleSmall"

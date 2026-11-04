@@ -38,6 +38,7 @@ class CameraTileView
         val showsRetry: Boolean get() = binding.errorOverlay.visibility == VISIBLE
 
         init {
+            binding.name.visibility = GONE
             isFocusable = true
             isFocusableInTouchMode = false
             isClickable = true
@@ -67,11 +68,32 @@ class CameraTileView
             }
         }
 
-        /** Camera name shown in the label. */
+        /** Camera name shown in the label (when [showName]). */
         var cameraName: CharSequence
             get() = binding.name.text
             set(value) {
                 binding.name.text = value
+            }
+
+        /** Whether the name label is drawn; off by default because the feed burns the name in. */
+        var showName: Boolean = false
+            set(value) {
+                field = value
+                binding.name.visibility = if (value) VISIBLE else GONE
+            }
+
+        /** Whether the fps counter is drawn. */
+        var showFrameRate: Boolean = false
+            set(value) {
+                field = value
+                binding.fps.visibility = if (value) VISIBLE else GONE
+            }
+
+        /** Rendered frames per second for the counter; whole numbers read better from a couch. */
+        var frameRate: Float = 0f
+            set(value) {
+                field = value
+                binding.fps.text = resources.getString(R.string.tile_fps, Math.round(value))
             }
 
         /** Shows the spinner, the Retry overlay or neither for [state]. Idempotent: no view is recreated. */

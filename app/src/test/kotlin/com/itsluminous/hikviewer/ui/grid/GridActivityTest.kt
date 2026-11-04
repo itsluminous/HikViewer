@@ -62,6 +62,8 @@ class GridActivityTest {
                 assertThat(grid.childCount).isEqualTo(12)
                 assertThat(grid.shape.columns to grid.shape.rows).isEqualTo(4 to 3)
                 assertThat((grid.getChildAt(0) as CameraTileView).cameraName.toString()).isEqualTo("Camera 1")
+                assertThat((grid.getChildAt(0) as CameraTileView).showName).isFalse()
+                assertThat((grid.getChildAt(0) as CameraTileView).showFrameRate).isFalse()
                 assertThat(grid.getChildAt(0).isFocused).isTrue()
                 assertThat(a.findViewById<View>(R.id.top_bar).visibility).isEqualTo(View.INVISIBLE)
                 assertThat(a.findViewById<View>(R.id.message).visibility).isEqualTo(View.GONE)

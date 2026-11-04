@@ -25,6 +25,7 @@
     </plurals>
     <string name="grid_layout_button">Layout</string>
     <string name="tile_retry">Retry</string>
+    <string name="tile_fps">%1$d fps</string>
 
     <!-- Layouts -->
     <string name="layout_auto">Auto</string>
@@ -49,6 +50,9 @@
     <string name="settings_cameras_help">OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.</string>
     <string name="settings_quality">Fullscreen quality</string>
     <string name="settings_quality_main">Main stream (HEVC, needs a hardware decoder)</string>
+    <string name="settings_overlays">Tile overlays</string>
+    <string name="settings_show_names">Show camera names</string>
+    <string name="settings_show_fps">Show frame rate</string>
     <string name="settings_change_code">Change encryption password</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">HikViewer %1$s — unofficial Hik-Connect client, MIT licence</string>

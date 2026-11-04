@@ -65,6 +65,26 @@
             android:text="@string/settings_quality_main"
             android:textColor="@color/on_background" />
 
+        <TextView
+            style="@style/TextAppearance.HikViewer.Label"
+            android:text="@string/settings_overlays" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/show_names"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/settings_show_names"
+            android:textColor="@color/on_background" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/show_fps"
+            android:layout_width="@dimen/form_width"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/settings_show_fps"
+            android:textColor="@color/on_background" />
+
         <Button
             android:id="@+id/change_code"
             android:layout_width="@dimen/form_width"

@@ -45,6 +45,16 @@ class SettingsStore(
                 ?: StreamQuality.SUB
         set(value) = prefs.edit { putString(KEY_QUALITY, value.name) }
 
+    /** Overlay each tile's camera name. Off by default: the recorder already burns the name into the feed. */
+    var showCameraNames: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_NAMES, false)
+        set(value) = prefs.edit { putBoolean(KEY_SHOW_NAMES, value) }
+
+    /** Overlay a small rendered-frames-per-second counter on each tile. Off by default. */
+    var showFrameRate: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_FPS, false)
+        set(value) = prefs.edit { putBoolean(KEY_SHOW_FPS, value) }
+
     /** The video verification (encryption) code, once the user entered a matching one. */
     var verificationCode: String?
         get() = prefs.getString(KEY_VERIFICATION_CODE, null)
@@ -63,5 +73,7 @@ class SettingsStore(
         const val KEY_HERO = "heroCamera"
         const val KEY_QUALITY = "fullscreenQuality"
         const val KEY_VERIFICATION_CODE = "verificationCode"
+        const val KEY_SHOW_NAMES = "showCameraNames"
+        const val KEY_SHOW_FPS = "showFrameRate"
     }
 }

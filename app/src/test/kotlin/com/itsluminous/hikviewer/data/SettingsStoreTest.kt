@@ -24,6 +24,19 @@ class SettingsStoreTest {
         assertThat(store.heroCameraKey).isNull()
         assertThat(store.fullscreenQuality).isEqualTo(StreamQuality.SUB)
         assertThat(store.verificationCode).isNull()
+        assertThat(store.showCameraNames).isFalse()
+        assertThat(store.showFrameRate).isFalse()
+    }
+
+    @Test
+    fun `overlay toggles round-trip`() {
+        store.showCameraNames = true
+        store.showFrameRate = true
+        val again = SettingsStore(prefs)
+        assertThat(again.showCameraNames).isTrue()
+        assertThat(again.showFrameRate).isTrue()
+        again.showFrameRate = false
+        assertThat(SettingsStore(prefs).showFrameRate).isFalse()
     }
 
     @Test

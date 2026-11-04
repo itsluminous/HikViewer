@@ -38,7 +38,12 @@ class RecordingDecoder(
     /** What [queuedFrames] answers. */
     var queued = 0
 
+    /** What [framesPerSecond] answers. */
+    var fps = 0f
+
     override val queuedFrames: Int get() = queued
+
+    override fun framesPerSecond(nowMillis: Long): Float = fps
 
     override fun start() {
         failOnStart?.let { throw it }

@@ -56,6 +56,32 @@ class PlaybackCoordinatorTest {
     }
 
     @Test
+    fun `a stalled decoder counts as lag and demotes a tile within the demote window`() = runTest(dispatcher) {
+        val c = coordinator()
+        c.setCameras(cameras(4))
+        c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+        c.focusedIndex = 0
+        c.start()
+        dispatcher.scheduler.runCurrent()
+        val before = c.liveLimit
+        // One stall event; the queues stay shallow.
+        decoders.created.last().stalled = true
+        now = 500
+        dispatcher.scheduler.advanceTimeBy(500)
+        dispatcher.scheduler.runCurrent()
+        decoders.created.forEach { it.stalled = false }
+        assertThat(c.liveLimit).isEqualTo(before)
+        // The stall keeps counting as lag for LAG_DEMOTE_MILLIS, so the budget sheds one tile.
+        repeat(5) {
+            now += 500
+            dispatcher.scheduler.advanceTimeBy(500)
+            dispatcher.scheduler.runCurrent()
+        }
+        assertThat(c.liveLimit).isEqualTo(before - 1)
+        c.release()
+    }
+
+    @Test
     fun `focus and hero drive the modes, released before created`() = runTest(dispatcher) {
         val c = coordinator()
         c.setCameras(cameras(4))

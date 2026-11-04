@@ -61,7 +61,9 @@ fun interface StreamOpener {
  * private [TileDecoder] (live modes) or to the shared [KeyframeDecoderPool]. Decoders are created
  * lazily at the first keyframe that carries parameter sets, and recreated at the next keyframe
  * after a parameter-set change, a stall or a surface change. A hardware codec that refuses to
- * start ("insufficient resources", error 1100 on the MiTV) is retried as software once.
+ * start ("insufficient resources", error 1100 on the MiTV) is replaced by a software one, and
+ * hardware is tried again at a keyframe [HW_RETRY_MILLIS] later: the slot is usually held by the
+ * tile that just lost focus (it swaps at its next keyframe) or by another app, not gone for good.
  *
  * Switching between the two live modes (focus moved: hardware ↔ software) keeps the running
  * decoder until the next keyframe and swaps there, so the picture never goes dark for a GOP. The
@@ -78,13 +80,15 @@ class TilePlayer(
     private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
     /** Where the stream is collected and pictures are queued; a test dispatcher in tests. */
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) : TileDecoder.Listener {
     private val lock = Any()
     private val stateFlow = MutableStateFlow<TileState>(TileState.Connecting)
     private var surface: Surface? = null
     private var decoder: TileDecoder? = null
     private var decoderConfig: CodecConfig? = null
-    private var forceSoftware = false
+    private var decoderIsSoftware = false
+    private var hardwareRetryAt = 0L
     private var decoderDisabled = false
     private var swapAtNextKeyframe = false
     private var job: Job? = null
@@ -105,7 +109,6 @@ class TilePlayer(
                 if (previous == value) return
                 field = value
                 decoderDisabled = false
-                if (value == TileMode.HW_LIVE) forceSoftware = false
                 when {
                     !value.isLive -> {
                         releaseDecoderLocked()
@@ -154,7 +157,7 @@ class TilePlayer(
         stop()
         synchronized(lock) {
             decoderDisabled = false
-            forceSoftware = false
+            hardwareRetryAt = 0L
         }
         start(scope)
     }
@@ -169,14 +172,14 @@ class TilePlayer(
         }
     }
 
-    /** Periodic watchdog; recreates a wedged decoder. */
-    fun tick(nowMillis: Long) {
-        synchronized(lock) {
-            if (decoder?.checkStall(nowMillis) == true) {
-                Log.w(TAG, "${camera.key}: decoder stalled, recreating")
-                releaseDecoderLocked()
-            }
+    /** Periodic watchdog; recreates a wedged decoder. Returns true when it had to. */
+    fun tick(nowMillis: Long): Boolean = synchronized(lock) {
+        val stalled = decoder?.checkStall(nowMillis) == true
+        if (stalled) {
+            Log.w(TAG, "${camera.key}: decoder stalled, recreating")
+            releaseDecoderLocked()
         }
+        stalled
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
@@ -196,7 +199,7 @@ class TilePlayer(
             Log.w(TAG, "${camera.key}: codec error ${exception.errorCode} transient=${exception.isTransient}")
             releaseDecoderLocked()
             if (DecoderPolicy.shouldFallBackToSoftware(exception.isTransient, exception.errorCode)) {
-                forceSoftware = true
+                hardwareRetryAt = clock() + HW_RETRY_MILLIS
             } else {
                 failDecoder("Decoder error")
             }
@@ -250,8 +253,7 @@ class TilePlayer(
             }
             if (decoderDisabled) return
             val config = unit.config
-            val rebuild = decoder == null || swapAtNextKeyframe || (config != null && config != decoderConfig)
-            if (rebuild) {
+            if (needsNewDecoder(config)) {
                 if (!unit.isKeyframe || config == null) return
                 releaseDecoderLocked()
                 swapAtNextKeyframe = false
@@ -262,11 +264,17 @@ class TilePlayer(
         }
     }
 
+    /** True when the next keyframe must build a (different) decoder. */
+    private fun needsNewDecoder(config: CodecConfig?): Boolean {
+        val wantsHardwareBack = mode == TileMode.HW_LIVE && decoderIsSoftware && clock() >= hardwareRetryAt
+        return decoder == null || swapAtNextKeyframe || wantsHardwareBack || (config != null && config != decoderConfig)
+    }
+
     private fun createDecoder(
         config: CodecConfig,
         target: Surface,
     ): TileDecoder? {
-        val software = forceSoftware || mode != TileMode.HW_LIVE
+        val software = mode != TileMode.HW_LIVE || clock() < hardwareRetryAt
         val name = pickCodec(config.codec.mimeType, software)
         if (name == null) {
             failDecoder("No ${config.codec} decoder")
@@ -275,13 +283,14 @@ class TilePlayer(
         val d = decoderFactory(name, config, target, this)
         return try {
             d.start()
+            decoderIsSoftware = software
             Log.i(TAG, "${camera.key}: ${config.codec} via $name (${if (software) "software" else "hardware"})")
             d
         } catch (e: MediaCodec.CodecException) {
             d.release()
             if (!software && DecoderPolicy.shouldFallBackToSoftware(e.isTransient, e.errorCode)) {
-                Log.w(TAG, "${camera.key}: hardware decoder unavailable (${e.errorCode}), using software")
-                forceSoftware = true
+                Log.w(TAG, "${camera.key}: hardware decoder unavailable (${e.errorCode}), using software for now")
+                hardwareRetryAt = clock() + HW_RETRY_MILLIS
                 createDecoder(config, target)
             } else {
                 failDecoder("Decoder error")
@@ -320,7 +329,11 @@ class TilePlayer(
         swapAtNextKeyframe = false
     }
 
-    private companion object {
-        const val TAG = "TilePlayer"
+    /** Tunables. */
+    companion object {
+        /** After a hardware decoder refused to start, software is used for this long before trying again. */
+        const val HW_RETRY_MILLIS: Long = 5_000
+        private const val TAG = "TilePlayer"
+        private const val NANOS_PER_MILLI = 1_000_000L
     }
 }

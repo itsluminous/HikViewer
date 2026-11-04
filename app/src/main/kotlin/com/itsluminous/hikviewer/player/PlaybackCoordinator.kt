@@ -39,6 +39,7 @@ class PlaybackCoordinator(
     private val playersFlow = MutableStateFlow<List<TilePlayer>>(emptyList())
     private var ticker: Job? = null
     private var running = false
+    private var lastStallAt: Long? = null
 
     /** One player per visible camera, in grid order. */
     val players: StateFlow<List<TilePlayer>> = playersFlow.asStateFlow()
@@ -115,9 +116,14 @@ class PlaybackCoordinator(
         val now = clock()
         val players = playersFlow.value
         val before = budget.liveLimit
-        val lag = players.filter { it.mode.isLive }.maxOfOrNull { it.queuedFrames } ?: 0
+        // A stalled decoder (input accepted, no picture for 3 s) is the device not keeping up as
+        // much as a deep input queue is; it counts as lag for the whole demote window so the
+        // budget sheds a tile instead of letting the watchdog recreate decoders forever.
+        if (players.map { it.tick(now) }.any { it }) lastStallAt = now
+        val recentStall = lastStallAt?.let { now - it <= LiveBudget.LAG_DEMOTE_MILLIS } == true
+        val queued = players.filter { it.mode.isLive }.maxOfOrNull { it.queuedFrames } ?: 0
+        val lag = if (recentStall) maxOf(queued, LiveBudget.LAG_FRAMES + 1) else queued
         if (budget.sample(now, lag) != before) applyPolicy()
-        players.forEach { it.tick(now) }
     }
 
     private fun applyPolicy() {

@@ -29,6 +29,7 @@ class TilePlayerTest {
     private val pool = NoopKeyframePool()
     private val surface: Surface = Shadow.newInstanceOf(Surface::class.java)
     private val dispatcher = StandardTestDispatcher()
+    private var now = 0L
 
     private fun player(
         stream: Flow<AccessUnit> = SyntheticStream.flow(paced = false).take(FRAMES),
@@ -47,6 +48,7 @@ class TilePlayerTest {
         pickCodec = decoders::pickCodec,
         decoderFactory = decoders.factory,
         dispatcher = dispatcher,
+        clock = { now },
     )
 
     private fun TestScope.run(player: TilePlayer) {
@@ -255,6 +257,31 @@ class TilePlayerTest {
         assertThat(sw.codecName).isEqualTo("fake.sw.video/avc")
         sw.listener.onError(sw, codecException(3, transient = false))
         assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
+        p.stop()
+    }
+
+    @Test
+    fun `hardware is tried again at a keyframe once the cooldown passed`() = runTest(dispatcher) {
+        decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false)
+        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 4))
+        p.attachSurface(surface)
+        p.mode = TileMode.HW_LIVE
+        p.start(this)
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+        dispatcher.scheduler.runCurrent()
+        assertThat(decoders.created.map { it.codecName })
+            .containsExactly("fake.hw.video/avc", "fake.sw.video/avc")
+            .inOrder()
+        // Before the cooldown: the software decoder keeps running.
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+        dispatcher.scheduler.runCurrent()
+        assertThat(decoders.created).hasSize(2)
+        // After the cooldown the next keyframe rebuilds with hardware, which now succeeds.
+        now = TilePlayer.HW_RETRY_MILLIS
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(decoders.created.last().codecName).isEqualTo("fake.hw.video/avc")
+        assertThat(decoders.created.last().started).isTrue()
+        assertThat(decoders.created[1].released).isTrue()
         p.stop()
     }
 

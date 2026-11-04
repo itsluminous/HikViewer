@@ -69,11 +69,15 @@ open class TileDecoder(
         // Ask for low latency where the platform supports it (API 30+); older decoders ignore the key.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         val c = MediaCodec.createByCodecName(codecName)
+        // Owned from this point on: a configure() that fails (error 1100 on the MiTV when both
+        // hardware instances are busy) must still be followed by release(), or the codec stays
+        // registered with the media resource manager and the hardware slot is lost until the
+        // process dies. Both slots were found held by stale clients of this app on the real TV.
+        synchronized(lock) { codec = c }
         c.setCallback(callback, handler)
         c.configure(format, surface, null, 0)
         c.start()
         synchronized(lock) {
-            codec = c
             started = true
             lastOutputAtMillis = System.nanoTime() / NANOS_PER_MILLI
         }
@@ -124,7 +128,7 @@ open class TileDecoder(
             val unit: AccessUnit
             synchronized(lock) {
                 c = codec ?: return
-                if (released || freeInputs.isEmpty() || pending.isEmpty()) return
+                if (released || !started || freeInputs.isEmpty() || pending.isEmpty()) return
                 index = freeInputs.pollFirst()
                 unit = pending.pollFirst()
                 inputAccepted = true

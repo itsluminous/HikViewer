@@ -114,15 +114,24 @@ public object VtmChannel {
     /** Media packets. */
     public const val STREAM: Int = 0x01
 
+    /**
+     * End of a playback window: the relay sends one control frame here after the last picture of
+     * a `/playback?` stream and then closes the socket. Live streams never use it.
+     */
+    public const val PLAYBACK_END: Int = 0x02
+
     /** Encrypted control channel (not used by this client, accepted when seen). */
     public const val ENCRYPTED_MESSAGE: Int = 0x0A
 
     /** Encrypted media channel. */
     public const val ENCRYPTED_STREAM: Int = 0x0B
 
-    /** True for the four channel ids above. */
-    public fun isKnown(channel: Int): Boolean =
-        channel == MESSAGE || channel == STREAM || channel == ENCRYPTED_MESSAGE || channel == ENCRYPTED_STREAM
+    /** True for the five channel ids above. */
+    public fun isKnown(channel: Int): Boolean = channel == MESSAGE ||
+        channel == STREAM ||
+        channel == PLAYBACK_END ||
+        channel == ENCRYPTED_MESSAGE ||
+        channel == ENCRYPTED_STREAM
 }
 
 /** Message codes carried in the VTM frame header. */

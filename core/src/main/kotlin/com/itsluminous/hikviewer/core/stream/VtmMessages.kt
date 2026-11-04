@@ -150,7 +150,7 @@ public object VtmMessages {
 
 /** The fields of `StreamInfoRsp` this client uses. */
 public data class StreamInfoResponse(
-    /** 0 on success; 6106 means the channel has no stream (empty recorder input). */
+    /** 0 on success; 6106 means the channel has no stream (empty recorder input), 6103 playback busy. */
     val result: Long?,
     /** Relay-side data key id (informational). */
     val dataKey: Long?,
@@ -174,9 +174,15 @@ public data class StreamInfoResponse(
     /** True when the relay said this channel produces no stream. */
     val isNoStream: Boolean get() = result == NO_STREAM_RESULT
 
+    /** True when a playback request hit the relay's session limit; it clears within seconds. */
+    val isBusy: Boolean get() = result == BUSY_RESULT
+
     /** Well-known result codes. */
     public companion object {
         /** `result` for a channel that exists but has no video (empty DVR input). */
         public const val NO_STREAM_RESULT: Long = 6106
+
+        /** `result` for "playback busy": too many playback opens in a short span. Retryable. */
+        public const val BUSY_RESULT: Long = 6103
     }
 }

@@ -1,7 +1,9 @@
 package com.itsluminous.hikviewer.core.stream
 
 import com.itsluminous.hikviewer.core.devices.VtmResource
+import com.itsluminous.hikviewer.core.playback.PlaybackWindow
 import java.io.IOException
+import java.time.format.DateTimeFormatter
 
 /** A VTM protocol or cloud metadata error. Retryable unless a subclass says otherwise. */
 public open class VtmException(
@@ -22,7 +24,8 @@ public enum class StreamQuality(
 }
 
 /**
- * Builds and parses the `ysproto://host:port/live?...` URL a relay expects in its `StreamInfoReq`.
+ * Builds and parses the `ysproto://host:port/live?...` and `/playback?...` URLs a relay expects
+ * in its `StreamInfoReq`.
  *
  * The query is the channel's `streamBizUrl` parameters followed by the device/channel/stream
  * selection and the VTDU token (`ssn`). `cln` 9 is the client type the relay accepts for this
@@ -32,7 +35,7 @@ public object VtmUrl {
     /** Default `cln` (client type) parameter. */
     public const val CLIENT_TYPE: Int = 9
 
-    /** The relay URL for [resource] at [quality] using [vtduToken]. */
+    /** The live relay URL for [resource] at [quality] using [vtduToken]. */
     public fun build(
         resource: VtmResource,
         quality: StreamQuality,
@@ -44,15 +47,53 @@ public object VtmUrl {
         params["dev"] = resource.deviceSerial
         params["chn"] = resource.channelNo.toString()
         params["stream"] = quality.streamType.toString()
-        params["cln"] = CLIENT_TYPE.toString()
-        params["isp"] = "0"
-        params["auth"] = "1"
-        params["ssn"] = vtduToken
-        params["vip"] = "0"
-        params["timestamp"] = timestampMillis.toString()
-        val query = params.entries.joinToString("&") { (k, v) -> "${encode(k)}=${encode(v)}" }
-        return "ysproto://${hostForUrl(resource.relay.host)}:${resource.relay.port}/live?$query"
+        params += commonParams(vtduToken, timestampMillis)
+        return "ysproto://${authority(resource)}/live?${query(params)}"
     }
+
+    /**
+     * The playback relay URL for the recording of [resource] between the window's `begin` and
+     * `end`, which are the **recorder's wall clock** formatted `yyyyMMdd'T'HHmmss'Z'`: the `Z` is
+     * literal, not UTC (the official app formats with the device's default time zone). The relay
+     * ignores `stream` for playback (it always serves the recorded main quality) and rejects any
+     * other time format or extra `weakstream`/`seg` parameters with `result 6103`, so only this
+     * minimal, proven set is sent. [channelSerial] is the channel's own serial (`serial`).
+     */
+    public fun buildPlayback(
+        resource: VtmResource,
+        window: PlaybackWindow,
+        channelSerial: String,
+        vtduToken: String,
+        timestampMillis: Long = System.currentTimeMillis(),
+    ): String {
+        val params = linkedMapOf<String, String>()
+        params += parseQuery(resource.streamBizUrl)
+        params["dev"] = resource.deviceSerial
+        params["chn"] = resource.channelNo.toString()
+        params["stream"] = StreamQuality.MAIN.streamType.toString()
+        params["begin"] = PLAYBACK_TIME.format(window.begin)
+        params["end"] = PLAYBACK_TIME.format(window.end)
+        params["serial"] = channelSerial
+        params += commonParams(vtduToken, timestampMillis)
+        return "ysproto://${authority(resource)}/playback?${query(params)}"
+    }
+
+    private fun commonParams(
+        vtduToken: String,
+        timestampMillis: Long,
+    ): Map<String, String> = linkedMapOf(
+        "cln" to CLIENT_TYPE.toString(),
+        "isp" to "0",
+        "auth" to "1",
+        "ssn" to vtduToken,
+        "vip" to "0",
+        "timestamp" to timestampMillis.toString(),
+    )
+
+    private fun query(params: Map<String, String>): String =
+        params.entries.joinToString("&") { (k, v) -> "${encode(k)}=${encode(v)}" }
+
+    private fun authority(resource: VtmResource): String = "${hostForUrl(resource.relay.host)}:${resource.relay.port}"
 
     /** Host and port of a `ysproto://` URL, as the relay client needs them to connect. */
     public fun endpoint(url: String): Pair<String, Int> {
@@ -68,6 +109,7 @@ public object VtmUrl {
 
     private const val SCHEME = "ysproto://"
     private const val MAX_PORT = 65535
+    private val PLAYBACK_TIME = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
 
     private fun parseQuery(streamBizUrl: String): Map<String, String> {
         val query = streamBizUrl.substringAfter('?', streamBizUrl).trimStart('?')

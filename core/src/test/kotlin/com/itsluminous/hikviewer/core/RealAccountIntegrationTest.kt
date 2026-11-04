@@ -8,6 +8,9 @@ import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.DeviceRepository
 import com.itsluminous.hikviewer.core.devices.VerificationCode
+import com.itsluminous.hikviewer.core.playback.PlaybackStream
+import com.itsluminous.hikviewer.core.playback.PlaybackWindow
+import com.itsluminous.hikviewer.core.playback.RecordingSearch
 import com.itsluminous.hikviewer.core.stream.LiveStream
 import com.itsluminous.hikviewer.core.stream.LiveStreamConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
@@ -22,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import java.io.File
+import java.time.LocalDate
 
 /**
  * End-to-end check against the real Hik-Connect account. Runs only when `HIKVIEWER_LOCAL_ENV` points
@@ -70,6 +74,74 @@ class RealAccountIntegrationTest {
         } finally {
             session.logout()
         }
+    }
+
+    /**
+     * Playback over the same relay: at least one recorded segment for yesterday (recorder date,
+     * assumed within a day of the local date) and at least five decrypted keyframes from a 60 s
+     * window inside it. Prints counts only.
+     */
+    @Test
+    fun `list yesterday's recordings and decrypt five keyframes of a 60 s playback window`() = runBlocking {
+        val creds = credentials()
+        val client = HikConnectClient({ FEATURE_CODE })
+        val login = client.login(creds.account, creds.password, Region.INDIA)
+        val session = HikConnectSession(client, login)
+        try {
+            val repository = DeviceRepository(session)
+            val camera = listCamerasWithSignal(repository, creds.verificationCode).first()
+            val yesterday = LocalDate.now().minusDays(1)
+            val segments = RecordingSearch(session).segmentsOn(camera, yesterday)
+            val types = segments.map { it.type }.toSet()
+            println("segments for ch${camera.channelNo} on D-1: ${segments.size}, types=$types")
+            assertThat(segments).isNotEmpty()
+
+            val longest = segments.maxBy { it.duration }
+            val begin = longest.begin.plusSeconds(minOf(longest.duration.seconds / 2, 3_600))
+            val window = PlaybackWindow(begin, minOf(begin.plusSeconds(60), longest.end))
+            val pageList = repository.vtmPageList()
+            val playback = PlaybackStream({ pageList }, VtduTokenProvider(session))
+            val result = collectPlaybackKeyframes(playback, camera, window, creds.verificationCode)
+
+            println(result)
+            assertThat(result.keyframes).isAtLeast(5)
+            assertThat(result.codec).isEqualTo(VideoCodec.H265)
+            assertThat(result.spsSeen).isTrue()
+            assertThat(result.statuses).contains("Streaming")
+        } finally {
+            session.logout()
+        }
+    }
+
+    private suspend fun collectPlaybackKeyframes(
+        playback: PlaybackStream,
+        camera: Camera,
+        window: PlaybackWindow,
+        code: String,
+    ): StreamResult {
+        val statuses = mutableListOf<String>()
+        var keyframes = 0
+        var pictures = 0
+        var codec: VideoCodec? = null
+        var spsSeen = false
+        val startedAt = System.nanoTime()
+        withTimeout(40_000) {
+            playback
+                .open(camera, window, code) { statuses += it::class.simpleName.orEmpty() }
+                .takeWhile { keyframes < 5 }
+                .collect { unit ->
+                    pictures++
+                    codec = unit.codec
+                    if (unit.isKeyframe) {
+                        keyframes++
+                        if (unit.config != null) spsSeen = true
+                    }
+                    if (pictures == 1) {
+                        println("first playback picture after ${(System.nanoTime() - startedAt) / 1_000_000} ms: $unit")
+                    }
+                }
+        }
+        return StreamResult(pictures, keyframes, codec, spsSeen, statuses)
     }
 
     private suspend fun listCamerasWithSignal(

@@ -142,6 +142,16 @@ class VtmProtocolTest {
             assertThat(info.isNoStream).isFalse()
             assertThat(info.copy(result = 1).isRedirect).isTrue()
             assertThat(info.copy(result = 6106).isNoStream).isTrue()
+            assertThat(info.isBusy).isFalse()
+            assertThat(info.copy(result = 6103).isBusy).isTrue()
+        }
+
+        @Test
+        fun `the playback end channel is a known channel`() {
+            assertThat(VtmChannel.isKnown(VtmChannel.PLAYBACK_END)).isTrue()
+            val marker = VtmFrame(VtmChannel.PLAYBACK_END, 1, 0, byteArrayOf(9))
+            assertThat(VtmFrame.decode(marker.encode()).isStream).isFalse()
+            assertThat(VtmChannel.isKnown(0x03)).isFalse()
         }
 
         @Test

@@ -68,6 +68,9 @@ public sealed class StreamStatus {
         val delayMillis: Long,
         val cause: Throwable,
     ) : StreamStatus()
+
+    /** A playback window reached its end; the flow completes right after. Live streams never end. */
+    public object Ended : StreamStatus()
 }
 
 /** Tunables of [LiveStream]; defaults are the measured cloud behaviour from the feasibility spike. */

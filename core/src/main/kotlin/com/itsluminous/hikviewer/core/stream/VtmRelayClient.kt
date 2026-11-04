@@ -66,6 +66,14 @@ public class VtmRelayClient(
 
     @Volatile private var closed = false
 
+    /**
+     * True once the relay announced the end of a playback window (a frame on
+     * [VtmChannel.PLAYBACK_END]). [readStreamPacket] returns null for that frame; the caller
+     * checks this flag to tell a clean end from a control message.
+     */
+    public var endOfStream: Boolean = false
+        private set
+
     /** True after [connect] until [close]. */
     public val isConnected: Boolean get() = socket != null
 
@@ -118,7 +126,8 @@ public class VtmRelayClient(
 
     /**
      * Next media payload, blocking up to the read timeout. Returns null when the frame read was a
-     * control message (keepalives are answered here), so callers simply loop. Throws
+     * control message (keepalives are answered here) or the playback end marker (see
+     * [endOfStream]), so callers simply loop. Throws
      * [VtmStallException] when nothing arrives within the read timeout and [VtmException] when the
      * relay closes the connection.
      */
@@ -134,6 +143,10 @@ public class VtmRelayClient(
                 null
             }
             frame.isStream -> frame.body
+            frame.channel == VtmChannel.PLAYBACK_END -> {
+                endOfStream = true
+                null
+            }
             else -> null
         }
     }
@@ -190,7 +203,17 @@ public class VtmRelayClient(
     } catch (e: EOFException) {
         throw VtmException(CLOSED_BY_RELAY, e)
     } catch (e: SocketException) {
-        throw VtmException(if (closed) CLOSED_BY_CLIENT else "VTM socket error: ${e.message}", e)
+        // A reset is the relay hanging up without a FIN (seen when it closes right after the
+        // handshake); it means the same as an orderly close to the caller.
+        val reset = e.message?.contains("reset", ignoreCase = true) == true
+        throw VtmException(
+            when {
+                closed -> CLOSED_BY_CLIENT
+                reset -> CLOSED_BY_RELAY
+                else -> "VTM socket error: ${e.message}"
+            },
+            e,
+        )
     }
 
     /** Closes the socket; safe to call twice and from another thread while a read blocks. */

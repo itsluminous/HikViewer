@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.player
 
+import android.graphics.SurfaceTexture
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Handler
@@ -23,6 +24,12 @@ import java.nio.ByteBuffer
  * Jobs are keyed by tile; a newer keyframe replaces a queued one for the same tile, so a slow
  * device shows fresh pictures instead of a backlog. The synchronous `MediaCodec` API is used here
  * deliberately: one job is a strict queue → drain sequence on the worker's own thread.
+ *
+ * Between jobs the codec is parked on a private, never-consumed [SurfaceTexture]. A `MediaCodec`
+ * holds the producer slot of whatever surface it was last pointed at, and a tile surface still
+ * held by this pool cannot be opened by the tile's own live decoder: `configure` fails with
+ * "BufferQueue already connected" / `IllegalArgumentException`, which was crashing the process
+ * every time a keyframe tile was promoted to live (round-1 blocker).
  */
 open class KeyframeDecoderPool(
     maxDecoders: Int = MAX_DECODERS,
@@ -64,6 +71,8 @@ open class KeyframeDecoderPool(
         private var codec: MediaCodec? = null
         private var codecConfig: CodecConfig? = null
         private var released = false
+        private var parkingTexture: SurfaceTexture? = null
+        private var parkingSurface: Surface? = null
 
         fun enqueue(job: Job) {
             synchronized(queue) {
@@ -107,22 +116,41 @@ open class KeyframeDecoderPool(
         private fun decode(job: Job) {
             val c = codecFor(job)
             c.setOutputSurface(job.surface)
-            queueInput(c, job.config.csd.fold(ByteArray(0)) { acc, b -> acc + b }, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
-            queueInput(c, job.unit.data, 0)
-            queueInput(c, ByteArray(0), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            try {
+                val csd = job.config.csd.fold(ByteArray(0)) { acc, b -> acc + b }
+                queueInput(c, csd, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
+                queueInput(c, job.unit.data, 0)
+                queueInput(c, ByteArray(0), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                drainOnePicture(c)
+                c.flush()
+            } finally {
+                // Give the tile's surface back before anyone else needs it (see the class KDoc). A
+                // codec that died mid-job cannot be re-pointed; it is closed instead of masking the
+                // original failure.
+                runCatching { c.setOutputSurface(parking()) }.onFailure { closeCodec() }
+            }
+        }
+
+        /** Renders the first picture that comes out and swallows the rest up to end-of-stream. */
+        private fun drainOnePicture(c: MediaCodec) {
             val info = MediaCodec.BufferInfo()
             var rendered = false
             val deadline = System.nanoTime() + JOB_TIMEOUT_NANOS
             while (System.nanoTime() < deadline) {
                 val index = c.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_US)
-                if (index >= 0) {
-                    val render = !rendered && info.size > 0
-                    c.releaseOutputBuffer(index, render)
-                    rendered = rendered || render
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-                }
+                if (index < 0) continue
+                val render = !rendered && info.size > 0
+                c.releaseOutputBuffer(index, render)
+                rendered = rendered || render
+                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
             }
-            c.flush()
+        }
+
+        /** The worker's private surface; created on first use, released with the codec. */
+        private fun parking(): Surface = parkingSurface ?: run {
+            val texture = SurfaceTexture(false)
+            parkingTexture = texture
+            Surface(texture).also { parkingSurface = it }
         }
 
         private fun queueInput(
@@ -147,7 +175,7 @@ open class KeyframeDecoderPool(
             val format = MediaFormat.createVideoFormat(mime, SIZE_HINT_WIDTH, SIZE_HINT_HEIGHT)
             job.config.csd.forEachIndexed { i, bytes -> format.setByteBuffer("csd-$i", ByteBuffer.wrap(bytes)) }
             val c = MediaCodec.createByCodecName(name)
-            c.configure(format, job.surface, null, 0)
+            c.configure(format, parking(), null, 0)
             c.start()
             codec = c
             codecConfig = job.config
@@ -159,6 +187,10 @@ open class KeyframeDecoderPool(
             runCatching { codec?.release() }
             codec = null
             codecConfig = null
+            parkingSurface?.release()
+            parkingTexture?.release()
+            parkingSurface = null
+            parkingTexture = null
         }
     }
 

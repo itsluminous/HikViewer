@@ -1,0 +1,14 @@
+local.env
+*.env
+.research/
+.gradle/
+build/
+.idea/
+local.properties
+*.keystore
+*.jks
+.DS_Store
+*.log
+.kotlin/
+captures/
+keystore.properties

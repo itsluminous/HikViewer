@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark palette: TVs are viewed in dim rooms and camera tiles look best on near-black. -->
+    <color name="background">#FF101418</color>
+    <color name="on_background">#FFF2F4F7</color>
+    <color name="accent">#FF4FC3F7</color>
+    <color name="ic_launcher_background">#FF101418</color>
+</resources>

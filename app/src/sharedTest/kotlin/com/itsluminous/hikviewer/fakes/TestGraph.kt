@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.fakes
 import android.content.Context
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.DeviceCapabilities
+import com.itsluminous.hikviewer.player.PlaybackFactory
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
@@ -19,6 +20,8 @@ object TestGraph {
         capabilities: DeviceCapabilities = tvCapabilities,
         decoders: RecordingDecoderFactory = RecordingDecoderFactory(),
         playbackDispatcher: CoroutineDispatcher = Dispatchers.Default,
+        /** Overrides the recording decoders, e.g. with real `MediaCodec`s on an emulator. */
+        playbackFactory: PlaybackFactory = decoders.playbackFactory(playbackDispatcher),
     ): AppGraph {
         val session =
             context
@@ -38,7 +41,7 @@ object TestGraph {
             cloud,
             capabilities,
             topBarAutoHideMillis,
-            decoders.playbackFactory(playbackDispatcher),
+            playbackFactory,
         )
     }
 }

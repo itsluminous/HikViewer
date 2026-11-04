@@ -34,7 +34,8 @@ android {
                 .toInt()
         versionCode = 1
         versionName = "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Installs the fake-cloud Application so Espresso never touches Hik-Connect.
+        testInstrumentationRunner = "com.itsluminous.hikviewer.TestRunner"
     }
 
     signingConfigs {

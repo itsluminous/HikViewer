@@ -53,6 +53,7 @@ class GridActivity : AppCompatActivity() {
     private val fullscreen =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             pendingFocus = result.data?.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)?.takeIf { it >= 0 }
+            restoreFocus()
         }
 
     private val settings =

@@ -96,6 +96,11 @@ open class KeyframeDecoderPool(
             } catch (e: IllegalStateException) {
                 Log.w(TAG, "keyframe decoder in a bad state; recreating", e)
                 closeCodec()
+            } catch (e: IllegalArgumentException) {
+                // The tile's surface was released between the validity check and configure /
+                // setOutputSurface (the grid went to the background); the job is simply dropped.
+                Log.w(TAG, "keyframe surface vanished: ${e.message}")
+                closeCodec()
             }
         }
 

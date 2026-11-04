@@ -13,6 +13,9 @@ max_line_length = 120
 [*.{kt,kts}]
 ktlint_code_style = ktlint_official
 ktlint_function_naming_ignore_when_annotated_with = Test, ParameterizedTest
+# `fun test() = runTest { ... }` is the idiomatic coroutine test shape; ktlint_official would force the
+# lambda onto its own line for every test, so expression bodies wrap only when they do not fit.
+ktlint_function_signature_body_expression_wrapping = default
 
 [*.{yml,yaml,toml,json}]
 indent_size = 2

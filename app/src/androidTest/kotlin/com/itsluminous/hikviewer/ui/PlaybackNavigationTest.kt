@@ -89,6 +89,8 @@ class PlaybackNavigationTest {
         dpad(KeyEvent.KEYCODE_DPAD_CENTER)
         waitFor(500)
 
+        // Any key shows the controls (they may already have auto-hidden on a slow emulator); MENU changes nothing else.
+        dpad(KeyEvent.KEYCODE_MENU)
         onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
         onView(withId(R.id.speed_button)).check(matches(withText("1x")))
         awaitPlaybackOpens(1)

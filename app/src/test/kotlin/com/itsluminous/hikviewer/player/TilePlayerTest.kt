@@ -121,18 +121,93 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `mode change releases the decoder and the next keyframe builds a new one`() = runTest(dispatcher) {
+    fun `live to live mode change keeps the decoder until the next keyframe, then swaps`() = runTest(dispatcher) {
         val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
         p.attachSurface(surface)
         p.mode = TileMode.SW_LIVE
         p.start(this)
         dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
         dispatcher.scheduler.runCurrent()
-        val first = decoders.created.first()
+        val first = decoders.created.single()
+        first.emitFirstFrame()
         p.mode = TileMode.HW_LIVE
-        assertThat(first.released).isTrue()
+        // The picture must not go dark: the software decoder keeps running and eating frames.
+        assertThat(first.released).isFalse()
+        assertThat(p.state.value).isEqualTo(TileState.Live)
+        val fedBefore = first.fed.size
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS)
+        dispatcher.scheduler.runCurrent()
+        assertThat(first.fed.size).isAtLeast(fedBefore)
         dispatcher.scheduler.advanceUntilIdle()
-        assertThat(decoders.created.last().codecName).isEqualTo("fake.hw.video/avc")
+        assertThat(first.released).isTrue()
+        val second = decoders.created.last()
+        assertThat(second.codecName).isEqualTo("fake.hw.video/avc")
+        assertThat(second.fed.first().isKeyframe).isTrue()
+        assertThat(decoders.created).hasSize(2)
+        p.stop()
+    }
+
+    @Test
+    fun `live to keyframe releases the decoder at once, keyframe to live builds one at the next keyframe`() =
+        runTest(dispatcher) {
+            val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
+            p.attachSurface(surface)
+            p.mode = TileMode.SW_LIVE
+            p.start(this)
+            dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+            dispatcher.scheduler.runCurrent()
+            val first = decoders.created.single()
+            first.emitFirstFrame()
+            p.mode = TileMode.KEYFRAME
+            assertThat(first.released).isTrue()
+            assertThat(p.state.value).isEqualTo(TileState.Keyframe)
+            p.mode = TileMode.SW_LIVE
+            // Still the last keyframe on screen, no spinner, until the live decoder draws.
+            assertThat(p.state.value).isEqualTo(TileState.Keyframe)
+            dispatcher.scheduler.advanceUntilIdle()
+            assertThat(decoders.created).hasSize(2)
+            p.stop()
+        }
+
+    @Test
+    fun `retry forgets a decoder failure and reopens the stream`() = runTest(dispatcher) {
+        var opens = 0
+        val p =
+            TilePlayer(
+                camera,
+                opener = { _, _, onStatus ->
+                    opens++
+                    onStatus(StreamStatus.Streaming)
+                    SyntheticStream.flow(paced = false).take(FRAMES)
+                },
+                pool = pool,
+                pickCodec = decoders::pickCodec,
+                decoderFactory = decoders.factory,
+                dispatcher = dispatcher,
+            )
+        decoders.startFailures += "fake.sw.video/avc" to codecException(7, transient = false)
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
+        p.retry(this)
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(opens).isEqualTo(2)
+        assertThat(decoders.created.last().started).isTrue()
+        assertThat(p.state.value).isEqualTo(TileState.Connecting)
+        p.stop()
+    }
+
+    @Test
+    fun `a configure failure is a tile error, not a crash`() = runTest(dispatcher) {
+        decoders.startFailures +=
+            "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
+        val p = player()
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
+        assertThat(decoders.created.single().released).isTrue()
         p.stop()
     }
 
@@ -187,7 +262,8 @@ class TilePlayerTest {
     fun `terminal stream errors map to tile errors`() = runTest(dispatcher) {
         val cases =
             listOf(
-                StreamException.WrongVerificationCode() to TileState.Error("Wrong code", wrongVerificationCode = true),
+                StreamException.WrongVerificationCode() to
+                    TileState.Error("Cannot decrypt", wrongVerificationCode = true),
                 StreamException.ChannelOffline(camera) to TileState.Error("No video"),
                 StreamException.ChannelNotStreamable(camera) to TileState.Error("No cloud stream"),
                 StreamException.RelayRejected(9) to TileState.Error("Relay refused"),

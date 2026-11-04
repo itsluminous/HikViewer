@@ -1,6 +1,5 @@
 package com.itsluminous.hikviewer.fakes
 
-import android.media.MediaCodec
 import android.view.Surface
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
@@ -20,7 +19,7 @@ class RecordingDecoder(
     config: CodecConfig,
     surface: Surface,
     val listener: TileDecoder.Listener,
-    private val failOnStart: MediaCodec.CodecException? = null,
+    private val failOnStart: Throwable? = null,
 ) : TileDecoder(codecName, config, surface, listener) {
     /** Every access unit fed. */
     val fed = CopyOnWriteArrayList<AccessUnit>()
@@ -66,7 +65,7 @@ class RecordingDecoderFactory {
     val created = CopyOnWriteArrayList<RecordingDecoder>()
 
     /** Codec names that must fail at start with the given exception, consumed in order. */
-    val startFailures = ArrayDeque<Pair<String, MediaCodec.CodecException>>()
+    val startFailures = ArrayDeque<Pair<String, Throwable>>()
 
     /** The factory lambda for [TileDecoder]'s owners. */
     val factory: (

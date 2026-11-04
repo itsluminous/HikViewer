@@ -54,6 +54,13 @@ public class NalDecryptor(
     public var keyError: Boolean = false
         private set
 
+    /**
+     * What the undecided NALs looked like when [keyError] was raised (count, sizes, first bytes), so
+     * a false positive on a real recorder can be diagnosed from a log line.
+     */
+    public var keyErrorDetail: String? = null
+        private set
+
     /** Whether inter slices are encrypted (HEADER_CLEAR only); null while sampling. */
     public var interEncrypted: Boolean? = interEncryptedHint
         private set
@@ -92,6 +99,7 @@ public class NalDecryptor(
             val decision = decide() ?: return out
             if (decision === KEY_ERROR) {
                 keyError = true
+                keyErrorDetail = describeUndecided()
                 undecided.clear()
                 return out
             }
@@ -104,6 +112,14 @@ public class NalDecryptor(
         }
         emit(nal, out)
         return out
+    }
+
+    private fun describeUndecided(): String {
+        val heads = undecided.groupingBy { "%02x".format(it.data[0]) }.eachCount()
+        val sizes = undecided.map { it.size }
+        val topHeads = heads.entries.sortedByDescending { it.value }.take(HEADS_IN_DETAIL)
+        return "nals=${undecided.size} sizes=${sizes.minOrNull()}..${sizes.maxOrNull()} " +
+            "heads=" + topHeads.joinToString(",") { "${it.key}x${it.value}" }
     }
 
     // ---- variant detection -------------------------------------------------------------------
@@ -399,6 +415,7 @@ public class NalDecryptor(
         /** Only this many leading body bytes are encrypted per NAL. */
         public const val ENCRYPTED_PREFIX: Int = 4096
         private const val MAX_UNDECIDED = 300
+        private const val HEADS_IN_DETAIL = 6
         private const val MIN_DECIDABLE_NAL = 18
         private const val MIN_DECIDABLE_COUNT = 3
         private const val MIN_KEY_ERROR_COUNT = 24

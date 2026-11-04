@@ -21,9 +21,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.io.IOException
 
-/** What a tile's badge shows. */
+/** What a tile shows besides the video. */
 sealed class TileState {
-    /** Waiting for the relay or the first picture. */
+    /** No picture yet: waiting for the relay or the first keyframe (spinner). */
     object Connecting : TileState()
 
     /** Every frame is decoded and shown. */
@@ -32,11 +32,14 @@ sealed class TileState {
     /** One keyframe per second is shown (budget fallback). */
     object Keyframe : TileState()
 
-    /** The stream or the decoder failed for good. */
+    /** The stream or the decoder failed for good; the tile is dimmed with a Retry overlay. */
     data class Error(
         /** Short user-facing text. */
         val message: String,
-        /** True when the failure is the verification code; the grid re-prompts. */
+        /**
+         * True when the stream's decryptor gave up on the stored verification code. The grid checks
+         * the code against the recorder before deciding whether that is a wrong code or a bad stream.
+         */
         val wrongVerificationCode: Boolean = false,
     ) : TileState()
 }
@@ -57,8 +60,13 @@ fun interface StreamOpener {
  * Collects the camera's [AccessUnit] flow on the caller's scope and routes pictures either to a
  * private [TileDecoder] (live modes) or to the shared [KeyframeDecoderPool]. Decoders are created
  * lazily at the first keyframe that carries parameter sets, and recreated at the next keyframe
- * after a mode change, a parameter-set change, a stall or a surface change. A hardware codec that
- * refuses to start ("insufficient resources", error 1100 on the MiTV) is retried as software once.
+ * after a parameter-set change, a stall or a surface change. A hardware codec that refuses to
+ * start ("insufficient resources", error 1100 on the MiTV) is retried as software once.
+ *
+ * Switching between the two live modes (focus moved: hardware ↔ software) keeps the running
+ * decoder until the next keyframe and swaps there, so the picture never goes dark for a GOP. The
+ * state only goes back to [TileState.Connecting] when there is really no picture: a stream
+ * reconnect or a fresh start, never a mode change.
  */
 class TilePlayer(
     /** The camera shown. */
@@ -78,22 +86,34 @@ class TilePlayer(
     private var decoderConfig: CodecConfig? = null
     private var forceSoftware = false
     private var decoderDisabled = false
+    private var swapAtNextKeyframe = false
     private var job: Job? = null
     private var streaming = false
+    private var pictureShown = false
 
-    /** For the badge. */
+    /** For the overlay. */
     val state: StateFlow<TileState> = stateFlow.asStateFlow()
 
-    /** Current mode; changing it releases the private decoder, the next keyframe builds the new one. */
+    /**
+     * Current mode. Live → keyframe releases the private decoder at once (it must free the codec);
+     * keyframe → live builds one at the next keyframe; live → live swaps at the next keyframe.
+     */
     var mode: TileMode = TileMode.KEYFRAME
         set(value) {
             synchronized(lock) {
-                if (field == value) return
+                val previous = field
+                if (previous == value) return
                 field = value
-                releaseDecoderLocked()
                 decoderDisabled = false
-                if (!value.isLive) pool.cancel(this)
-                if (streaming) stateFlow.value = if (value.isLive) TileState.Connecting else TileState.Keyframe
+                if (value == TileMode.HW_LIVE) forceSoftware = false
+                when {
+                    !value.isLive -> {
+                        releaseDecoderLocked()
+                        if (streaming) stateFlow.value = TileState.Keyframe
+                    }
+                    previous.isLive && decoder != null -> swapAtNextKeyframe = true
+                }
+                if (value.isLive) pool.cancel(this)
             }
         }
 
@@ -105,6 +125,7 @@ class TilePlayer(
         synchronized(lock) {
             if (job != null) return
             stateFlow.value = TileState.Connecting
+            pictureShown = false
             // Off the main thread: codec creation takes ~100 ms and every picture is copied into
             // an input buffer; the UI must not pay for either.
             job =
@@ -128,6 +149,16 @@ class TilePlayer(
         }
     }
 
+    /** The user pressed Retry on a failed tile: forget the failure and open the stream again. */
+    fun retry(scope: CoroutineScope) {
+        stop()
+        synchronized(lock) {
+            decoderDisabled = false
+            forceSoftware = false
+        }
+        start(scope)
+    }
+
     /** The tile's surface appeared or vanished; decoding restarts at the next keyframe. */
     fun attachSurface(surface: Surface?) {
         synchronized(lock) {
@@ -149,7 +180,11 @@ class TilePlayer(
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
-        synchronized(lock) { if (this.decoder === decoder) stateFlow.value = TileState.Live }
+        synchronized(lock) {
+            if (this.decoder !== decoder) return
+            pictureShown = true
+            stateFlow.value = TileState.Live
+        }
     }
 
     override fun onError(
@@ -175,6 +210,7 @@ class TilePlayer(
                 is StreamStatus.Streaming -> streaming = true
                 is StreamStatus.Reconnecting -> {
                     streaming = false
+                    pictureShown = false
                     releaseDecoderLocked()
                     decoderDisabled = false
                     stateFlow.value = TileState.Connecting
@@ -186,7 +222,8 @@ class TilePlayer(
     private fun onStreamFailed(e: Throwable) {
         val state =
             when (e) {
-                is StreamException.WrongVerificationCode -> TileState.Error("Wrong code", wrongVerificationCode = true)
+                is StreamException.WrongVerificationCode ->
+                    TileState.Error("Cannot decrypt", wrongVerificationCode = true)
                 is StreamException.ChannelOffline -> TileState.Error("No video")
                 is StreamException.ChannelNotStreamable -> TileState.Error("No cloud stream")
                 is StreamException -> TileState.Error("Relay refused")
@@ -206,15 +243,18 @@ class TilePlayer(
             if (!mode.isLive) {
                 if (unit.isKeyframe) {
                     pool.submit(this, target, unit)
+                    pictureShown = true
                     stateFlow.value = TileState.Keyframe
                 }
                 return
             }
             if (decoderDisabled) return
             val config = unit.config
-            if (decoder == null || (config != null && config != decoderConfig)) {
+            val rebuild = decoder == null || swapAtNextKeyframe || (config != null && config != decoderConfig)
+            if (rebuild) {
                 if (!unit.isKeyframe || config == null) return
                 releaseDecoderLocked()
+                swapAtNextKeyframe = false
                 decoder = createDecoder(config, target) ?: return
                 decoderConfig = config
             }
@@ -252,6 +292,18 @@ class TilePlayer(
             Log.w(TAG, "${camera.key}: cannot create $name", e)
             failDecoder("Decoder error")
             null
+        } catch (e: IllegalArgumentException) {
+            // `configure` throws this when the surface is unusable: gone, or still held by another
+            // codec. It must not take the process down; the tile shows Retry instead.
+            d.release()
+            Log.w(TAG, "${camera.key}: cannot configure $name", e)
+            failDecoder("Decoder error")
+            null
+        } catch (e: IllegalStateException) {
+            d.release()
+            Log.w(TAG, "${camera.key}: codec in a bad state at start", e)
+            failDecoder("Decoder error")
+            null
         }
     }
 
@@ -265,6 +317,7 @@ class TilePlayer(
         decoder?.release()
         decoder = null
         decoderConfig = null
+        swapAtNextKeyframe = false
     }
 
     private companion object {

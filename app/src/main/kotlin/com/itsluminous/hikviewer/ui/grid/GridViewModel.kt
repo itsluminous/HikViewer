@@ -8,7 +8,7 @@ import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.CameraInventory
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.PlaybackCoordinator
-import com.itsluminous.hikviewer.player.TileState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +45,11 @@ sealed class GridUiState {
  * Owns the camera list, the chosen layout, the verification-code gate and the [PlaybackCoordinator].
  * Playback follows the Activity's started state through [onStart]/[onStop] so every decoder and
  * socket is released when the screen is not visible, as the brief requires.
+ *
+ * The verification code is asked for exactly once: a stored code that still hashes to the
+ * recorder's `encryptPwd` is never questioned. A stream that cannot be decrypted with it is a
+ * broken stream (shown as a dimmed tile with Retry), not a wrong code, unless the recorder's hash
+ * has meanwhile changed, which [onStreamRejectedCode] checks by re-reading the device list.
  */
 class GridViewModel(
     private val account: AccountRepository,
@@ -55,6 +60,7 @@ class GridViewModel(
     private val stateFlow = MutableStateFlow<GridUiState>(GridUiState.Loading)
     private var inventory: CameraInventory? = null
     private var visible = false
+    private var codeRecheck: Job? = null
 
     /** Screen state. */
     val state: StateFlow<GridUiState> = stateFlow.asStateFlow()
@@ -89,7 +95,7 @@ class GridViewModel(
         val inv = inventory ?: return
         val cameras = VisibleCameras.resolve(inv.cameras, settings.visibleCameraKeys)
         val hero = VisibleCameras.heroIndex(cameras, settings.heroCameraKey)
-        val needsCode = inv.needsVerificationCode && settings.verificationCode == null
+        val needsCode = inv.needsVerificationCode && !codeAccepted(inv)
         stateFlow.value = GridUiState.Ready(cameras, settings.gridLayout, hero, needsCode)
         playback.setCameras(cameras)
         playback.heroIndex = if (settings.gridLayout == GridLayoutMode.HERO) hero else null
@@ -118,12 +124,43 @@ class GridViewModel(
         return ok
     }
 
-    /** A stream reported the stored code as wrong (the recorder's code changed): ask again. */
-    fun onWrongVerificationCode() {
-        if (settings.verificationCode == null) return
-        settings.verificationCode = null
-        playback.stop()
-        applySettings()
+    /**
+     * A stream's decryptor gave up on the stored code. Re-reads the recorder's `encryptPwd`; only
+     * when the stored code no longer matches it is the code dropped and asked for again. One
+     * re-check runs at a time, however many tiles report it.
+     */
+    fun onStreamRejectedCode() {
+        if (settings.verificationCode == null || codeRecheck?.isActive == true) return
+        codeRecheck =
+            viewModelScope.launch {
+                val inv =
+                    try {
+                        account.loadInventory(refresh = true)
+                    } catch (_: IOException) {
+                        return@launch // cannot tell; keep the code, the tile keeps its Retry
+                    } catch (_: IllegalStateException) {
+                        return@launch
+                    }
+                inventory = inv
+                if (codeAccepted(inv)) return@launch
+                settings.verificationCode = null
+                playback.stop()
+                applySettings()
+            }
+    }
+
+    /** The Retry overlay of tile [index]. */
+    fun retry(index: Int) {
+        playback.players.value
+            .getOrNull(index)
+            ?.let(playback::retry)
+    }
+
+    /** True when a stored code exists and still matches the recorder (or the recorder reports no hash). */
+    private fun codeAccepted(inv: CameraInventory): Boolean {
+        val stored = settings.verificationCode ?: return false
+        val hash = inv.encryptPwd ?: return true
+        return VerificationCode.matches(stored, hash)
     }
 
     /** Streams may run. */
@@ -138,10 +175,6 @@ class GridViewModel(
         visible = false
         playback.stop()
     }
-
-    /** True when any tile currently reports the stored code as wrong. */
-    fun anyWrongCode(): Boolean =
-        playback.players.value.any { (it.state.value as? TileState.Error)?.wrongVerificationCode == true }
 
     override fun onCleared() {
         playback.release()

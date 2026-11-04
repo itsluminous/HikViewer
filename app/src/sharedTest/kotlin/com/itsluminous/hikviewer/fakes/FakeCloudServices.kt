@@ -40,6 +40,12 @@ class FakeCloudServices(
     /** The accounts handed out. */
     val accounts = mutableListOf<FakeAccount>()
 
+    /** Device-list calls across all accounts. */
+    var deviceListings = 0
+
+    /** The recorder's `encryptPwd`; change it to simulate the code being changed on the recorder. */
+    var encryptPwd: String? = if (encrypted) GOOD_CODE_DOUBLE_MD5 else null
+
     override suspend fun login(
         account: String,
         password: String,
@@ -70,17 +76,20 @@ class FakeCloudServices(
         /** Exception the next stream fails with. */
         var nextStreamError: StreamException? = null
 
-        override suspend fun listDevices(): List<Device> = listOf(
-            Device(
-                serial = SERIAL,
-                name = "Test DVR",
-                model = "DS-7A16HQHI-K1",
-                isOnline = true,
-                isEncrypted = encrypted,
-                encryptPwd = if (encrypted) GOOD_CODE_DOUBLE_MD5 else null,
-                channelCount = cameraCount,
-            ),
-        )
+        override suspend fun listDevices(): List<Device> {
+            deviceListings++
+            return listOf(
+                Device(
+                    serial = SERIAL,
+                    name = "Test DVR",
+                    model = "DS-7A16HQHI-K1",
+                    isOnline = true,
+                    isEncrypted = encrypted,
+                    encryptPwd = encryptPwd,
+                    channelCount = cameraCount,
+                ),
+            )
+        }
 
         override suspend fun listCameras(device: Device): List<Camera> = (1..cameraCount).map { n ->
             Camera(SERIAL, n, "Camera $n", hasSignal = n <= signalCount, isOnline = true)

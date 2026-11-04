@@ -99,6 +99,12 @@ class PlaybackCoordinator(
         playersFlow.value.forEach { it.stop() }
     }
 
+    /** Reopens one failed tile's stream (the Retry overlay); a no-op while playback is stopped. */
+    fun retry(player: TilePlayer) {
+        if (!running || player !in playersFlow.value) return
+        player.retry(scope)
+    }
+
     /** Releases the shared pool too; call when the owner dies. */
     fun release() {
         stop()

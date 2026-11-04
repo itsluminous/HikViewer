@@ -31,8 +31,10 @@ public sealed class StreamException(
     message: String,
     cause: Throwable? = null,
 ) : IOException(message, cause) {
-    /** The verification code does not decrypt this stream. */
-    public class WrongVerificationCode : StreamException("The verification code does not decrypt this stream")
+    /** The verification code does not decrypt this stream; [detail] describes the undecided NALs. */
+    public class WrongVerificationCode(
+        detail: String? = null,
+    ) : StreamException("The verification code does not decrypt this stream" + (detail?.let { " ($it)" } ?: ""))
 
     /** The cloud lists no stream for this channel (not in the VTM page list). */
     public class ChannelNotStreamable(
@@ -232,7 +234,7 @@ public class DecodePipeline(
         val out = ArrayList<AccessUnit>()
         for (nal in nals) {
             val decrypted = d.feed(nal)
-            if (d.keyError) throw StreamException.WrongVerificationCode()
+            if (d.keyError) throw StreamException.WrongVerificationCode(d.keyErrorDetail)
             val codec = d.codec ?: continue
             val a = assembler ?: AccessUnitAssembler(codec).also { assembler = it }
             decrypted.forEach { unit -> a.feed(unit)?.let(out::add) }

@@ -55,6 +55,12 @@ class GridViewModelTest {
 
     private fun ready(vm: GridViewModel) = vm.state.value as GridUiState.Ready
 
+    /** Runs pending work while playback is on; `advanceUntilIdle` would spin the watchdog ticker forever. */
+    private fun settle() {
+        dispatcher.scheduler.advanceTimeBy(100)
+        dispatcher.scheduler.runCurrent()
+    }
+
     @Test
     fun `loads cameras with signal and asks for the code before streaming`() = runTest(dispatcher) {
         val vm = viewModel()
@@ -145,16 +151,65 @@ class GridViewModelTest {
     }
 
     @Test
-    fun `a stream rejecting the stored code re-prompts`() = runTest(dispatcher) {
+    fun `a stream rejecting a code that still matches the recorder keeps the code and does not prompt`() =
+        runTest(dispatcher) {
+            graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+            val vm = viewModel()
+            vm.onStart()
+            vm.load()
+            settle()
+            val devicesBefore = cloud.deviceListings
+            vm.onStreamRejectedCode()
+            vm.onStreamRejectedCode() // a second tile reporting the same thing shares the re-check
+            settle()
+            assertThat(cloud.deviceListings).isEqualTo(devicesBefore + 1)
+            assertThat(graph.settingsStore.verificationCode).isEqualTo(FakeCloudServices.GOOD_CODE)
+            assertThat(ready(vm).needsCode).isFalse()
+            // Streams were not torn down: still the first 12 opens.
+            assertThat(cloud.accounts.single().opened).hasSize(12)
+            vm.playback.release()
+        }
+
+    @Test
+    fun `a stream rejecting the code after the recorder's hash changed re-prompts`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
         val vm = viewModel()
+        vm.onStart()
         vm.load()
-        dispatcher.scheduler.advanceUntilIdle()
-        vm.onWrongVerificationCode()
+        settle()
+        cloud.encryptPwd = "0123456789abcdef0123456789abcdef"
+        vm.onStreamRejectedCode()
+        settle()
         assertThat(graph.settingsStore.verificationCode).isNull()
         assertThat(ready(vm).needsCode).isTrue()
-        vm.onWrongVerificationCode()
-        assertThat(vm.anyWrongCode()).isFalse()
+        vm.playback.release()
+    }
+
+    @Test
+    fun `a stored code that no longer matches the recorder is asked for again at launch`() = runTest(dispatcher) {
+        graph.settingsStore.verificationCode = "STALE1"
+        val vm = viewModel()
+        vm.onStart()
+        vm.load()
+        settle()
+        assertThat(ready(vm).needsCode).isTrue()
+        assertThat(cloud.accounts.single().opened).isEmpty()
+        vm.playback.release()
+    }
+
+    @Test
+    fun `retry reopens only that tile's stream`() = runTest(dispatcher) {
+        graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        val vm = viewModel()
+        vm.onStart()
+        vm.load()
+        settle()
+        assertThat(cloud.accounts.single().opened).hasSize(12)
+        vm.retry(3)
+        dispatcher.scheduler.runCurrent()
+        val opened = cloud.accounts.single().opened
+        assertThat(opened).hasSize(13)
+        assertThat(opened.last().first.channelNo).isEqualTo(4)
         vm.playback.release()
     }
 
@@ -165,7 +220,7 @@ class GridViewModelTest {
                 graph.playbackFactory.create({ c, q, s -> graph.account.openStream(c, q, s) }, graph.capabilities, this)
             }
         vm.load()
-        dispatcher.scheduler.advanceUntilIdle()
+        settle()
         assertThat(vm.state.value).isInstanceOf(GridUiState.Error::class.java)
         vm.playback.release()
     }

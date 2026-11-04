@@ -1,7 +1,6 @@
 package com.itsluminous.hikviewer.ui.grid
 
 import android.content.Context
-import android.graphics.Color
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -13,7 +12,8 @@ import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
 import com.itsluminous.hikviewer.player.TileState
 
 /**
- * One camera in the grid: a `SurfaceView` for the decoder, the camera name and a state badge.
+ * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
+ * nothing has been drawn yet, and a dim scrim with a centred Retry while the stream is down.
  *
  * Focus is made unmistakable on a TV viewed from the couch: the tile scales up 6 %, draws a 4 dp
  * accent border and rises above its neighbours, animated over 120 ms. A mouse pointer entering
@@ -33,6 +33,9 @@ class CameraTileView
 
         /** The video surface. */
         val surfaceView: View get() = binding.surface
+
+        /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
+        val showsRetry: Boolean get() = binding.errorOverlay.visibility == VISIBLE
 
         init {
             isFocusable = true
@@ -71,25 +74,15 @@ class CameraTileView
                 binding.name.text = value
             }
 
-        /** Updates the badge for [state]. */
+        /** Shows the spinner, the Retry overlay or neither for [state]. Idempotent: no view is recreated. */
         fun bind(state: TileState) {
-            val badge = binding.badge
-            when (state) {
-                TileState.Connecting -> badge.setText(R.string.tile_connecting)
-                TileState.Live -> badge.setText(R.string.tile_live)
-                TileState.Keyframe -> badge.setText(R.string.tile_keyframe)
-                is TileState.Error -> badge.text = state.message
+            binding.spinner.visibility = if (state == TileState.Connecting) VISIBLE else GONE
+            if (state is TileState.Error) {
+                binding.errorMessage.text = state.message
+                binding.errorOverlay.visibility = VISIBLE
+            } else {
+                binding.errorOverlay.visibility = GONE
             }
-            badge.setTextColor(
-                when (state) {
-                    TileState.Live -> context.getColor(R.color.badge_live)
-                    is TileState.Error -> context.getColor(R.color.badge_error)
-                    else -> Color.WHITE
-                },
-            )
-            // The surface is opaque black until the first frame; hide it behind the badge while
-            // nothing renders so an error tile does not look like a dark camera.
-            binding.surface.alpha = if (state is TileState.Error) 0f else 1f
         }
 
         override fun onFocusChanged(

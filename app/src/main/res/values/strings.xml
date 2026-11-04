@@ -23,9 +23,7 @@
         <item quantity="other">%1$d live</item>
     </plurals>
     <string name="grid_layout_button">Layout</string>
-    <string name="tile_connecting">connecting</string>
-    <string name="tile_live">live</string>
-    <string name="tile_keyframe">1 fps</string>
+    <string name="tile_retry">Retry</string>
 
     <!-- Layouts -->
     <string name="layout_auto">Auto</string>

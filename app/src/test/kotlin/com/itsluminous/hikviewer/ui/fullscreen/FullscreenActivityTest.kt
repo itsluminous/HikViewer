@@ -73,13 +73,28 @@ class FullscreenActivityTest {
                 a.findViewById<android.view.View>(R.id.right_zone).performClick()
                 ShadowLooper.idleMainLooper()
                 assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 2")
-                // Streams start on worker threads, so only the set is deterministic here.
-                assertThat(
+                // Streams start on worker threads: a camera switched away from before its coroutine
+                // ran never reaches the cloud, so only the first and the last open are deterministic.
+                val deadline = System.currentTimeMillis() + 5_000
+                while (cloud.accounts
+                        .single()
+                        .opened
+                        .lastOrNull()
+                        ?.first
+                        ?.channelNo != 2 &&
+                    System.currentTimeMillis() < deadline
+                ) {
+                    Thread.sleep(20)
+                    ShadowLooper.idleMainLooper()
+                }
+                val opened =
                     cloud.accounts
                         .single()
                         .opened
-                        .map { it.first.channelNo },
-                ).containsExactly(1, 3, 1, 2)
+                        .map { it.first.channelNo }
+                assertThat(opened.first()).isEqualTo(1)
+                assertThat(opened.last()).isEqualTo(2)
+                assertThat(opened).containsAtLeast(1, 3, 2).inOrder()
             }
         }
     }

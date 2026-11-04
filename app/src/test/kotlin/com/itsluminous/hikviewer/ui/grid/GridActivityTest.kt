@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.ui.grid
 import android.view.KeyEvent
 import android.view.View
 import android.widget.TextView
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -11,6 +12,7 @@ import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
+import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
@@ -41,6 +43,16 @@ class GridActivityTest {
     private fun ActivityScenario<GridActivity>.grid(block: (GridActivity, CameraGridLayout) -> Unit) {
         ShadowLooper.idleMainLooper()
         onActivity { a -> block(a, a.findViewById(R.id.grid)) }
+    }
+
+    /** Streams run on real worker threads; pumps the main looper until [condition] holds (max 5 s). */
+    private fun awaitUi(condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!condition()) {
+            check(System.currentTimeMillis() < deadline) { "condition not met in time" }
+            Thread.sleep(20)
+            ShadowLooper.idleMainLooper()
+        }
     }
 
     @Test
@@ -95,6 +107,87 @@ class GridActivityTest {
                 val next = shadowOf(a).nextStartedActivity
                 assertThat(next.component?.className).isEqualTo(FullscreenActivity::class.java.name)
                 assertThat(next.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(5)
+            }
+        }
+    }
+
+    @Test
+    fun `state updates never recreate tile views or their surfaces`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tiles = (0 until grid.childCount).map { grid.getChildAt(it) as CameraTileView }
+                val surfaces = tiles.map { it.surfaceView }
+                val vm = a.viewModels<GridViewModel>().value
+                // Every kind of state churn the player layer produces: layout change, settings
+                // re-apply, focus move (decoder policy), tile errors and a stream retry.
+                vm.setLayout(GridLayoutMode.GRID_3X3)
+                vm.setLayout(GridLayoutMode.AUTO)
+                vm.applySettings()
+                grid.getChildAt(4).requestFocus()
+                grid.getChildAt(7).requestFocus()
+                cloud.accounts.single().nextStreamError =
+                    StreamException.ChannelOffline(
+                        vm.playback.players.value[2]
+                            .camera,
+                    )
+                vm.retry(2)
+                awaitUi { (grid.getChildAt(2) as CameraTileView).showsRetry }
+                vm.applySettings()
+                ShadowLooper.idleMainLooper()
+                val after = (0 until grid.childCount).map { grid.getChildAt(it) }
+                assertThat(after).containsExactlyElementsIn(tiles).inOrder()
+                assertThat(tiles.map { it.surfaceView }).containsExactlyElementsIn(surfaces).inOrder()
+            }
+        }
+    }
+
+    @Test
+    fun `a failed tile is dimmed with Retry and OK on it reopens that stream`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val vm = a.viewModels<GridViewModel>().value
+                val account = cloud.accounts.single()
+                account.nextStreamError =
+                    StreamException.ChannelOffline(
+                        vm.playback.players.value[1]
+                            .camera,
+                    )
+                vm.retry(1)
+                val tile = grid.getChildAt(1) as CameraTileView
+                awaitUi { tile.showsRetry }
+                assertThat(tile.findViewById<View>(R.id.error_overlay).visibility).isEqualTo(View.VISIBLE)
+                assertThat(tile.findViewById<TextView>(R.id.error_message).text.toString()).isEqualTo("No video")
+                val opened = account.opened.size
+                tile.performClick()
+                awaitUi { account.opened.size == opened + 1 && !tile.showsRetry }
+                assertThat(
+                    account.opened
+                        .last()
+                        .first.channelNo,
+                ).isEqualTo(2)
+                assertThat(shadowOf(a).nextStartedActivity).isNull()
+            }
+        }
+    }
+
+    @Test
+    fun `a stream that cannot decrypt does not re-prompt while the stored code matches the recorder`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val vm = a.viewModels<GridViewModel>().value
+                val account = cloud.accounts.single()
+                val listings = cloud.deviceListings
+                account.nextStreamError = StreamException.WrongVerificationCode("nals=30")
+                vm.retry(0)
+                awaitUi { (grid.getChildAt(0) as CameraTileView).showsRetry }
+                awaitUi { cloud.deviceListings == listings + 1 }
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.verificationCode).isEqualTo(FakeCloudServices.GOOD_CODE)
+                assertThat(
+                    shadowOf(
+                        ApplicationProvider.getApplicationContext<android.app.Application>(),
+                    ).latestAlertDialog,
+                ).isNull()
             }
         }
     }

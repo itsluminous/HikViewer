@@ -14,7 +14,8 @@ import org.junit.runner.RunWith
 class CameraTileViewTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val tile = CameraTileView(context)
-    private val badge get() = tile.findViewById<TextView>(R.id.badge)
+    private val spinner get() = tile.findViewById<View>(R.id.spinner)
+    private val overlay get() = tile.findViewById<View>(R.id.error_overlay)
 
     @Test
     fun `is focusable and clickable but not in touch mode`() {
@@ -24,22 +25,37 @@ class CameraTileViewTest {
     }
 
     @Test
-    fun `badge follows the state`() {
+    fun `spinner while connecting, nothing while live or keyframe, dimmed retry on error`() {
         tile.cameraName = "Gate"
         assertThat(tile.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Gate")
         tile.bind(TileState.Connecting)
-        assertThat(badge.text.toString()).isEqualTo(context.getString(R.string.tile_connecting))
+        assertThat(spinner.visibility).isEqualTo(View.VISIBLE)
+        assertThat(overlay.visibility).isEqualTo(View.GONE)
         tile.bind(TileState.Live)
-        assertThat(badge.text.toString()).isEqualTo(context.getString(R.string.tile_live))
-        assertThat(badge.currentTextColor).isEqualTo(context.getColor(R.color.badge_live))
+        assertThat(spinner.visibility).isEqualTo(View.GONE)
+        assertThat(overlay.visibility).isEqualTo(View.GONE)
+        assertThat(tile.showsRetry).isFalse()
         tile.bind(TileState.Keyframe)
-        assertThat(badge.text.toString()).isEqualTo(context.getString(R.string.tile_keyframe))
+        assertThat(spinner.visibility).isEqualTo(View.GONE)
+        assertThat(overlay.visibility).isEqualTo(View.GONE)
         tile.bind(TileState.Error("No video"))
-        assertThat(badge.text.toString()).isEqualTo("No video")
-        assertThat(badge.currentTextColor).isEqualTo(context.getColor(R.color.badge_error))
-        assertThat(tile.surfaceView.alpha).isEqualTo(0f)
+        assertThat(overlay.visibility).isEqualTo(View.VISIBLE)
+        assertThat(tile.showsRetry).isTrue()
+        assertThat(tile.findViewById<TextView>(R.id.error_message).text.toString()).isEqualTo("No video")
+        assertThat(tile.findViewById<TextView>(R.id.retry).text.toString())
+            .isEqualTo(context.getString(R.string.tile_retry))
+        // The overlay never steals D-pad focus from the tile.
+        assertThat(tile.findViewById<View>(R.id.retry).isFocusable).isFalse()
         tile.bind(TileState.Live)
-        assertThat(tile.surfaceView.alpha).isEqualTo(1f)
+        assertThat(overlay.visibility).isEqualTo(View.GONE)
+    }
+
+    @Test
+    fun `binding states never replaces child views`() {
+        val children = (0 until tile.childCount).map { tile.getChildAt(it) }
+        listOf(TileState.Connecting, TileState.Live, TileState.Error("x"), TileState.Keyframe, TileState.Live)
+            .forEach(tile::bind)
+        assertThat((0 until tile.childCount).map { tile.getChildAt(it) }).containsExactlyElementsIn(children).inOrder()
     }
 
     @Test

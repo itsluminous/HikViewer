@@ -144,7 +144,7 @@ class GridActivity : AppCompatActivity() {
         while (grid.childCount < cameras.size) {
             val tile = CameraTileView(this)
             val index = grid.childCount
-            tile.setOnClickListener { openFullscreen(index) }
+            tile.setOnClickListener { if (tile.showsRetry) viewModel.retry(index) else openFullscreen(index) }
             tile.setOnFocusChangeListener { _, focused -> if (focused) viewModel.focusedIndex = index }
             grid.addView(tile)
         }
@@ -169,7 +169,7 @@ class GridActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     player.state.collect { state ->
                         tile.bind(state)
-                        if (state is TileState.Error && state.wrongVerificationCode) viewModel.onWrongVerificationCode()
+                        if (state is TileState.Error && state.wrongVerificationCode) viewModel.onStreamRejectedCode()
                         updateLiveCount(players)
                     }
                 }

@@ -1,0 +1,31 @@
+{
+  "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+  "page": {"offset": 0, "limit": 50, "totalResults": 1, "hasNext": false},
+  "deviceInfos": [
+    {
+      "name": "Home DVR",
+      "deviceSerial": "FAKE0000001",
+      "fullSerial": "DVR/DVS-40-A0120211022AAWRFAKE0000001WCVU",
+      "deviceType": "DVR/DVS-40-A",
+      "customType": "DS-7A16HQHI-K1",
+      "version": "V4.21.002 build 190925",
+      "status": 1,
+      "channelNumber": 40,
+      "deviceCategory": "DVR",
+      "supportExt": {"support_substream": "1"}
+    }
+  ],
+  "statusInfos": {
+    "FAKE0000001": {
+      "diskNum": 1,
+      "diskState": "0",
+      "globalStatus": 1,
+      "privacyStatus": 0,
+      "isEncrypt": 1,
+      "encryptPwd": "5a7a8c3c2d1f0e9b8a7c6d5e4f3a2b1c",
+      "upgradeAvailable": 0,
+      "optionals": {"OnlineStatus": "1", "diskHealth": "0", "diskCapacity": "931"}
+    }
+  },
+  "connectionInfos": {"FAKE0000001": {"localIp": "192.0.2.10", "netIp": "198.51.100.7", "netType": 3}}
+}

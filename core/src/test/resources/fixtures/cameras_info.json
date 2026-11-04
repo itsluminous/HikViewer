@@ -1,0 +1,14 @@
+{
+  "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+  "cameraInfos": [
+    {"cameraId": "FAKE0000001_1", "deviceSerial": "FAKE0000001", "channelNo": 1, "cameraName": "0.Ghar",
+     "isShow": 1, "status": 1, "deviceChannelInfo": {"signalStatus": 1, "channelNo": 1}},
+    {"cameraId": "FAKE0000001_2", "deviceSerial": "FAKE0000001", "channelNo": 2, "cameraName": "1.Balcony",
+     "isShow": 1, "status": 1, "deviceChannelInfo": {"signalStatus": 1, "channelNo": 2}},
+    {"cameraId": "FAKE0000001_13", "deviceSerial": "FAKE0000001", "channelNo": 13, "cameraName": "Camera 13",
+     "isShow": 1, "status": 1, "deviceChannelInfo": {"signalStatus": 0, "channelNo": 13}},
+    {"cameraId": "FAKE0000001_17", "deviceSerial": "FAKE0000001", "channelNo": 17, "cameraName": "",
+     "isShow": 0, "status": 0, "deviceChannelInfo": {"signalStatus": 0, "channelNo": 17}},
+    {"cameraId": "FAKE0000001_broken", "deviceSerial": "FAKE0000001", "cameraName": "no channel number"}
+  ]
+}

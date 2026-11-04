@@ -1,0 +1,14 @@
+{
+  "meta": {"code": 200, "message": "操作成功"},
+  "page": {"offset": 0, "limit": 50, "totalResults": 3, "hasNext": true},
+  "resourceInfos": [
+    {"resourceId": "RES-DEV", "deviceSerial": "FAKE0000001", "localIndex": "0", "resourceName": "Home DVR",
+     "resourceType": 3, "streamBizUrl": ""},
+    {"resourceId": "RES-CH1", "deviceSerial": "FAKE0000001", "localIndex": "1", "resourceName": "0.Ghar",
+     "resourceType": 1, "streamBizUrl": "?biz=1&env=prod"}
+  ],
+  "VTM": {
+    "RES-CH1": {"externalIp": "yducvtm.ezvizlife.com", "internalIp": "10.0.0.1", "port": 10554, "domain": ""},
+    "RES-DEV": {"externalIp": "yducvtm.ezvizlife.com", "port": 10554}
+  }
+}

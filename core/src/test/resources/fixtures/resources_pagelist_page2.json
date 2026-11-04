@@ -1,0 +1,16 @@
+{
+  "meta": {"code": 200, "message": "操作成功"},
+  "page": {"offset": 2, "limit": 50, "totalResults": 3, "hasNext": false},
+  "resourceInfos": [
+    {"resourceId": "RES-CH2", "deviceSerial": "FAKE0000001", "localIndex": "2", "resourceName": "1.Balcony",
+     "resourceType": 1, "streamBizUrl": "?biz=1&env=prod"},
+    {"resourceId": "RES-NORELAY", "deviceSerial": "FAKE0000001", "localIndex": "3", "resourceName": "orphan"},
+    {"resourceId": "RES-EVIL", "deviceSerial": "FAKE0000001", "localIndex": "4", "resourceName": "evil"},
+    {"resourceId": "RES-BADPORT", "deviceSerial": "FAKE0000001", "localIndex": "5", "resourceName": "badport"}
+  ],
+  "VTM": {
+    "RES-CH2": {"externalIp": "", "domain": "", "internalIp": "152.32.156.219", "port": "10554"},
+    "RES-EVIL": {"externalIp": "relay.example.com", "port": 10554},
+    "RES-BADPORT": {"externalIp": "yducvtm.ezvizlife.com", "port": 70000}
+  }
+}

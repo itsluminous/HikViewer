@@ -12,6 +12,8 @@ import java.security.MessageDigest
  */
 public object Md5 {
     private const val HEX_CHARS = "0123456789abcdef"
+    private const val BYTE_MASK = 0xff
+    private const val NIBBLE_MASK = 0x0f
 
     /** Lowercase hex MD5 of [input] encoded as UTF-8. */
     public fun hex(input: String): String = hex(input.toByteArray(Charsets.UTF_8))
@@ -21,9 +23,9 @@ public object Md5 {
         val digest = MessageDigest.getInstance("MD5").digest(bytes)
         val out = CharArray(digest.size * 2)
         digest.forEachIndexed { i, b ->
-            val v = b.toInt() and 0xff
+            val v = b.toInt() and BYTE_MASK
             out[i * 2] = HEX_CHARS[v ushr 4]
-            out[i * 2 + 1] = HEX_CHARS[v and 0x0f]
+            out[i * 2 + 1] = HEX_CHARS[v and NIBBLE_MASK]
         }
         return String(out)
     }

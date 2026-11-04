@@ -35,3 +35,20 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// Coverage gate for the protocol module. Start at 70 % line coverage and raise as the module grows;
+// protocol code is expected to end near 90 % because it is driven by known-answer tests.
+kover {
+    reports {
+        total {
+            xml { onCheck = true }
+            html { onCheck = true }
+            verify {
+                onCheck = true
+                rule("core line coverage") {
+                    minBound(70)
+                }
+            }
+        }
+    }
+}

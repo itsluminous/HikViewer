@@ -1,0 +1,86 @@
+# detekt configuration for HikViewer. Built on top of the bundled defaults (buildUponDefaultConfig);
+# only deviations are listed. No baseline file: findings are fixed, or a rule is tuned here with a
+# comment saying why.
+
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: true
+
+comments:
+  UndocumentedPublicClass:
+    # :core uses explicitApi(); every public class is API for :app and deserves a KDoc saying why it exists.
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+    searchInNestedClass: true
+    searchInInnerClass: true
+    searchInInnerObject: true
+    searchInInnerInterface: true
+    searchInProtectedClass: false
+  UndocumentedPublicFunction:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+    searchProtectedFunction: false
+
+complexity:
+  LongParameterList:
+    # Protocol frames and settings models legitimately carry many fields; constructors are exempt.
+    constructorThreshold: 10
+    functionThreshold: 6
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+    ignoreAnnotatedParameter: ['Inject']
+  TooManyFunctions:
+    thresholdInFiles: 15
+    thresholdInClasses: 15
+    thresholdInInterfaces: 15
+    thresholdInObjects: 15
+    ignoreDeprecated: true
+    ignorePrivate: true
+    ignoreOverridden: true
+
+naming:
+  FunctionNaming:
+    # JUnit test names with backticks and spaces read as sentences in reports.
+    ignoreAnnotated: ['Test', 'ParameterizedTest']
+
+style:
+  MagicNumber:
+    # Protocol parsing is full of fixed offsets and header constants; tests are full of expected values.
+    excludes: ['**/test/**', '**/androidTest/**']
+    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '8', '16', '32', '64', '100', '1000']
+    ignoreHashCodeFunction: true
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: false
+    ignoreConstantDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
+    ignoreRanges: false
+    ignoreExtensionFunctions: true
+  MaxLineLength:
+    maxLineLength: 120
+    excludeCommentStatements: true
+  ReturnCount:
+    max: 3
+    excludeGuardClauses: true
+  UnusedPrivateMember:
+    active: true
+  ForbiddenComment:
+    # The brief forbids TODOs without an issue-style note; a bare TODO/FIXME is a finding.
+    active: true
+    comments:
+      - reason: 'Describe the follow-up and link an issue instead of leaving a bare TODO.'
+        value: 'TODO:'
+      - reason: 'Describe the follow-up and link an issue instead of leaving a bare FIXME.'
+        value: 'FIXME:'
+      - reason: 'Describe the follow-up and link an issue instead of leaving a bare STOPSHIP.'
+        value: 'STOPSHIP:'
+
+formatting:
+  # detekt-formatting wraps ktlint. The ktlint Gradle plugin is the authority on formatting
+  # (it reads .editorconfig); keep this wrapper off to avoid double-reporting the same finding.
+  active: false

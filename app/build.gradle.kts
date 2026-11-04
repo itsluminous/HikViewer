@@ -17,12 +17,21 @@ val releaseSigning = ReleaseSigning.load(rootProject.file("keystore.properties")
 
 android {
     namespace = "com.itsluminous.hikviewer"
-    compileSdk = libs.versions.compileSdk.get().toInt()
+    compileSdk =
+        libs.versions.compileSdk
+            .get()
+            .toInt()
 
     defaultConfig {
         applicationId = "com.itsluminous.hikviewer"
-        minSdk = libs.versions.minSdk.get().toInt()
-        targetSdk = libs.versions.targetSdk.get().toInt()
+        minSdk =
+            libs.versions.minSdk
+                .get()
+                .toInt()
+        targetSdk =
+            libs.versions.targetSdk
+                .get()
+                .toInt()
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -84,6 +93,21 @@ android {
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/LICENSE*", "DebugProbesKt.bin")
     }
+
+    // Android Lint is a hard gate: every warning fails the build and dependencies (:core) are
+    // checked too. There is deliberately no baseline file; fix or suppress with a justification.
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = true
+        checkAllWarnings = true
+        checkReleaseBuilds = false // lintDebug (run by `check`) covers the same sources
+        lintConfig = rootProject.file("config/lint/lint.xml")
+        xmlReport = true
+        htmlReport = true
+        sarifReport = true
+        textReport = false
+    }
 }
 
 kotlin {
@@ -116,10 +140,17 @@ data class ReleaseSigning(
     val keyPassword: String,
 ) {
     companion object {
-        fun load(propertiesFile: File, providers: ProviderFactory): ReleaseSigning? {
+        fun load(
+            propertiesFile: File,
+            providers: ProviderFactory,
+        ): ReleaseSigning? {
             val props = Properties()
             if (propertiesFile.isFile) propertiesFile.inputStream().use(props::load)
-            fun value(envName: String, propName: String): String? =
+
+            fun value(
+                envName: String,
+                propName: String,
+            ): String? =
                 providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
                     ?: props.getProperty(propName)?.takeIf { it.isNotBlank() }
 
@@ -132,6 +163,40 @@ data class ReleaseSigning(
                 keyAlias = value("KEY_ALIAS", "keyAlias") ?: return null,
                 keyPassword = value("KEY_PASSWORD", "keyPassword") ?: return null,
             )
+        }
+    }
+}
+
+// Coverage gate for the UI module. Only the debug variant is measured (release has no extra code
+// and running its unit tests twice buys nothing). Start at 50 % line coverage; raise as the UI
+// gets Robolectric coverage. Generated classes (view binding, R) are excluded explicitly:
+// Kover 0.9.1's androidGeneratedClasses() helper excluded every class in this project.
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "com.itsluminous.hikviewer.databinding.*",
+                    "com.itsluminous.hikviewer.BuildConfig",
+                    "com.itsluminous.hikviewer.R",
+                    "com.itsluminous.hikviewer.R$*",
+                )
+            }
+        }
+        total {
+            xml { onCheck = false }
+            html { onCheck = false }
+            verify { onCheck = false }
+        }
+        variant("debug") {
+            xml { onCheck = true }
+            html { onCheck = true }
+            verify {
+                onCheck = true
+                rule("app line coverage") {
+                    minBound(50)
+                }
+            }
         }
     }
 }

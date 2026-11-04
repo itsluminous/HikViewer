@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Android Lint tuning. warningsAsErrors + checkAllWarnings are on, so every entry here needs a reason.
+-->
+<lint>
+    <!-- Dependabot owns version bumps; a newer library must not fail an unrelated PR. -->
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
+    <issue id="NewerVersionAvailable" severity="informational" />
+
+    <!-- The project is English-only for now; translation gates come with the i18n work. -->
+    <issue id="MissingTranslation" severity="ignore" />
+
+    <!-- Selectable text makes a TextView focusable, which steals D-pad focus from camera tiles on TV. -->
+    <issue id="SelectableText" severity="ignore" />
+
+    <!-- Lint suggests merging mipmap-anydpi-v26 into mipmap-anydpi because minSdk is 26, but AGP 8.7's
+         resource merger silently drops an adaptive icon placed in mipmap-anydpi (aapt2 then fails with
+         "resource mipmap/ic_launcher not found"). Keep the -v26 folder. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore regexp="mipmap-anydpi-v26" />
+    </issue>
+
+    <!-- The only raster asset is the Android TV home-screen banner, which the TV guidelines define as
+         a single 320x180 xhdpi image. The launcher icon is an adaptive vector. -->
+    <issue id="IconMissingDensityFolder" severity="ignore" />
+</lint>

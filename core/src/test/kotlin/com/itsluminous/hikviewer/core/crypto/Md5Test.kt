@@ -14,10 +14,18 @@ class Md5Test {
         "abc, 900150983cd24fb0d6963f7d28e17f72",
         "message digest, f96b697d7cb7938d525a2f31aaf161d0",
         "abcdefghijklmnopqrstuvwxyz, c3fcd3d76192e4007dfb496cca67e13b",
-        "12345678901234567890123456789012345678901234567890123456789012345678901234567890, 57edf4a22be3c955ac49da2e2107b67a",
     )
-    fun `hex matches RFC 1321 vectors`(input: String, expected: String) {
+    fun `hex matches RFC 1321 vectors`(
+        input: String,
+        expected: String,
+    ) {
         assertThat(Md5.hex(input)).isEqualTo(expected)
+    }
+
+    @Test
+    fun `hex matches the 80-digit RFC 1321 vector`() {
+        val input = "1234567890".repeat(8)
+        assertThat(Md5.hex(input)).isEqualTo("57edf4a22be3c955ac49da2e2107b67a")
     }
 
     @Test

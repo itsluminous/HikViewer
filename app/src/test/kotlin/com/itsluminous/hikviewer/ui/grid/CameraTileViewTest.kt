@@ -68,4 +68,22 @@ class CameraTileViewTest {
         tile.clearFocus()
         assertThat(frame.visibility).isEqualTo(View.INVISIBLE)
     }
+
+    @Test
+    fun `focus frame is drawn inside the tile, not in the gutter`() {
+        tile.measure(
+            View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(270, View.MeasureSpec.EXACTLY),
+        )
+        tile.layout(0, 0, 480, 270)
+        val frame = tile.findViewById<View>(R.id.focus_frame)
+        assertThat(listOf(frame.left, frame.top, frame.right, frame.bottom)).containsExactly(0, 0, 480, 270).inOrder()
+        val gutter = context.resources.getDimensionPixelSize(R.dimen.tile_gap)
+        val onePx =
+            context.resources.displayMetrics.density
+                .toInt()
+                .coerceAtLeast(1)
+        assertThat(gutter).isEqualTo(onePx)
+        assertThat(context.resources.getDimensionPixelSize(R.dimen.tile_focus_border)).isGreaterThan(gutter)
+    }
 }

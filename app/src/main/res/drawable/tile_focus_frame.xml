@@ -3,5 +3,5 @@
     <stroke
         android:width="@dimen/tile_focus_border"
         android:color="@color/accent" />
-    <corners android:radius="4dp" />
+    <corners android:radius="2dp" />
 </shape>

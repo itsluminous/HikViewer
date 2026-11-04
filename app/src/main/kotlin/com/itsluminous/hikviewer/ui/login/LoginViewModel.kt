@@ -31,9 +31,8 @@ sealed class LoginUiState {
 }
 
 /**
- * Drives the login form. Accounts are sent exactly as typed: the user is asked for the country code
- * in the field's hint and a rejected login is answered with the same reminder, never with a silent
- * prefix (the brief forbids guessing the user's country).
+ * Drives the login form. The account field takes a bare mobile number and the chosen region adds
+ * its country code ([AccountInput]); a rejected login reminds the user of that rule.
  */
 class LoginViewModel(
     private val account: AccountRepository,
@@ -53,8 +52,8 @@ class LoginViewModel(
         region: Region,
     ) {
         if (stateFlow.value == LoginUiState.Busy) return
-        val user = username.trim()
-        if (user.isEmpty() || password.isEmpty()) {
+        val user = AccountInput.resolve(username, region)
+        if (user == null || password.isEmpty()) {
             stateFlow.value = LoginUiState.Failed(R.string.login_error_empty)
             return
         }

@@ -29,13 +29,15 @@ class LoginFlowTest {
 
     private lateinit var scenario: ActivityScenario<LoginActivity>
 
+    private val cloud = FakeCloudServices(encrypted = false)
+
     // The graph must be replaced before the Activity starts, so the scenario is launched here
     // rather than through ActivityScenarioRule (whose launch precedes @Before).
     @Before
     fun freshGraph() {
         InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
         // An unencrypted recorder, so a successful login lands on the grid without the code dialog.
-        app.graph = TestGraph.create(app, FakeCloudServices(encrypted = false))
+        app.graph = TestGraph.create(app, cloud)
         scenario = ActivityScenario.launch(LoginActivity::class.java)
     }
 
@@ -46,7 +48,7 @@ class LoginFlowTest {
     }
 
     @Test
-    fun hintAsksForTheCountryCodeAndEmptySubmitIsRejectedLocally() {
+    fun hintAsksForTheMobileNumberAndEmptySubmitIsRejectedLocally() {
         onView(withId(R.id.account)).check(matches(withHint(R.string.login_account_hint)))
         onView(withId(R.id.login)).perform(click())
         onView(withId(R.id.error)).check(matches(isDisplayed()))
@@ -54,7 +56,7 @@ class LoginFlowTest {
     }
 
     @Test
-    fun wrongPasswordShowsTheCountryCodeHint() {
+    fun wrongPasswordShowsTheCountryCodeReminder() {
         onView(withId(R.id.account)).perform(replaceText("1234567890"), closeSoftKeyboard())
         onView(withId(R.id.password)).perform(replaceText("nope"), closeSoftKeyboard())
         onView(withId(R.id.login)).perform(click())
@@ -62,10 +64,11 @@ class LoginFlowTest {
     }
 
     @Test
-    fun validLoginReachesTheGrid() {
-        onView(withId(R.id.account)).perform(replaceText("911234567890"), closeSoftKeyboard())
+    fun validLoginPrefixesTheRegionCodeAndReachesTheGrid() {
+        onView(withId(R.id.account)).perform(replaceText("1234567890"), closeSoftKeyboard())
         onView(withId(R.id.password)).perform(replaceText("secret"), closeSoftKeyboard())
         onView(withId(R.id.login)).perform(click())
         onView(withId(R.id.grid)).check(matches(isDisplayed()))
+        assert(cloud.logins.single().first == "911234567890") { "sent ${cloud.logins.single().first}" }
     }
 }

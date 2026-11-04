@@ -35,6 +35,15 @@
             android:textColor="@color/on_background"
             android:textColorHint="#80F2F4F7" />
 
+        <TextView
+            android:id="@+id/account_help"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/login_account_help"
+            android:textColor="#B0F2F4F7"
+            android:textSize="12sp" />
+
         <EditText
             android:id="@+id/password"
             android:layout_width="match_parent"

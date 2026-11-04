@@ -11,7 +11,9 @@ ADB="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}/platform-tools/adb -s $SERIA
 APK="$(dirname "$0")/../app/build/outputs/apk/debug/app-debug.apk"
 PKG=com.itsluminous.hikviewer.debug
 
-mobile=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mobile"])' "$ENV_FILE")
+# The login form takes the number WITHOUT the country code (the default region, India, adds 91),
+# so strip that prefix from local.env's full number. Computed, never echoed.
+mobile=$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1]))["mobile"]; print(m[2:] if m.startswith("91") else m)' "$ENV_FILE")
 password=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["password"])' "$ENV_FILE")
 
 $ADB install -r "$APK" >/dev/null

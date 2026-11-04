@@ -44,11 +44,12 @@ class LoginActivityTest {
     }
 
     @Test
-    fun `hint asks for the country code and nothing is prefixed`() {
+    fun `hint asks for the bare mobile number and the help explains the region code`() {
         ActivityScenario.launch(LoginActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
                 val account = a.findViewById<EditText>(R.id.account)
-                assertThat(account.hint.toString()).contains("country code")
+                assertThat(account.hint.toString()).isEqualTo("Mobile number")
+                assertThat(a.findViewById<TextView>(R.id.account_help).text.toString()).contains("India → 91")
                 assertThat(account.text.toString()).isEmpty()
                 assertThat(account.isFocused).isTrue()
                 val region = a.findViewById<Spinner>(R.id.region)
@@ -75,7 +76,7 @@ class LoginActivityTest {
     }
 
     @Test
-    fun `wrong credentials show the country-code hint`() {
+    fun `wrong credentials show the country-code reminder`() {
         ActivityScenario.launch(LoginActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
                 a.findViewById<EditText>(R.id.account).setText("1234567890")
@@ -90,12 +91,12 @@ class LoginActivityTest {
     }
 
     @Test
-    fun `successful login opens the grid and finishes`() {
+    fun `successful login prefixes the region code, opens the grid and finishes`() {
         ActivityScenario.launch(LoginActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
-                a.findViewById<EditText>(R.id.account).setText("911234567890")
+                a.findViewById<EditText>(R.id.account).setText("1234567890")
                 a.findViewById<EditText>(R.id.password).setText("secret")
-                a.findViewById<Spinner>(R.id.region).setSelection(Region.entries.indexOf(Region.GLOBAL))
+                a.findViewById<Spinner>(R.id.region).setSelection(Region.entries.indexOf(Region.INDIA))
                 a.findViewById<Button>(R.id.login).performClick()
                 ShadowLooper.idleMainLooper()
                 val next = shadowOf(a).nextStartedActivity
@@ -103,7 +104,7 @@ class LoginActivityTest {
                 assertThat(a.isFinishing).isTrue()
             }
         }
-        assertThat(cloud.logins.single()).isEqualTo(Triple("911234567890", "secret", Region.GLOBAL))
+        assertThat(cloud.logins.single()).isEqualTo(Triple("911234567890", "secret", Region.INDIA))
     }
 
     @Test

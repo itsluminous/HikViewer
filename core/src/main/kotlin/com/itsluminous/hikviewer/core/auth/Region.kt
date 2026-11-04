@@ -13,24 +13,31 @@ public enum class Region(
     public val displayName: String,
     /** Regional API host without scheme. */
     public val apiHost: String,
+    /**
+     * International dialling code the login form prepends to a bare mobile number (the
+     * `telephoneCode` column of the official app's `assets/area.xml`: a Hik-Connect phone account
+     * is `telephoneCode + number`, digits only, no `+`). Null where the region does not name one
+     * country, so the number is sent as typed.
+     */
+    public val telephoneCode: String?,
 ) {
     /** India (`areaId` 244, +91). `api.hik-connect.com` resolves here from India already. */
-    INDIA("India", "apiiindia.hik-connect.com"),
+    INDIA("India", "apiiindia.hik-connect.com", "91"),
 
-    /** Global entry point; the server redirects to the account's real region. */
-    GLOBAL("Global / auto-detect", "api.hik-connect.com"),
+    /** Global entry point; the server redirects to the account's real region. No country, no code. */
+    GLOBAL("Global / auto-detect", "api.hik-connect.com", null),
 
     /** Singapore / Asia-Pacific. */
-    SINGAPORE("Asia-Pacific (Singapore)", "apiisgp.hik-connect.com"),
+    SINGAPORE("Asia-Pacific (Singapore)", "apiisgp.hik-connect.com", "65"),
 
     /** United States. */
-    USA("United States", "apiitus.hik-connect.com"),
+    USA("United States", "apiitus.hik-connect.com", "1"),
 
     /** Mainland China. */
-    CHINA("China", "apiitcn.hik-connect.com"),
+    CHINA("China", "apiitcn.hik-connect.com", "86"),
 
     /** Russia, served from a separate top-level domain. */
-    RUSSIA("Russia", "apiirus.hik-connectru.com"),
+    RUSSIA("Russia", "apiirus.hik-connectru.com", "7"),
     ;
 
     /** Defaults. */

@@ -3,12 +3,13 @@
 
     <!-- Login -->
     <string name="login_title">Sign in to Hik-Connect</string>
-    <string name="login_account_hint">Mobile number with country code, e.g. 91XXXXXXXXXX</string>
+    <string name="login_account_hint">Mobile number</string>
+    <string name="login_account_help">Without the country code: the region adds it (India → 91). Email accounts, or a number starting with +, are sent as typed.</string>
     <string name="login_password_hint">Password</string>
     <string name="login_region_label">Region</string>
     <string name="login_button">Login</string>
     <string name="login_error_empty">Enter your account and password</string>
-    <string name="login_error_credentials">Wrong account or password. Check the number includes the country code (e.g. 91XXXXXXXXXX).</string>
+    <string name="login_error_credentials">Wrong account or password. Type the mobile number without the country code; the selected region adds it (India → 91).</string>
     <string name="login_error_verification">Hik-Connect asks for extra verification (%1$s). Complete it in the official app, then try again.</string>
     <string name="login_error_server">Hik-Connect error %1$s</string>
     <string name="login_error_network">Cannot reach Hik-Connect. Check the network.</string>

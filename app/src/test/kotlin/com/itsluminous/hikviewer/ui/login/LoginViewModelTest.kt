@@ -42,7 +42,7 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `successful login goes busy then done and sends the account as typed`() = runTest(dispatcher) {
+    fun `successful login goes busy then done and sends the account as typed for Global`() = runTest(dispatcher) {
         assertThat(viewModel.hasSession).isFalse()
         viewModel.login(" 911234567890 ", "secret", Region.GLOBAL)
         assertThat(viewModel.state.value).isEqualTo(LoginUiState.Busy)
@@ -53,7 +53,23 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `wrong password maps to the country-code hint and clears on edit`() = runTest(dispatcher) {
+    fun `the region's country code is prepended to a bare mobile number`() = runTest(dispatcher) {
+        viewModel.login("98765 43210", "secret", Region.INDIA)
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(cloud.logins.single()).isEqualTo(Triple("919876543210", "secret", Region.INDIA))
+    }
+
+    @Test
+    fun `emails and plus-prefixed numbers are sent without the region code`() = runTest(dispatcher) {
+        viewModel.login("me@example.com", "secret", Region.INDIA)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.login("+65 1234 5678", "secret", Region.INDIA)
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(cloud.logins.map { it.first }).containsExactly("me@example.com", "6512345678").inOrder()
+    }
+
+    @Test
+    fun `wrong password maps to the country-code reminder and clears on edit`() = runTest(dispatcher) {
         viewModel.login("1234567890", "nope", Region.INDIA)
         dispatcher.scheduler.advanceUntilIdle()
         assertThat(viewModel.state.value).isEqualTo(LoginUiState.Failed(R.string.login_error_credentials))

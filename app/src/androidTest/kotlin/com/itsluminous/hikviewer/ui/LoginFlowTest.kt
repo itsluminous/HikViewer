@@ -50,6 +50,8 @@ class LoginFlowTest {
     @Test
     fun hintAsksForTheMobileNumberAndEmptySubmitIsRejectedLocally() {
         onView(withId(R.id.account)).check(matches(withHint(R.string.login_account_hint)))
+        // The focused account field raises the TV keyboard; a tap while it animates can miss the button.
+        onView(withId(R.id.account)).perform(closeSoftKeyboard())
         onView(withId(R.id.login)).perform(click())
         onView(withId(R.id.error)).check(matches(isDisplayed()))
         onView(withId(R.id.error)).check(matches(withText(R.string.login_error_empty)))

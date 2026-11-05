@@ -15,8 +15,11 @@ import com.itsluminous.hikviewer.data.CloudAccount
 import com.itsluminous.hikviewer.data.CloudServices
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * In-memory Hik-Connect: one encrypted 16-channel recorder, [cameraCount] channels of which the
@@ -105,6 +108,12 @@ class FakeCloudServices(
         /** Record searches made, in order. */
         val searched = java.util.concurrent.CopyOnWriteArrayList<Pair<Camera, LocalDate>>()
 
+        /**
+         * Live and playback flows being collected right now. A real stream owns a relay socket for
+         * as long as it is collected, so this is the test's "open sockets" count.
+         */
+        val activeStreams = AtomicInteger()
+
         override suspend fun listDevices(): List<Device> {
             deviceListings++
             return listOf(
@@ -135,7 +144,7 @@ class FakeCloudServices(
                 nextStreamError = null
                 return flow { throw e }
             }
-            return streams(camera, quality, onStatus)
+            return streams(camera, quality, onStatus).tracked()
         }
 
         override suspend fun searchRecordings(
@@ -168,8 +177,11 @@ class FakeCloudServices(
                 SyntheticStream.flow(onStatus, paced = playbackPaced).take(frames).collect { emit(it) }
                 if (playbackHold) kotlinx.coroutines.awaitCancellation()
                 onStatus(StreamStatus.Ended)
-            }
+            }.tracked()
         }
+
+        private fun Flow<AccessUnit>.tracked(): Flow<AccessUnit> =
+            onStart { activeStreams.incrementAndGet() }.onCompletion { activeStreams.decrementAndGet() }
 
         override suspend fun logout() {
             logouts++

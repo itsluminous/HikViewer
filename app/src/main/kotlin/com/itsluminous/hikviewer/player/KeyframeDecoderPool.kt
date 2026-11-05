@@ -70,10 +70,8 @@ open class KeyframeDecoderPool(
     )
 
     private inner class Worker(
-        name: String,
+        private val name: String,
     ) {
-        private val thread = HandlerThread(name).also { it.start() }
-        private val handler = Handler(thread.looper)
         private val queue = LinkedHashMap<Any, Job>()
         private var codec: MediaCodec? = null
         private var codecConfig: CodecConfig? = null
@@ -81,29 +79,50 @@ open class KeyframeDecoderPool(
         private var parkingTexture: SurfaceTexture? = null
         private var parkingSurface: Surface? = null
 
+        // The thread starts with the first job, not with the pool: a single-stream screen
+        // (recorded playback, the phone camera view) builds a pool it never submits to, and a
+        // thread per such screen would outlive it, since nothing owns the pool to release it.
+        private var thread: HandlerThread? = null
+        private var handler: Handler? = null
+
         fun enqueue(job: Job) {
-            synchronized(queue) {
-                if (released) return
-                queue.remove(job.tile)
-                queue[job.tile] = job
-            }
-            handler.post { runOne() }
+            val h =
+                synchronized(queue) {
+                    if (released) return
+                    queue.remove(job.tile)
+                    queue[job.tile] = job
+                    handlerLocked()
+                }
+            h.post { runOne() }
         }
 
         fun cancel(tile: Any) = synchronized(queue) { queue.remove(tile) }
 
         fun closeCodecs() {
-            synchronized(queue) { queue.clear() }
-            handler.post { closeCodec() }
+            val h =
+                synchronized(queue) {
+                    queue.clear()
+                    handler
+                }
+            h?.post { closeCodec() }
         }
 
         fun release() {
-            synchronized(queue) {
-                released = true
-                queue.clear()
-            }
-            handler.post { closeCodec() }
-            thread.quitSafely()
+            val (h, t) =
+                synchronized(queue) {
+                    released = true
+                    queue.clear()
+                    handler to thread
+                }
+            h?.post { closeCodec() }
+            t?.quitSafely()
+        }
+
+        /** Started on demand; call with the queue lock held. */
+        private fun handlerLocked(): Handler = handler ?: run {
+            val t = HandlerThread(name).also { it.start() }
+            thread = t
+            Handler(t.looper).also { handler = it }
         }
 
         private fun runOne() {

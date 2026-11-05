@@ -1,7 +1,7 @@
 # Follow-ups
 
 Known gaps, open questions and ideas that were weighed and set aside, with the reason each one is
-still here. Items come from the round-3 and round-4 code reviews and the CPU work; none of them
+still here. Items come from the round-3 to round-6 code reviews and the CPU work; none of them
 blocks a release. Open an issue before picking one up so the discussion has a home.
 
 ## Needs a product decision
@@ -44,9 +44,20 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   but the UI's own frames pay for the uploads. Lower `CameraTileView.STILL_MAX_WIDTH` from 480 to
   320, or upload the still as a hardware bitmap off the main thread, and re-measure.
 - **Idle headroom at 12 fps.** With 16 tiles (8 live, 8 stills) the MiTV has 13–19 % idle CPU, below
-  the 25 % the budget asks for before probing above its ceiling, so at the recorder's current 12 fps
-  nothing changes on this TV. Lowering the sub-stream to 6–8 fps (the user's plan) is what makes the
-  probe fire; verify then that it settles at 10–12 live without relapsing.
+  the 35 % the budget asks for before probing above its ceiling (25 % was tried and churned: one more
+  software tile costs 12–17 points of the reading, so a promotion at 25 % was shed within a minute),
+  so at the recorder's current 12 fps nothing changes on this TV. Lowering the sub-stream to 6–8 fps
+  (the user's plan) is what makes the probe fire; verify then that it settles at 10–12 live without
+  relapsing (`live budget: promote, limit=9 above the ceiling (idle=…)` and no `demote, idle=…`
+  within the hour).
+- **Move mode with the physical remote.** `input keyevent --longpress` delivers a plain click on
+  this API 29 TV, so the shell cannot open the tile menu; the cap to the hero's decoder during a
+  move (`hardwareOnly`) is covered by Robolectric and Espresso only. Hands-on: hold OK → *Move* →
+  every other tile should drop to stills within a second and come back live on OK or Back.
+- **Hardware slots in flat grids.** Since round 6 the first two tiles of a flat grid use the TV's
+  two hardware decoders (they were idle there). A tile moved into or out of positions 0–1 swaps its
+  decoder at the next keyframe when the move ends; if that swap is ever noticed, pin the slots to
+  cameras rather than positions.
 - **CPU budget on the 1.7 GB TV.** Before the round-3 fixes the TV sat at `media.codec` 137–157 % and app
   43 % of one core with 8 live software tiles (budget ≤ 150 % / ≤ 40 %). The fixes removed two churn
   sources (surface switching, hardware retries every 5 s) but the TV has not been re-measured.
@@ -94,6 +105,16 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
 - **`GridActivity.updateLiveCount` recounts every player on each liveness change** (O(n²) over 16
   tiles, at most twice a second per tile). Harmless today; a counter maintained incrementally would
   be cleaner.
+- **One INFO line per key press in release builds** (`GridActivity.dispatchKeyEvent`, "reached the
+  grid N ms after the press"). It is what a TV logcat is read for when the remote feels slow and
+  costs nothing per frame; logging only when the wait exceeds 50 ms would keep the signal and drop
+  the noise.
+- **`CpuHeadroomProbe.stop()` does not join its thread.** A burst in flight finishes after the stop;
+  its sample is discarded by a generation check, so the reading is right, but the thread can outlive
+  the probe by up to a second.
+- **`scripts/tv-login.sh` passes the credentials through `tv.py`'s argv** (visible in `ps` for the
+  call's duration) and uses fixed `sleep`s. A local development script, same model as
+  `emu-login.sh`; fine while it stays that.
 - **`TileDecoder`'s pacing path has no unit test of its own.** `FramePacer` is tested with a fake
   clock and the TV run shows `paced=6-8 rebuffers=0 catchUps=0`, but the glue (admitting due pictures
   on the codec-callbacks looper, the one-wake-up-at-a-time rule, `queuedFrames` counting only due

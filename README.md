@@ -50,10 +50,11 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   it, Back cancels. In a 1 + N layout the first position is the hero. **Change**: pick any of your
   cameras from a list (the current one is highlighted); it replaces this tile's camera, or swaps
   the two if it was already on the grid. Both are remembered per layout, like the tile order.
-- **Live dot**: a small dot in each tile's top-right corner is green while pictures reach the screen (a frame
-  within the last 2 s, a fresh still for a keyframe-only tile) and red while the tile is connecting,
-  stalled or failed. No text badge. The top bar counts the same way: "14 live", or "14 cameras ·
-  8 live · 6 at 1 fps" when some tiles show one still a second.
+- **Live dot**: a small dot in each tile's top-right corner is green while pictures reach the screen (a
+  decoded frame within the last 2 s, or a fresh still on a keyframe-only tile) and red while the tile
+  is connecting, stalled or failed. No text badge. The top bar's status text comes from the same rule,
+  so the two never disagree: "14 live" when every tile decodes at stream rate, otherwise "14 cameras ·
+  8 live · 6 at 1 fps" (tiles with a red dot are the remainder).
 - **Fullscreen**: OK on a tile. LEFT / RIGHT (or a swipe on a phone) switches camera, Back returns to
   the same tile. The hint hides after 5 s.
 - **Recorded playback** from the long-press menu: fullscreen video, a 24 h time bar with the recorded
@@ -66,6 +67,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 - **Hidden top bar on TV**: any key shows it, it hides 5 s after the last key, and it never steals
   focus. UP from the top row of tiles reaches its layout and settings buttons. On a phone the bar is
   always on screen (top in portrait, left edge in landscape) because there is no D-pad to summon it.
+- **Focus border that gets out of the way**: the focused tile's border hides on the same 5 s timer
+  and comes back the moment a key is pressed or the pointer moves. Focus itself never moves or gets
+  lost; only the border is hidden, so a parked remote leaves a clean wall of pictures.
 - **Phone camera screen**: tapping a tile in portrait does not rotate the phone. Live video fills
   the top (16:9) and the bottom half holds the same playback engine as the TV screen: scrub the time
   bar to go back into the recordings, change speed, change date.
@@ -73,15 +77,19 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   verification code. It is checked locally against the recorder's `MD5(MD5(code))` before any stream
   is opened, stored in Android-encrypted preferences, and never asked again unless the recorder's
   code changes.
-- **Built for weak TVs**: a hardware decoder for the hero tile and for fullscreen (moving the focus
-  never touches a decoder), software decoders for the other live tiles, and a shared keyframe-only
-  decoder pool for tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured decode lag, and tiles
-  are promoted back when headroom returns; with idle CPU and memory to spare it tries a few tiles
-  beyond its static ceiling and hands them back when either runs out. Software tiles are paced by
-  the stream's timestamps (half a second of jitter buffer) so motion is even; the hero and
-  fullscreen are shown as soon as they are decoded. A decoder that stops producing pictures is caught
-  within about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims and
-  shows a single *Retry* button.
+- **Built for weak TVs**: the TV's two hardware decoders go to the hero tile and the tile after it
+  (in a flat grid, the first two tiles) and to fullscreen; moving the focus never touches a decoder.
+  The other live tiles use software decoders, and a shared keyframe-only decoder pool serves the
+  tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured
+  decode lag, and tiles are promoted back when headroom returns; while the grid has more tiles than
+  the static ceiling it also measures idle CPU and spare memory and, with at least 35 % idle and
+  96 MB to spare, tries a few tiles beyond the ceiling one at a time, handing them back when either
+  runs out. Grid tiles are paced by the stream's own timestamps through half a second of jitter
+  buffer, so motion is even instead of following the relay's bunched delivery; the hero and
+  fullscreen are shown as soon as they are decoded. A decoder that stops producing pictures is
+  caught within about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims
+  behind a single outlined refresh icon (white with a black outline, no text); OK on the tile, or a
+  click on the icon, reopens the stream, and the icon grows a little while its tile has focus.
 - **Clean lifecycle**: every stream, socket and decoder is released in `onStop`; there are no
   services, jobs or alarms, so the app costs nothing when it is not on screen.
 - **Settings**: layout, visible cameras and their order, hero camera, fullscreen stream quality
@@ -106,8 +114,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
    only keyframes, parameter sets and long-term-reference P-frames). The H.264 SPS is rewritten to
    declare no frame reordering, so software decoders show each picture as soon as it is decoded.
 5. **Decode with `MediaCodec`**, feeding access units straight to the codec. At most two hardware
-   decoders are used (the focused and hero tiles); the rest are software, or keyframe-only stills
-   from a shared pool when the device runs out of CPU.
+   decoders are used (the hero and the tile after it, or the first two tiles of a flat grid; the
+   fullscreen screen takes one); the rest are software, or keyframe-only stills from a shared pool
+   when the device runs out of CPU.
 
 All protocol code lives in the pure-JVM `:core` module and is covered by known-answer tests against
 synthetic ffmpeg-generated fixtures (`scripts/gen-fixtures.sh`); `:app` is the Android UI and decoder
@@ -137,6 +146,11 @@ Download `HikViewer-<version>-universal.apk` from the
   temporarily shows one or two tiles as 1 fps stills (their dot stays green while stills arrive);
   they return to live video within a couple of minutes once the device settles. Fewer visible
   cameras or a lower sub-stream frame rate on the recorder removes the dip.
+- **Reading the dots and the status**: a green dot means pictures are arriving on that tile, at
+  stream rate or as one still a second; the top bar says how many of each ("8 live · 6 at 1 fps").
+  A red dot is a tile that is connecting or has lost its stream; one that stays red dims and shows
+  the refresh icon, and OK on it reopens that stream. Grid tiles run about half a second behind
+  the hero and fullscreen: that is the jitter buffer that keeps their motion even.
 - **Region sets the country code**: pick your region on the sign-in screen and type the mobile number
   without the country code (India → 91 is added for you). Type a leading `+` to send exactly what you
   typed, or your e-mail address if the account uses one.

@@ -109,20 +109,17 @@ Extras: `screen` = `login` | `grid` | `fullscreen` | `camera` (phone portrait sc
 
 `scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]` drives this to produce the eight files
 under `docs/screenshots/` (1080p from the TV AVD, portrait from the phone AVD, each shrunk until it
-is under 400 KB). To regenerate the clips:
+is under 400 KB). The clips are three stock pictures of empty rooms with a slow zoom; to
+regenerate them from a folder holding `hall.jpg`, `lobby.jpg` and `room.jpg`:
 
 ```sh
-for src in testsrc2 smptebars testsrc; do
-  ffmpeg -y -f lavfi -i "$src=size=320x180:rate=12" -t 2 \
-    -vf "format=yuv420p,setrange=tv,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709" \
-    -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -g 12 -keyint_min 12 -bf 0 -refs 1 \
-    -x264-params "repeat-headers=1:scenecut=0:ref=1:fullrange=off:colorprim=bt709:transfer=bt709:colormatrix=bt709" \
-    -crf 28 -f mpegts "$src.ts"
-done
+scripts/gen-demo-clips.sh /path/to/stills
 ```
 
-The colour-space flags make every clip share one SPS/PPS, so the keyframe pool keeps a single
-decoder for all tiles exactly as it does with one recorder.
+The script encodes every clip with the same x264 flags (640x360, 12 fps, Constrained Baseline,
+one-second GOP), which gives them byte-identical SPS/PPS, so the keyframe pool keeps a single
+decoder for all tiles exactly as it does with one recorder. Use stock pictures only, never footage
+from anyone's cameras.
 
 ### The real cloud
 

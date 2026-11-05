@@ -82,5 +82,6 @@ the protocol was re-implemented in Kotlin in the `:core` module.
   in each of the encryption variants. The JSON fixtures are hand-written with fake serials. Nothing
   in the repository or its history comes from a real recorder; the known-answer tests pin the
   numbers ffprobe reports for the generated clips.
-- The demo clips under `app/src/debug/assets/demo/` are ffmpeg's `testsrc2`, `smptebars` and `testsrc`
-  generators encoded with x264. The README screenshots show those clips, never a real camera.
+- The demo clips under `app/src/debug/assets/demo/` are three stock pictures of empty rooms, given a
+  slow zoom and encoded with x264 by `scripts/gen-demo-clips.sh`. The README screenshots show those
+  clips, never a real camera.

@@ -19,10 +19,11 @@ import java.util.concurrent.Future
 
 /**
  * Runs every tile of the grid: one [TilePlayer] per visible camera, the [LiveBudget] that decides
- * how many are live, and the [DecoderPolicy] that hands out hardware decoders to the focused and
- * hero tiles. All streams are opened in parallel (the first frame takes 1.4–3.2 s each; opening
- * them one by one would make a 12-tile grid take half a minute). A ticker samples decoder lag and
- * runs the stall watchdogs. `stop()` releases everything; the owner calls it from `onStop`.
+ * how many are live, and the [DecoderPolicy] that hands the hardware decoder to the hero tile.
+ * Focus is not an input: moving it must never touch a decoder (see [DecoderPolicy]). All streams
+ * are opened in parallel (the first frame takes 1.4–3.2 s each; opening them one by one would
+ * make a 12-tile grid take half a minute). A ticker samples decoder lag and runs the stall
+ * watchdogs. `stop()` releases everything; the owner calls it from `onStop`.
  */
 class PlaybackCoordinator(
     private val opener: StreamOpener,
@@ -48,19 +49,25 @@ class PlaybackCoordinator(
     /** One player per visible camera, in grid order. */
     val players: StateFlow<List<TilePlayer>> = playersFlow.asStateFlow()
 
-    /** Tile the user focuses; gets a hardware decoder. */
-    var focusedIndex: Int? = null
+    /** Tile shown 2x in the hero layout (or the only tile of a single-camera screen); gets the hardware decoder. */
+    var heroIndex: Int? = null
         set(value) {
             if (field == value) return
             field = value
             applyPolicy()
         }
 
-    /** Tile shown 2x in the hero layout; gets a hardware decoder. */
-    var heroIndex: Int? = null
+    /**
+     * While true only the hero decodes live; every other tile shows keyframe stills. The grid sets
+     * it for the duration of a tile move: on the target TV eight software decoders run at the
+     * same scheduler priority as the UI thread, so the remote answers a second late while they
+     * all decode. Cleared on drop, cancel and stop; the normal budget comes straight back.
+     */
+    var hardwareOnly: Boolean = false
         set(value) {
             if (field == value) return
             field = value
+            Log.i(TAG, if (value) "live decoding limited to the hardware tiles" else "live budget restored")
             applyPolicy()
         }
 
@@ -106,6 +113,7 @@ class PlaybackCoordinator(
         ticker = null
         playersFlow.value.forEach { it.stop() }
         pool.closeCodecs()
+        hardwareOnly = false
     }
 
     /** Reopens one failed tile's stream (the Retry overlay); a no-op while playback is stopped. */
@@ -147,9 +155,9 @@ class PlaybackCoordinator(
 
     private fun applyPolicy() {
         val players = playersFlow.value
-        val modes = DecoderPolicy.assign(players.size, focusedIndex, heroIndex, budget.liveLimit)
-        // Release first, create second: the hardware decoders a tile gives up must be free before
-        // the newly focused tile asks for one (the TV has only two).
+        val modes = DecoderPolicy.assign(players.size, heroIndex, budget.liveLimit, hardwareOnly = hardwareOnly)
+        // Release first, create second: the hardware decoder a tile gives up must be free before
+        // the new hero asks for one (the TV has only two).
         players.forEachIndexed { i, p -> if (p.mode.isLive && !modes[i].isLive) p.mode = modes[i] }
         players.forEachIndexed { i, p ->
             if (p.mode == TileMode.HW_LIVE &&

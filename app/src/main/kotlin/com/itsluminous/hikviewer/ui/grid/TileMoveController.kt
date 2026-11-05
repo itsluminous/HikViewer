@@ -39,14 +39,17 @@ class TileMoveController(
         tile.lifted = true
         tile.requestFocus()
         hint.visibility = View.VISIBLE
+        viewModel.onMoveStarted()
     }
 
     /** Drops the lifted tile where it is. */
     fun end() {
+        val wasMoving = moving != null
         moving?.lifted = false
         moving = null
         origin = null
         hint.visibility = View.GONE
+        if (wasMoving) viewModel.onMoveEnded()
     }
 
     /** Back: drops the tile and restores the arrangement the move started from. */

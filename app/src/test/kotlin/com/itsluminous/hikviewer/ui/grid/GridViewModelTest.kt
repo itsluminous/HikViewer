@@ -105,6 +105,8 @@ class GridViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         vm.focusedIndex = 5
         assertThat(vm.playback.heroIndex).isNull()
+        // Focus is a view matter: every tile keeps the mode the budget gave it.
+        assertThat(vm.playback.players.value.none { it.mode == TileMode.HW_LIVE }).isTrue()
         assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1) // the 4x3 arrangement is untouched
         vm.setLayout(GridLayoutMode.HERO_1_7)
         assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_7)
@@ -122,7 +124,7 @@ class GridViewModelTest {
         assertThat(
             vm.playback.players.value[5]
                 .mode,
-        ).isEqualTo(TileMode.HW_LIVE)
+        ).isEqualTo(TileMode.SW_LIVE)
         // 12 cameras have a signal but a 1 + 7 layout shows 8 tiles: only those 8 get a stream.
         assertThat(ready(vm).cameras).hasSize(12)
         assertThat(vm.playback.players.value).hasSize(8)
@@ -164,6 +166,36 @@ class GridViewModelTest {
         // Out-of-range or same-slot moves change nothing.
         assertThat(vm.moveTile(3, 3)).isEqualTo(ready(vm).cameras.map { it.key })
         assertThat(vm.moveTile(0, 99)).isEqualTo(ready(vm).cameras.map { it.key })
+        vm.onStop()
+        vm.playback.release()
+    }
+
+    @Test
+    fun `a move caps live decoding to the hero and drop, cancel or stop restore the budget`() = runTest(dispatcher) {
+        graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_7
+        val vm = viewModel()
+        vm.load()
+        dispatcher.scheduler.advanceUntilIdle()
+        vm.onStart()
+        settle()
+        val live = { vm.playback.players.value.count { it.mode.isLive } }
+        assertThat(live()).isEqualTo(8)
+        vm.onMoveStarted()
+        assertThat(live()).isEqualTo(1)
+        assertThat(vm.playback.players.value[0].mode).isEqualTo(TileMode.HW_LIVE)
+        // Swaps during the move keep the cap.
+        vm.moveTile(3, 4)
+        assertThat(live()).isEqualTo(1)
+        vm.onMoveEnded()
+        assertThat(live()).isEqualTo(8)
+        // Leaving the screen mid-move must not leave the cap behind for the next start.
+        vm.onMoveStarted()
+        vm.onStop()
+        assertThat(vm.playback.hardwareOnly).isFalse()
+        vm.onStart()
+        settle()
+        assertThat(live()).isEqualTo(8)
         vm.onStop()
         vm.playback.release()
     }

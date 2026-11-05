@@ -69,7 +69,7 @@ class PlaybackCoordinatorTest {
         val c = coordinator()
         c.setCameras(cameras(4))
         c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
-        c.focusedIndex = 0
+        c.heroIndex = 0
         c.start()
         dispatcher.scheduler.runCurrent()
         val before = c.liveLimit
@@ -96,7 +96,7 @@ class PlaybackCoordinatorTest {
         val c = coordinator()
         c.setCameras(cameras(4))
         c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
-        c.focusedIndex = 0
+        c.heroIndex = 0
         c.start()
         dispatcher.scheduler.runCurrent()
         val before = c.liveLimit
@@ -114,27 +114,52 @@ class PlaybackCoordinatorTest {
     }
 
     @Test
-    fun `focus and hero drive the modes, released before created`() = runTest(dispatcher) {
+    fun `the hero drives the hardware decoder, released before created`() {
+        runTest(dispatcher) {
+            val c = coordinator()
+            c.setCameras(cameras(4))
+            c.heroIndex = 0
+            assertThat(c.players.value.map { it.mode })
+                .containsExactly(
+                    TileMode.HW_LIVE,
+                    TileMode.SW_LIVE,
+                    TileMode.SW_LIVE,
+                    TileMode.SW_LIVE,
+                ).inOrder()
+            c.heroIndex = 2
+            assertThat(c.players.value.map { it.mode })
+                .containsExactly(
+                    TileMode.SW_LIVE,
+                    TileMode.SW_LIVE,
+                    TileMode.HW_LIVE,
+                    TileMode.SW_LIVE,
+                ).inOrder()
+            c.release()
+        }
+    }
+
+    @Test
+    fun `hardware only keeps the hero live, releases the rest and stop lifts the cap`() = runTest(dispatcher) {
         val c = coordinator()
         c.setCameras(cameras(4))
-        c.focusedIndex = 0
+        c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+        c.heroIndex = 0
+        c.start()
+        dispatcher.scheduler.runCurrent()
+        val softwareDecoders = decoders.created.filter { it.codecName.startsWith("fake.sw.") }
+        assertThat(softwareDecoders).hasSize(3)
+        c.hardwareOnly = true
         assertThat(c.players.value.map { it.mode })
-            .containsExactly(
-                TileMode.HW_LIVE,
-                TileMode.SW_LIVE,
-                TileMode.SW_LIVE,
-                TileMode.SW_LIVE,
-            ).inOrder()
-        c.heroIndex = 2
-        assertThat(c.players.value[2].mode).isEqualTo(TileMode.HW_LIVE)
-        c.focusedIndex = 3
-        assertThat(c.players.value.map { it.mode })
-            .containsExactly(
-                TileMode.SW_LIVE,
-                TileMode.SW_LIVE,
-                TileMode.HW_LIVE,
-                TileMode.HW_LIVE,
-            ).inOrder()
+            .containsExactly(TileMode.HW_LIVE, TileMode.KEYFRAME, TileMode.KEYFRAME, TileMode.KEYFRAME)
+            .inOrder()
+        // The software decoders are gone at once (they must free the CPU), the hero's is untouched.
+        assertThat(softwareDecoders.all { it.released }).isTrue()
+        assertThat(decoders.created.single { it.codecName.startsWith("fake.hw.") }.released).isFalse()
+        c.hardwareOnly = false
+        assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(4)
+        c.hardwareOnly = true
+        c.stop()
+        assertThat(c.hardwareOnly).isFalse()
         c.release()
     }
 
@@ -143,7 +168,7 @@ class PlaybackCoordinatorTest {
         val lowRam = DeviceCapabilities(isLowRamDevice = true, totalMemoryBytes = 1_024L shl 20, cpuCores = 4)
         val c = coordinator(lowRam)
         c.setCameras(cameras(8))
-        c.focusedIndex = 0
+        c.heroIndex = 0
         assertThat(c.liveLimit).isEqualTo(4)
         assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(4)
         c.start()

@@ -114,7 +114,7 @@ class LiveBudget(
         /** No lag for this long before a tile is promoted back. */
         const val HEADROOM_PROMOTE_MILLIS: Long = 15_000
 
-        /** The focused tile is always live. */
+        /** At least one tile (the hero, or the first) is always live. */
         const val MIN_LIVE: Int = 1
 
         /** Two limit changes are never closer than this; each one re-creates decoders. */

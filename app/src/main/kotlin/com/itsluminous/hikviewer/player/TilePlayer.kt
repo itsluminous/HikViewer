@@ -34,9 +34,9 @@ import java.util.concurrent.TimeUnit
  * that doubles with every refusal ([HW_RETRY_MILLIS] … [HW_RETRY_MAX_MILLIS]): on a TV whose
  * hardware slots are taken by another app the retry is cheap once a minute, not a rebuilt decoder
  * every five seconds. The backoff resets when the user retries, the surface changes or the tile
- * is given hardware afresh (the slot is often held by the tile that just lost focus).
+ * is given hardware afresh (the slot is often held by the tile that was the hero a moment ago).
  *
- * Switching between the two live modes (focus moved: hardware ↔ software) keeps the running
+ * Switching between the two live modes (the hero moved: hardware ↔ software) keeps the running
  * decoder until the next keyframe and swaps there, so the picture never goes dark for a GOP. The
  * state only goes back to [TileState.Connecting] when there is really no picture: a stream
  * reconnect or a fresh start, never a mode change.

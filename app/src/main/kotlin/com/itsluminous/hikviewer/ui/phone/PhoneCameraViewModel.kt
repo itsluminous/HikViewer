@@ -174,7 +174,7 @@ class PhoneCameraViewModel(
     private fun showLive() {
         val current = camera ?: return
         live.setCameras(listOf(current))
-        live.focusedIndex = 0
+        live.heroIndex = 0
         activePlayerFlow.value = live.players.value.firstOrNull()
         if (visible) live.start()
     }

@@ -39,7 +39,7 @@ class FullscreenViewModel(
     /** Index of the camera on screen. */
     val index: StateFlow<Int> get() = carousel.index
 
-    /** Single-tile playback; the focused tile is index 0 so it gets the hardware decoder. */
+    /** Single-tile playback; the one tile is the hero so it gets the hardware decoder. */
     val playback: PlaybackCoordinator = coordinatorFactory(this)
 
     /** The camera on screen, or null when the grid is empty. */
@@ -53,7 +53,7 @@ class FullscreenViewModel(
     /** Points playback at the current camera. */
     fun show() {
         camera?.let { playback.setCameras(listOf(it)) }
-        playback.focusedIndex = 0
+        playback.heroIndex = 0
     }
 
     /** Streams may run. */

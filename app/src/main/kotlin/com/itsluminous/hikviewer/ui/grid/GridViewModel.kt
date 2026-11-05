@@ -75,12 +75,11 @@ class GridViewModel(
     /** Tile players and the live budget. */
     val playback: PlaybackCoordinator = coordinatorFactory(this)
 
-    /** Index of the tile that had focus, restored after fullscreen or a settings round-trip. */
+    /**
+     * Index of the tile that had focus, restored after fullscreen or a settings round-trip. Focus
+     * is a view concern only: it is not passed to playback, so moving it never touches a decoder.
+     */
     var focusedIndex: Int = 0
-        set(value) {
-            field = value
-            playback.focusedIndex = value
-        }
 
     /** Loads (or reloads) cameras from the cloud and applies the settings. */
     fun load(refresh: Boolean = false) {
@@ -118,7 +117,6 @@ class GridViewModel(
         val shown = cameras.take(layout.resolve(cameras.size).capacity)
         playback.setCameras(shown)
         playback.heroIndex = if (layout.isHero) hero else null
-        playback.focusedIndex = focusedIndex.coerceIn(0, (shown.size - 1).coerceAtLeast(0))
         if (visible && !needsCode) playback.start()
     }
 
@@ -214,6 +212,20 @@ class GridViewModel(
             }
     }
 
+    /**
+     * A tile is lifted (Move): only the hardware tiles keep decoding live until [onMoveEnded], so
+     * the D-pad is answered before the pictures are. Both drop and cancel end a move; so does
+     * leaving the screen ([onStop]), since the budget must never stay capped behind the user's back.
+     */
+    fun onMoveStarted() {
+        playback.hardwareOnly = true
+    }
+
+    /** The lifted tile was dropped or the move cancelled: the normal live budget is back. */
+    fun onMoveEnded() {
+        playback.hardwareOnly = false
+    }
+
     /** The Retry overlay of tile [index]. */
     fun retry(index: Int) {
         playback.players.value
@@ -235,7 +247,7 @@ class GridViewModel(
         if (s is GridUiState.Ready && !s.needsCode) playback.start()
     }
 
-    /** Streams and decoders are released. */
+    /** Streams and decoders are released; `stop()` also drops a move's cap on the budget. */
     fun onStop() {
         visible = false
         playback.stop()

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Debug builds only: an entry point that swaps the cloud for bundled synthetic test
+         patterns, so screenshots and UI demos never show anyone's cameras. See DemoActivity. -->
+    <application>
+        <activity
+            android:name=".demo.DemoActivity"
+            android:exported="true" />
+    </application>
+
+</manifest>

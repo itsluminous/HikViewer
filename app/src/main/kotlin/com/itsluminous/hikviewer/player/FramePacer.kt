@@ -22,15 +22,18 @@ import java.util.ArrayDeque
  * long once. A buffer whose newest picture would wait [catchUpMillis] beyond the latency (the
  * relay re-sending a backlog faster than real time after a hiccup, or a faster camera clock)
  * drops everything before the newest keyframe it holds, because a decoder can restart there and
- * nowhere else, and shifts what is left so the newest picture is due in [latencyMillis] again. Pure Kotlin with the time passed in so both behaviours are tested with a fake clock;
- * not thread-safe, the decoder calls it under its own lock.
+ * nowhere else, and shifts what is left so the newest picture is due in [latencyMillis] again.
+ * The [capacity] bound trims the same way; when that frees nothing (the whole buffer is one GOP)
+ * it drops the lot and waits for the next keyframe rather than hand the decoder a picture whose
+ * reference it has never seen. Pure Kotlin with the time passed in so every behaviour is tested
+ * with a fake clock; not thread-safe, the decoder calls it under its own lock.
  */
 class FramePacer(
     /** How long a picture waits past its mapped presentation time: the jitter it can absorb and the latency it costs. */
     private val latencyMillis: Long = DEFAULT_LATENCY_MILLIS,
     /** A picture that would wait this much longer than [latencyMillis] is a backlog to catch up on (drop to the newest keyframe). */
     private val catchUpMillis: Long = DEFAULT_CATCH_UP_MILLIS,
-    /** Hard bound on buffered pictures; beyond it the oldest is dropped. */
+    /** Hard bound on buffered pictures; at it the buffer is caught up, or emptied when that frees nothing. */
     private val capacity: Int = DEFAULT_CAPACITY,
 ) {
     private class Entry(
@@ -59,6 +62,14 @@ class FramePacer(
     var dropped: Int = 0
         private set
 
+    /**
+     * Times the stream's clock jumped backwards and the mapping was re-made (a new stream behind
+     * the same socket, or a recorder whose timestamps glitch). Costs the same [latencyMillis]
+     * hold as a re-buffer, so it is counted like one.
+     */
+    var remaps: Int = 0
+        private set
+
     /** Admits [unit], which arrived at [nowMillis]. */
     fun offer(
         unit: AccessUnit,
@@ -69,6 +80,7 @@ class FramePacer(
             if (pts == null) {
                 nowMillis // no clock to pace by: straight through, after whatever is queued
             } else {
+                if (mapped && pts < lastPtsMicros) remaps++
                 if (!mapped || pts < lastPtsMicros) rebase(pts, nowMillis)
                 var d = baseWallMillis + (pts - basePtsMicros) / MICROS_PER_MILLI + latencyMillis
                 if (d < nowMillis) {
@@ -79,15 +91,32 @@ class FramePacer(
                 lastPtsMicros = pts
                 d
             }
+        if (queue.size >= capacity && !makeRoom(nowMillis, unit.isKeyframe)) {
+            dropped++ // the incoming picture: it would have followed a GOP that was just emptied
+            return
+        }
         // Due times never go backwards within the queue, whatever the clocks did.
         val last = queue.peekLast()
         val ordered = if (last != null && due < last.dueMillis) last.dueMillis else due
-        if (queue.size >= capacity) {
-            queue.pollFirst()
-            dropped++
-        }
         queue.addLast(Entry(unit, ordered))
         if (ordered - nowMillis > latencyMillis + catchUpMillis) catchUp(nowMillis)
+    }
+
+    /**
+     * The buffer is full: catch up (drop to the newest keyframe). When that frees nothing the
+     * buffer is a single GOP, so dropping its oldest picture would leave the decoder P-frames
+     * without their reference; the whole GOP goes instead, and so does an incoming picture that
+     * is not a keyframe. Returns whether the incoming picture may be queued.
+     */
+    private fun makeRoom(
+        nowMillis: Long,
+        incomingIsKeyframe: Boolean,
+    ): Boolean {
+        catchUp(nowMillis)
+        if (queue.size < capacity) return true
+        dropped += queue.size
+        queue.clear()
+        return incomingIsKeyframe
     }
 
     /** The next picture if it is due at [nowMillis], else null. */
@@ -162,7 +191,7 @@ class FramePacer(
          */
         const val DEFAULT_CATCH_UP_MILLIS: Long = 1_000
 
-        /** Enough for two GOPs of a 15 fps camera. */
+        /** Enough for two GOPs of a 15 fps camera; a camera with longer GOPs than that at this fill is dropped to its next keyframe. */
         const val DEFAULT_CAPACITY: Int = 30
 
         private const val MICROS_PER_MILLI = 1_000L

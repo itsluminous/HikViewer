@@ -116,7 +116,7 @@ open class TileDecoder(
     /** Diagnostic: the jitter buffer's fill and its re-base counters, or an empty string for an unpaced decoder. */
     fun describePacer(): String = synchronized(lock) {
         val p = pacer ?: return ""
-        " paced=${p.size} rebuffers=${p.rebuffers} catchUps=${p.catchUps} dropped=${p.dropped}"
+        " paced=${p.size} rebuffers=${p.rebuffers} remaps=${p.remaps} catchUps=${p.catchUps} dropped=${p.dropped}"
     }
 
     /**

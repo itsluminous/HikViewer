@@ -16,7 +16,8 @@ import java.util.concurrent.Future
 
 /**
  * Runs every tile of the grid: one [TilePlayer] per visible camera, the [LiveBudget] that decides
- * how many are live, and the [DecoderPolicy] that hands the hardware decoder to the hero tile.
+ * how many are live, the [DecoderPolicy] that hands the hardware decoder to the hero tile, and the
+ * [PresentationRate] that would halve what a large grid's software tiles present (off for now).
  * Focus is not an input: moving it must never touch a decoder (see [DecoderPolicy]). All streams
  * are opened in parallel (the first frame takes 1.4–3.2 s each; opening them one by one would
  * make a 12-tile grid take half a minute). A ticker samples decoder lag and runs the stall
@@ -184,8 +185,12 @@ class PlaybackCoordinator(
         val players = playersFlow.value
         val modes = DecoderPolicy.assign(players.size, heroIndex, budget.liveLimit, hardwareOnly = hardwareOnly)
         // Grid tiles trade half a second of latency for even motion; the hero (and so the only
-        // tile of a single-camera screen) shows every picture the moment it is decoded.
-        players.forEachIndexed { i, p -> p.paced = i != heroIndex }
+        // tile of a single-camera screen) shows every picture the moment it is decoded. A large
+        // grid may also show its software tiles every second picture only (PresentationRate).
+        players.forEachIndexed { i, p ->
+            p.paced = i != heroIndex
+            p.presentEvery = PresentationRate.divisor(players.size, isHero = i == heroIndex)
+        }
         // Release first, create second: the hardware decoder a tile gives up must be free before
         // the new hero asks for one (the TV has only two).
         players.forEachIndexed { i, p -> if (p.mode.isLive && !modes[i].isLive) p.mode = modes[i] }

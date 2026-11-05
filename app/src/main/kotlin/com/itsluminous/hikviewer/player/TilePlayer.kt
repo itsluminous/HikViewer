@@ -177,6 +177,18 @@ class TilePlayer(
             }
         }
 
+    /**
+     * Show every Nth decoded picture ([PresentationRate]); applied to the running decoder at once
+     * and to every decoder built later. Decoding work is unchanged.
+     */
+    var presentEvery: Int = PresentationRate.FULL_RATE
+        set(value) {
+            synchronized(lock) {
+                field = value
+                decoder?.presentEvery = value
+            }
+        }
+
     /** Decoder input backlog, for [LiveBudget]. */
     val queuedFrames: Int get() = synchronized(lock) { decoder?.queuedFrames ?: 0 }
 
@@ -593,6 +605,7 @@ class TilePlayer(
                 val wanted = generation == plan.generation && decoder == null && mode.isLive
                 if (wanted) {
                     d.keyframesOnly = keyframesOnly
+                    d.presentEvery = presentEvery
                     decoder = d
                     decoderConfig = plan.config
                     decoderIsSoftware = software

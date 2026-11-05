@@ -245,6 +245,19 @@ class PlaybackCoordinatorTest {
     }
 
     @Test
+    fun `every tile is handed the presentation divisor the policy gives it`() = runTest(dispatcher) {
+        val c = coordinator()
+        c.setCameras(cameras(16))
+        c.heroIndex = 0
+        val players = c.players.value
+        val divisors = players.map { it.presentEvery }
+        assertThat(divisors).isEqualTo(players.indices.map { PresentationRate.divisor(16, isHero = it == 0) })
+        // The switch is off tonight: every tile presents every picture.
+        assertThat(divisors.toSet()).containsExactly(PresentationRate.FULL_RATE)
+        c.release()
+    }
+
+    @Test
     fun `hardware only keeps the hero live, releases the rest and stop lifts the cap`() = runTest(dispatcher) {
         val c = coordinator()
         c.setCameras(cameras(4))

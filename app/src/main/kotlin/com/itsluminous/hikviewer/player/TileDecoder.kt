@@ -99,11 +99,15 @@ open class TileDecoder(
     /** Pictures handed to the codec so far. */
     val framesIn: Int get() = synchronized(lock) { framesQueued }
 
-    /** Pictures the codec produced so far. */
+    /** Pictures the codec produced so far (decoded, whether or not presented). */
     val framesOut: Int get() = synchronized(lock) { framesDecoded }
+
+    /** Pictures handed to the surface so far. */
+    val framesShown: Int get() = synchronized(lock) { framesPresented }
 
     private var framesQueued = 0
     private var framesDecoded = 0
+    private var framesPresented = 0
     private val gate = KeyframeGate()
     private var csdToSend = 0
     private var flushes = 0
@@ -125,6 +129,14 @@ open class TileDecoder(
      */
     @Volatile var renderSlotNanos: Long = 0L
 
+    /**
+     * Show every Nth decoded picture ([PresentationRate]): 1 shows them all. The others are
+     * decoded (a P-frame is the next picture's reference) and returned to the codec unrendered,
+     * so they cost no composition. The frame-rate meter and the output-gap diagnostics count
+     * presented pictures; the stall watchdog and [framesOut] count decoded ones.
+     */
+    @Volatile var presentEvery: Int = PresentationRate.FULL_RATE
+
     private val recent = RecentPictures(RECENT)
     private val outputGaps = IntervalStats()
     private var inputCapacity = -1
@@ -141,7 +153,7 @@ open class TileDecoder(
 
     /** Diagnostic: the keyframe gate's state and counters, and how often this decoder was flushed. */
     open fun describeGate(): String = synchronized(lock) {
-        "${gate.describe()} flushes=$flushes"
+        "shown=$framesPresented present=1/$presentEvery ${gate.describe()} flushes=$flushes"
     }
 
     /**
@@ -349,16 +361,28 @@ open class TileDecoder(
                 info: MediaCodec.BufferInfo,
             ) {
                 val first: Boolean
+                val show: Boolean
                 synchronized(lock) {
                     if (released) return
                     val now = now()
                     stall.onOutput(now)
                     framesDecoded++
                     recent.recordOut(info.presentationTimeUs)
-                    frameRate.onFrame(now)
-                    outputGaps.onEvent(now)
                     first = !firstOutputSeen
                     firstOutputSeen = true
+                    // The first picture after a start or a flush is always shown; after that every
+                    // Nth decoded one. A keyframe is not special here: what the viewer needs is
+                    // an even cadence, and the next shown picture is at most N frames away.
+                    show = first || framesDecoded % presentEvery == 0
+                    if (show) {
+                        framesPresented++
+                        frameRate.onFrame(now)
+                        outputGaps.onEvent(now)
+                    }
+                }
+                if (!show) {
+                    runCatching { codec.releaseOutputBuffer(index, false) }
+                    return
                 }
                 // Rendered at (or just after) "now", not at the stream's presentation time: the
                 // relay already paces the pictures, and a camera clock hours away from the TV's

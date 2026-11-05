@@ -128,6 +128,50 @@ class PlaybackActivityTest {
     }
 
     @Test
+    fun `a seek hold ends with the key even when the focus moved to another control meanwhile`() {
+        ActivityScenario.launch<PlaybackActivity>(PlaybackActivity.intent(app, cameraKey)).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                fun seconds(): Int {
+                    val label = a.text(R.id.time_label)
+                    return java.time.LocalTime
+                        .parse(label)
+                        .toSecondOfDay()
+                }
+                // Yesterday's footage starts at 06:00, so there is a day of room to seek forward into.
+                a.key(KeyEvent.KEYCODE_DPAD_UP)
+                a.key(KeyEvent.KEYCODE_DPAD_LEFT)
+                awaitUi { account.searched.size == 2 }
+                a.key(KeyEvent.KEYCODE_DPAD_DOWN)
+                assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+                // Hold RIGHT on the bar for four seconds (down, then auto-repeats): the step grows to minutes.
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+                repeat(4) {
+                    ShadowLooper.idleMainLooper(1_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, it + 1))
+                }
+                val before = seconds()
+                a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 5))
+                assertThat(seconds() - before).isAtLeast(60)
+                // UP moves to the date chip while RIGHT is still held; then RIGHT goes up there.
+                a.key(KeyEvent.KEYCODE_DPAD_UP)
+                assertThat(a.findViewById<View>(R.id.date_chip).isActivated).isTrue()
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT))
+                ShadowLooper.idleMainLooper(
+                    SeekController.DEBOUNCE_MILLIS + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
+                // Back on the bar, a fresh press is the smallest step again, not the minutes the hold reached.
+                a.key(KeyEvent.KEYCODE_DPAD_DOWN)
+                assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+                val rested = seconds()
+                a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                assertThat(seconds() - rested).isEqualTo(10)
+            }
+        }
+    }
+
+    @Test
     fun `clicks work without the D-pad and the bar seeks by fraction`() {
         ActivityScenario.launch<PlaybackActivity>(PlaybackActivity.intent(app, cameraKey)).use { scenario ->
             awaitUi { account.playbackOpened.isNotEmpty() }

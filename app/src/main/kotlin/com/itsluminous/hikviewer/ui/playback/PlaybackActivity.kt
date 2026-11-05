@@ -170,8 +170,10 @@ class PlaybackActivity : AppCompatActivity() {
         keyCode: Int,
         event: KeyEvent,
     ): Boolean {
+        // Whatever control has focus now: the hold started on the bar must end with the key, or
+        // a LEFT held while DOWN moves to the date chip would resume at its old step on the bar.
         val seekKey = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-        if (seekKey && viewModel.state.value.control == PlaybackControl.BAR) {
+        if (seekKey) {
             viewModel.endSeekHold()
             return true
         }

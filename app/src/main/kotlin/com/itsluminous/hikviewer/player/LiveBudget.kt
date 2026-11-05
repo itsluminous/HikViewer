@@ -169,11 +169,13 @@ class LiveBudget(
 
         /**
          * Idle CPU needed before a tile above the ceiling is tried. The probe's reading tracks the
-         * device's total idle share (on the MiTV it read 15-18 % while `top` showed 13-19 %), and
-         * a software tile costs ~22 % of a core, 5.5 % of the four: a quarter idle is one tile with
-         * room to spare for the UI thread.
+         * device's total idle share (on the MiTV it read 15-18 % while `top` showed 13-19 %). One
+         * more software tile took 12-17 points off that reading on the MiTV (31 % → 14 %, 25 % →
+         * 12 %), more than its 22 % of one core suggests, because the probe thread is the first to
+         * lose its turn. So the gate is a tile's measured cost plus the demote margin: a promotion at
+         * 25 % was shed within a minute, twice, on the 12 fps recorder; at 35 % it holds.
          */
-        const val IDLE_PROMOTE_FRACTION: Float = 0.25f
+        const val IDLE_PROMOTE_FRACTION: Float = 0.35f
 
         /** Below this a tile above the ceiling is shed, like lag: the UI thread is next in line. */
         const val IDLE_DEMOTE_FRACTION: Float = 0.10f

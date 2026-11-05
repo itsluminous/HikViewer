@@ -27,16 +27,6 @@
 
         <TextView
             style="@style/TextAppearance.HikViewer.Label"
-            android:labelFor="@id/hero_spinner"
-            android:text="@string/settings_hero" />
-
-        <Spinner
-            android:id="@+id/hero_spinner"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="48dp" />
-
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
             android:text="@string/settings_cameras" />
 
         <TextView

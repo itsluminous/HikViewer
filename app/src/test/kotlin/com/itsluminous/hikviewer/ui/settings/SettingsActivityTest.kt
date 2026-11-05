@@ -58,13 +58,13 @@ class SettingsActivityTest {
                     .containsExactly(true, true, true, false, false)
                     .inOrder()
                 assertThat(a.findViewById<TextView>(R.id.about).text.toString()).contains("HikViewer")
-                assertThat(a.findViewById<Spinner>(R.id.hero_spinner).adapter.count).isEqualTo(3)
+                assertThat(a.findViewById<View>(R.id.layout_spinner).isShown).isTrue()
             }
         }
     }
 
     @Test
-    fun `layout spinner, quality and overlay switches and hero spinner write the store`() {
+    fun `layout spinner, quality and overlay switches write the store`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
                 // Three visible cameras: the spinner offers AUTO and 3x3 only (same filter as the grid menu).
@@ -72,7 +72,6 @@ class SettingsActivityTest {
                 assertThat(layoutSpinner.adapter.count).isEqualTo(2)
                 layoutSpinner.setSelection(1)
                 a.findViewById<SwitchCompat>(R.id.quality_main).isChecked = true
-                a.findViewById<Spinner>(R.id.hero_spinner).setSelection(2)
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isFalse()
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_fps).isChecked).isFalse()
                 a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
@@ -82,26 +81,21 @@ class SettingsActivityTest {
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
                 assertThat(app.graph.settingsStore.showCameraNames).isTrue()
                 assertThat(app.graph.settingsStore.showFrameRate).isTrue()
-                // The hero is position 0 of every 1 + N layout's arrangement; the rest keep their order.
-                GridLayoutMode.heroModes.forEach { mode ->
-                    assertThat(app.graph.arrangementStore.order(mode))
-                        .containsExactly("$serial/3", "$serial/1", "$serial/2")
-                        .inOrder()
-                }
-                assertThat(app.graph.arrangementStore.order(GridLayoutMode.AUTO)).isNull()
+                // No hero setting: the hero is position 0 of a 1 + N layout, chosen on the grid.
+                assertThat(a.findViewById<View?>(R.id.layout_spinner)).isNotNull()
+                GridLayoutMode.heroModes.forEach { mode -> assertThat(app.graph.arrangementStore.order(mode)).isNull() }
             }
         }
     }
 
     @Test
-    fun `ticking cameras updates the hero and layout spinners on the same screen`() {
+    fun `ticking cameras updates the layout spinner on the same screen`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, list ->
                 list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
                 assertThat(
                     app.graph.settingsStore.visibleCameraKeys,
                 ).containsExactly("$serial/2", "$serial/3").inOrder()
-                assertThat(a.findViewById<Spinner>(R.id.hero_spinner).adapter.count).isEqualTo(2)
                 // Three cameras offered AUTO and 3x3; with all five ticked the 1 + 5 layout and 4x3 fit too.
                 list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
                 list.getChildAt(3).findViewById<CheckBox>(R.id.check).performClick()
@@ -109,7 +103,6 @@ class SettingsActivityTest {
                 ShadowLooper.idleMainLooper()
                 assertThat(a.findViewById<Spinner>(R.id.layout_spinner).adapter.count)
                     .isEqualTo(GridLayoutMode.available(5).size)
-                assertThat(a.findViewById<Spinner>(R.id.hero_spinner).adapter.count).isEqualTo(5)
             }
         }
     }

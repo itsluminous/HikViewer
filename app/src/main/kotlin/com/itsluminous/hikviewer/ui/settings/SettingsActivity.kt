@@ -20,15 +20,15 @@ import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
-import com.itsluminous.hikviewer.ui.grid.GridArrangement
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.VerificationCodeDialog
 import com.itsluminous.hikviewer.ui.login.LoginActivity
 import kotlinx.coroutines.launch
 
 /**
- * Settings: layout, hero camera, visible cameras and order, fullscreen quality, encryption
- * password, about, logout. Every change is written to [SettingsStore] immediately; the grid
+ * Settings: layout, visible cameras and order, fullscreen quality, encryption password, about,
+ * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
+ * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately; the grid
  * re-reads the store when this screen returns. The camera list is a plain `LinearLayout` of rows
  * (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop.
  */
@@ -54,7 +54,6 @@ class SettingsActivity : AppCompatActivity() {
                 .orEmpty()
         editor = CameraOrderEditor(allCameras, settings.visibleCameraKeys)
         bindLayout()
-        bindHero()
         bindCameraList()
         bindQuality()
         bindOverlays()
@@ -71,27 +70,6 @@ class SettingsActivity : AppCompatActivity() {
         binding.layoutSpinner.adapter = spinnerAdapter(modes.map { getString(it.labelRes) })
         binding.layoutSpinner.setSelection(modes.indexOf(current))
         binding.layoutSpinner.onItemSelected { arrangement.lastLayout = modes[it] }
-    }
-
-    /**
-     * The hero is position 0 of a 1 + N layout's arrangement. The spinner shows the hero of the
-     * current 1 + N layout (or of 1 + 5) and a pick moves that camera to the front of every
-     * 1 + N layout, so the choice holds whichever size the user switches to.
-     */
-    private fun bindHero() {
-        val visible = editor.items.filter { it.visible }.map { it.camera }
-        val shown = arrangement.lastLayout.takeIf { it.isHero } ?: GridLayoutMode.HERO_1_5
-        val arranged = GridArrangement.apply(visible, arrangement.order(shown))
-        binding.heroSpinner.adapter = spinnerAdapter(visible.map { it.name })
-        val current = visible.indexOfFirst { it.key == arranged.firstOrNull()?.key }.coerceAtLeast(0)
-        if (visible.isNotEmpty()) binding.heroSpinner.setSelection(current)
-        binding.heroSpinner.onItemSelected { picked ->
-            val key = visible.getOrNull(picked)?.key ?: return@onItemSelected
-            GridLayoutMode.heroModes.forEach { mode ->
-                val keys = GridArrangement.apply(visible, arrangement.order(mode)).map { it.key }
-                arrangement.setOrder(mode, GridArrangement.movedToFront(keys, keys.indexOf(key)))
-            }
-        }
     }
 
     private fun bindCameraList() {
@@ -148,11 +126,10 @@ class SettingsActivity : AppCompatActivity() {
         rowBinding.handle.requestFocus()
     }
 
-    /** Persists the camera choice; the layout and hero spinners depend on how many cameras are shown. */
+    /** Persists the camera choice; the layout spinner depends on how many cameras are shown. */
     private fun saveOrder() {
         settings.visibleCameraKeys = editor.visibleKeys()
         bindLayout()
-        bindHero()
     }
 
     private fun bindQuality() {

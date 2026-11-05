@@ -76,7 +76,6 @@
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_layout">Grid layout</string>
-    <string name="settings_hero">Hero camera</string>
     <string name="settings_cameras">Visible cameras and order</string>
     <string name="settings_cameras_help">OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.</string>
     <string name="settings_quality">Fullscreen quality</string>

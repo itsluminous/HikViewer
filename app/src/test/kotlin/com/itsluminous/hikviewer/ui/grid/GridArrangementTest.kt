@@ -46,12 +46,4 @@ class GridArrangementTest {
         assertThat(GridArrangement.replaced(keys, 4, "a")).isEqualTo(keys)
         assertThat(GridArrangement.replaced(keys, -1, "x")).isEqualTo(keys)
     }
-
-    @Test
-    fun `moved to front makes the pick the hero and keeps the rest in order`() {
-        val keys = listOf("a", "b", "c", "d")
-        assertThat(GridArrangement.movedToFront(keys, 2)).containsExactly("c", "a", "b", "d").inOrder()
-        assertThat(GridArrangement.movedToFront(keys, 0)).isEqualTo(keys)
-        assertThat(GridArrangement.movedToFront(keys, 7)).isEqualTo(keys)
-    }
 }

@@ -52,13 +52,4 @@ object GridArrangement {
         if (existing >= 0) return swapped(keys, position, existing)
         return keys.toMutableList().also { it[position] = key }
     }
-
-    /** [keys] with the entry at [index] moved to the front (the hero slot); the rest keep their order. */
-    fun movedToFront(
-        keys: List<String>,
-        index: Int,
-    ): List<String> {
-        if (index !in keys.indices) return keys
-        return listOf(keys[index]) + keys.filterIndexed { i, _ -> i != index }
-    }
 }

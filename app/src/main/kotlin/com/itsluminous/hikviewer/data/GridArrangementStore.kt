@@ -15,13 +15,17 @@ import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
  *
  * Installs that stored the single `HERO` layout of earlier versions are migrated on first use:
  * its arrangement (whose position 0 was the user's hero) seeds every 1 + N layout, and a last
- * layout of `HERO` becomes 1 + 5, the entry whose hero is 2x like the old one.
+ * layout of `HERO` becomes 1 + 5, the entry whose hero is 2x like the old one. The very first
+ * version's `heroCamera` preference (a camera key chosen in Settings) is migrated the same way:
+ * it becomes position 0 of every 1 + N layout that has no arrangement yet, then it is removed.
+ * The Settings screen no longer has a hero entry; the hero is chosen on the grid.
  */
 class GridArrangementStore(
     private val prefs: SharedPreferences,
 ) {
     init {
         migrateLegacyHero()
+        migrateHeroCamera()
     }
 
     /** The layout shown last, restored on launch. */
@@ -58,8 +62,26 @@ class GridArrangementStore(
         }
     }
 
+    /**
+     * A stored list is a prefix: `GridArrangement.apply` puts its keys first and appends the
+     * rest, so a one-key list makes that camera the hero and leaves the others in Settings order.
+     */
+    private fun migrateHeroCamera() {
+        val hero = prefs.getString(KEY_LEGACY_HERO_CAMERA, null) ?: return
+        prefs.edit {
+            GridLayoutMode.heroModes.forEach { mode ->
+                val key = KEY_ORDER_PREFIX + mode.name
+                if (!prefs.contains(key)) putString(key, hero)
+            }
+            remove(KEY_LEGACY_HERO_CAMERA)
+        }
+    }
+
     private companion object {
         const val SEPARATOR = ","
+
+        /** The first version's Settings → Hero camera; gone since the hero is position 0 of a 1 + N layout. */
+        const val KEY_LEGACY_HERO_CAMERA = "heroCamera"
 
         /** Same key SettingsStore used for the chosen layout before arrangements existed, so upgrades keep it. */
         const val KEY_LAST_LAYOUT = "gridLayout"

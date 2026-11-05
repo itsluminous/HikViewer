@@ -34,24 +34,25 @@
         android:textSize="14sp"
         tools:text="Gate" />
 
-    <!-- Live dot: green while pictures reach the screen, red while none has for ~2 s. -->
+    <!-- Live dot, top-right: green while pictures reach the screen, red while none has for ~2 s. -->
     <View
         android:id="@+id/live_dot"
-        android:layout_width="8dp"
-        android:layout_height="8dp"
-        android:layout_gravity="start|top"
-        android:layout_margin="6dp"
+        android:layout_width="@dimen/live_dot_size"
+        android:layout_height="@dimen/live_dot_size"
+        android:layout_gravity="end|top"
+        android:layout_margin="@dimen/live_dot_margin"
         android:background="@drawable/live_dot"
         android:backgroundTint="@color/live_dot_stalled"
         android:importantForAccessibility="no" />
 
-    <!-- Optional rendered-fps counter (Settings → Show frame rate). -->
+    <!-- Optional rendered-fps counter (Settings → Show frame rate), to the left of the dot. -->
     <TextView
         android:id="@+id/fps"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="end|top"
-        android:layout_margin="6dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="@dimen/fps_margin_end"
         android:background="@drawable/label_background"
         android:paddingHorizontal="6dp"
         android:paddingVertical="1dp"
@@ -103,12 +104,11 @@
             android:text="@string/tile_retry" />
     </LinearLayout>
 
-    <View
+    <!-- Last child: the focus border is drawn above everything else in the tile, inset inside it. -->
+    <com.itsluminous.hikviewer.ui.grid.TileFocusOverlay
         android:id="@+id/focus_frame"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/tile_focus_frame"
-        android:importantForAccessibility="no"
-        android:visibility="invisible" />
+        android:importantForAccessibility="no" />
 
 </merge>

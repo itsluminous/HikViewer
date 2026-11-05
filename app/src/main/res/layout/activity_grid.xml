@@ -11,9 +11,7 @@
         android:id="@+id/grid"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="@dimen/tile_gap"
-        android:clipToPadding="false"
-        android:clipChildren="false" />
+        android:padding="@dimen/tile_gap" />
 
     <TextView
         android:id="@+id/message"

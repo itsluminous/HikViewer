@@ -50,7 +50,7 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   it, Back cancels. In a 1 + N layout the first position is the hero. **Change**: pick any of your
   cameras from a list (the current one is highlighted); it replaces this tile's camera, or swaps
   the two if it was already on the grid. Both are remembered per layout, like the tile order.
-- **Live dot**: a small dot in each tile's corner is green while pictures reach the screen (a frame
+- **Live dot**: a small dot in each tile's top-right corner is green while pictures reach the screen (a frame
   within the last 2 s, a fresh still for a keyframe-only tile) and red while the tile is connecting,
   stalled or failed. No text badge.
 - **Fullscreen**: OK on a tile. LEFT / RIGHT (or a swipe on a phone) switches camera, Back returns to

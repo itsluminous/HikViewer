@@ -19,6 +19,11 @@ import com.itsluminous.hikviewer.R
  * detaching a `SurfaceView` destroys its surface. Children past the shape's capacity are hidden.
  * [onTopEdgeUp] lets the screen route UP from the top row to its top bar, which the default focus
  * search cannot reach because the bar is invisible until a key arrives.
+ *
+ * The child holding focus is drawn last. Each tile's `SurfaceView` punches a hole in the window
+ * when it draws, and a tile drawn after its neighbour can only ever cover, never be covered by, the
+ * neighbour's punch: drawing the focused tile last keeps its border on top whatever a device's
+ * `SurfaceView` clears. Focus changes invalidate the grid so the order takes effect on that frame.
  */
 class CameraGridLayout
     @JvmOverloads
@@ -67,6 +72,50 @@ class CameraGridLayout
         }
 
         private val gap = resources.getDimensionPixelSize(R.dimen.tile_gap)
+
+        /** Child index of the tile that holds focus, or -1; drawn last. */
+        private var focusedChild = -1
+
+        init {
+            isChildrenDrawingOrderEnabled = true
+        }
+
+        override fun requestChildFocus(
+            child: View?,
+            focused: View?,
+        ) {
+            super.requestChildFocus(child, focused)
+            setFocusedChildIndex(indexOfChild(child))
+        }
+
+        override fun clearChildFocus(child: View?) {
+            super.clearChildFocus(child)
+            setFocusedChildIndex(-1)
+        }
+
+        private fun setFocusedChildIndex(index: Int) {
+            if (focusedChild == index) return
+            focusedChild = index
+            invalidate()
+        }
+
+        /** Index order, except that the focused child swaps with the last slot. */
+        override fun getChildDrawingOrder(
+            childCount: Int,
+            drawingPosition: Int,
+        ): Int {
+            val focused = focusedChild
+            if (focused < 0 || focused >= childCount) return drawingPosition
+            val last = childCount - 1
+            return when (drawingPosition) {
+                last -> focused
+                focused -> last
+                else -> drawingPosition
+            }
+        }
+
+        /** The child drawn at [drawingPosition] of [childCount]; the focused one comes last. */
+        fun childDrawnAt(drawingPosition: Int): View = getChildAt(getChildDrawingOrder(childCount, drawingPosition))
 
         /** The shape used by the last layout pass. */
         var shape: GridShape = GridGeometry.shape(mode, 0, portrait)

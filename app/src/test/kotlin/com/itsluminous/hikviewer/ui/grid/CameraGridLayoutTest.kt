@@ -6,6 +6,7 @@ import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -147,5 +148,104 @@ class CameraGridLayoutTest {
         assertThat(grid.neighbour(0, +1, 0)).isEqualTo(1)
         assertThat(grid.neighbour(0, 0, +1)).isEqualTo(grid.tileAt(0, 2))
         assertThat(grid.neighbour(grid.tileAt(1, 2), 0, -1)).isEqualTo(0)
+    }
+
+    /** Fills the grid with real tiles, focusable in Robolectric's touch mode, and lays it out for [mode]. */
+    private fun fillTiles(
+        n: Int,
+        mode: GridLayoutMode,
+    ): List<CameraTileView> {
+        val tiles = List(n) { CameraTileView(context).apply { isFocusableInTouchMode = true } }
+        tiles.forEach(grid::addView)
+        grid.mode = mode
+        layout()
+        return tiles
+    }
+
+    /** The tiles the layout shows, in grid-position order. */
+    private fun shownTiles(): List<CameraTileView> =
+        (0 until grid.shape.cells.size).mapNotNull { grid.childAtPosition(it) as? CameraTileView }
+
+    @Test
+    fun `every shown tile in every layout has a visible dot in its own top-right corner, coloured by flow`() {
+        val margin = context.resources.getDimensionPixelSize(com.itsluminous.hikviewer.R.dimen.live_dot_margin)
+        val green = context.getColor(com.itsluminous.hikviewer.R.color.live_dot_flowing)
+        val red = context.getColor(com.itsluminous.hikviewer.R.color.live_dot_stalled)
+        GridLayoutMode.values().forEach { mode ->
+            grid.removeAllViews()
+            grid.order = null
+            val tiles = fillTiles(16, mode)
+            tiles.forEachIndexed { i, tile -> tile.framesFlowing = i % 2 == 0 }
+            val shown = shownTiles()
+            assertThat(shown).hasSize(grid.shape.cells.size)
+            shown.forEach { tile ->
+                val dot = tile.findViewById<View>(com.itsluminous.hikviewer.R.id.live_dot)
+                assertWithMessage("$mode").that(tile.visibility).isEqualTo(View.VISIBLE)
+                assertWithMessage("$mode").that(dot.visibility).isEqualTo(View.VISIBLE)
+                assertWithMessage("$mode").that(dot.top).isEqualTo(margin)
+                assertWithMessage("$mode").that(dot.right).isEqualTo(tile.width - margin)
+                val expected = if (tiles.indexOf(tile) % 2 == 0) green else red
+                assertWithMessage("$mode").that(dot.backgroundTintList!!.defaultColor).isEqualTo(expected)
+            }
+        }
+    }
+
+    @Test
+    fun `after every D-pad move in every layout only the focused tile shows its border and is drawn last`() {
+        val directions = listOf(View.FOCUS_RIGHT, View.FOCUS_DOWN, View.FOCUS_LEFT, View.FOCUS_UP)
+        GridLayoutMode.values().forEach { mode ->
+            grid.removeAllViews()
+            grid.order = null
+            fillTiles(16, mode)
+            val shown = shownTiles()
+            assertThat(shown.first().requestFocus()).isTrue()
+            var moves = 0
+            // Walk the grid: from every tile try every direction; each successful move is checked.
+            shown.forEach { start ->
+                start.requestFocus()
+                assertFocusDrawn(mode, start)
+                directions.forEach { direction ->
+                    // What the window does for a D-pad key: FocusFinder, then requestFocus on the result.
+                    val next =
+                        android.view.FocusFinder
+                            .getInstance()
+                            .findNextFocus(grid, grid.findFocus(), direction) as? CameraTileView ?: return@forEach
+                    assertThat(next.requestFocus()).isTrue()
+                    moves++
+                    assertFocusDrawn(mode, next)
+                }
+            }
+            assertWithMessage("$mode").that(moves).isAtLeast(shown.size)
+        }
+    }
+
+    private fun assertFocusDrawn(
+        mode: GridLayoutMode,
+        focused: CameraTileView,
+    ) {
+        assertWithMessage("$mode").that(grid.findFocus()).isSameInstanceAs(focused)
+        shownTiles().forEach { tile ->
+            assertWithMessage("$mode ${grid.positionOf(tile)}")
+                .that(tile.focusBorderVisible)
+                .isEqualTo(tile === focused)
+        }
+        assertWithMessage("$mode").that(grid.childDrawnAt(grid.childCount - 1)).isSameInstanceAs(focused)
+        // Every child is still drawn exactly once.
+        val drawn = (0 until grid.childCount).map { grid.childDrawnAt(it) }
+        assertWithMessage("$mode").that(drawn).containsNoDuplicates()
+        assertWithMessage("$mode").that(drawn).hasSize(grid.childCount)
+    }
+
+    @Test
+    fun `a lifted tile keeps its border while focus is elsewhere, and clearing focus restores index order`() {
+        val tiles = fillTiles(4, GridLayoutMode.GRID_3X3)
+        tiles[2].lifted = true
+        tiles[0].requestFocus()
+        assertThat(tiles[2].focusBorderVisible).isTrue()
+        assertThat(tiles[0].focusBorderVisible).isTrue()
+        assertThat(grid.childDrawnAt(3)).isSameInstanceAs(tiles[0])
+        tiles[0].clearFocus()
+        assertThat(tiles[0].focusBorderVisible).isFalse()
+        assertThat((0 until 4).map { grid.childDrawnAt(it) }).containsExactlyElementsIn(tiles).inOrder()
     }
 }

@@ -100,37 +100,50 @@ class CameraTileViewTest {
     }
 
     @Test
-    fun `focus shows the frame and scales it, while the tile and its surface never move`() {
-        val frame = tile.findViewById<View>(R.id.focus_frame)
+    fun `focus draws the border and lifting thickens it, while the tile and its surface never move`() {
+        val frame = tile.findViewById<TileFocusOverlay>(R.id.focus_frame)
         val surface = tile.surfaceView
-        assertThat(frame.visibility).isEqualTo(View.INVISIBLE)
+        assertThat(tile.focusBorderVisible).isFalse()
+        assertThat(frame.borderWidth).isEqualTo(0f)
         tile.isFocusableInTouchMode = true // Robolectric views start in touch mode
         assertThat(tile.requestFocus()).isTrue()
-        assertThat(frame.visibility).isEqualTo(View.VISIBLE)
-        org.robolectric.shadows.ShadowLooper
-            .idleMainLooper(CameraTileView.FOCUS_ANIMATION_MILLIS * 2, java.util.concurrent.TimeUnit.MILLISECONDS)
-        assertThat(frame.scaleX).isEqualTo(CameraTileView.FOCUS_SCALE)
-        assertThat(listOf(tile.scaleX, tile.scaleY, surface.scaleX, surface.scaleY)).containsExactly(1f, 1f, 1f, 1f)
-        assertThat(listOf(tile.translationZ, surface.translationZ, surface.translationX)).containsExactly(0f, 0f, 0f)
+        assertThat(tile.focusBorderVisible).isTrue()
+        val border = context.resources.getDimension(R.dimen.tile_focus_border)
+        assertThat(frame.borderWidth).isEqualTo(border)
         tile.lifted = true
-        org.robolectric.shadows.ShadowLooper
-            .idleMainLooper(CameraTileView.FOCUS_ANIMATION_MILLIS * 2, java.util.concurrent.TimeUnit.MILLISECONDS)
-        assertThat(frame.scaleX).isEqualTo(CameraTileView.LIFT_SCALE)
-        assertThat(tile.scaleX).isEqualTo(1f)
-        tile.lifted = false
+        assertThat(frame.borderWidth).isEqualTo(border * TileFocusOverlay.LIFT_STROKE_FACTOR)
         tile.clearFocus()
-        assertThat(frame.visibility).isEqualTo(View.INVISIBLE)
-        assertThat(tile.clipChildren).isFalse() // the frame may draw past the tile's edge
+        assertThat(tile.focusBorderVisible).isTrue() // still lifted
+        tile.lifted = false
+        assertThat(tile.focusBorderVisible).isFalse()
+        // Nothing is transformed: the surface's position is sacred (see the class KDoc).
+        assertThat(listOf(tile.scaleX, tile.scaleY, surface.scaleX, surface.scaleY, frame.scaleX)).containsExactly(
+            1f,
+            1f,
+            1f,
+            1f,
+            1f,
+        )
+        assertThat(listOf(tile.translationZ, surface.translationZ, surface.translationX, frame.translationZ))
+            .containsExactly(0f, 0f, 0f, 0f)
     }
 
     @Test
-    fun `focus frame is drawn inside the tile, not in the gutter`() {
+    fun `the tile clips its children so a surface's hole punch stays inside it`() {
+        // Android 10 clears the whole clip for an unclipped SurfaceView; see the class KDoc.
+        assertThat(tile.clipChildren).isTrue()
+    }
+
+    @Test
+    fun `focus overlay is the last child, fills the tile and draws its stroke inside the tile`() {
         tile.measure(
             View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(270, View.MeasureSpec.EXACTLY),
         )
         tile.layout(0, 0, 480, 270)
-        val frame = tile.findViewById<View>(R.id.focus_frame)
+        val frame = tile.findViewById<TileFocusOverlay>(R.id.focus_frame)
+        assertThat(tile.getChildAt(tile.childCount - 1)).isSameInstanceAs(frame)
+        assertThat(tile.indexOfChild(tile.surfaceView)).isEqualTo(0)
         assertThat(listOf(frame.left, frame.top, frame.right, frame.bottom)).containsExactly(0, 0, 480, 270).inOrder()
         val gutter = context.resources.getDimensionPixelSize(R.dimen.tile_gap)
         val onePx =
@@ -139,6 +152,57 @@ class CameraTileViewTest {
                 .coerceAtLeast(1)
         assertThat(gutter).isEqualTo(onePx)
         assertThat(context.resources.getDimensionPixelSize(R.dimen.tile_focus_border)).isGreaterThan(gutter)
+        // The stroke is painted on a Canvas: every pixel must land within the overlay's bounds.
+        tile.isFocusableInTouchMode = true
+        tile.requestFocus()
+        val canvas = RecordingCanvas()
+        frame.draw(canvas)
+        val rect = canvas.strokedRects.single()
+        val half = frame.borderWidth / 2f
+        assertThat(rect.left).isWithin(0.01f).of(half)
+        assertThat(rect.top).isWithin(0.01f).of(half)
+        assertThat(rect.right).isWithin(0.01f).of(480 - half)
+        assertThat(rect.bottom).isWithin(0.01f).of(270 - half)
+        assertThat(rect.left - half).isAtLeast(0f)
+    }
+
+    @Test
+    fun `the live dot sits in the top-right corner above the surface`() {
+        tile.measure(
+            View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(270, View.MeasureSpec.EXACTLY),
+        )
+        tile.layout(0, 0, 480, 270)
+        val dot = tile.findViewById<View>(R.id.live_dot)
+        val margin = context.resources.getDimensionPixelSize(R.dimen.live_dot_margin)
+        val size = context.resources.getDimensionPixelSize(R.dimen.live_dot_size)
+        assertThat(dot.visibility).isEqualTo(View.VISIBLE)
+        assertThat(dot.top).isEqualTo(margin)
+        assertThat(dot.right).isEqualTo(480 - margin)
+        assertThat(dot.width).isEqualTo(size)
+        assertThat(dot.height).isEqualTo(size)
+        assertThat(tile.indexOfChild(dot)).isGreaterThan(tile.indexOfChild(tile.surfaceView))
+        // The fps counter shares the corner and stands to the dot's left.
+        tile.showFrameRate = true
+        tile.frameRate = 12f
+        tile.measure(
+            View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(270, View.MeasureSpec.EXACTLY),
+        )
+        tile.layout(0, 0, 480, 270)
+        assertThat(tile.findViewById<View>(R.id.fps).right).isAtMost(dot.left)
+    }
+
+    /** A canvas that records stroked rectangles, for asserting where a border was painted. */
+    private class RecordingCanvas : android.graphics.Canvas() {
+        val strokedRects = mutableListOf<android.graphics.RectF>()
+
+        override fun drawRect(
+            rect: android.graphics.RectF,
+            paint: android.graphics.Paint,
+        ) {
+            if (paint.style == android.graphics.Paint.Style.STROKE) strokedRects += android.graphics.RectF(rect)
+        }
     }
 
     @Test

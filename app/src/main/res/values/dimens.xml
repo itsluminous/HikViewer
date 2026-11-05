@@ -2,8 +2,10 @@
 <resources>
     <dimen name="tile_gap">1dp</dimen>
     <dimen name="tile_focus_border">4dp</dimen>
-    <dimen name="tile_focus_elevation">8dp</dimen>
-    <dimen name="tile_lift_elevation">16dp</dimen>
+    <dimen name="live_dot_size">8dp</dimen>
+    <dimen name="live_dot_margin">6dp</dimen>
+    <!-- The fps counter sits left of the dot: margin + dot + a 4 dp gap. -->
+    <dimen name="fps_margin_end">18dp</dimen>
     <dimen name="top_bar_height">56dp</dimen>
     <!-- Phone landscape: the bar's actions stand in a column down the left edge. -->
     <dimen name="side_bar_width">64dp</dimen>

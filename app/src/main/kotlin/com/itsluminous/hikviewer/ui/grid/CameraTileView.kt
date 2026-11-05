@@ -24,20 +24,30 @@ import kotlinx.coroutines.launch
 /**
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
  * nothing has been drawn yet, a dim scrim with a centred Retry while the stream is down, and a
- * dot in the top-left corner that is green while pictures reach the screen and red otherwise
+ * dot in the top-right corner that is green while pictures reach the screen and red otherwise
  * ([framesFlowing]; the player samples it twice a second, so the dot never redraws per frame).
  *
- * Focus is made unmistakable on a TV viewed from the couch: a 4 dp accent frame appears and grows
- * 6 % past the tile's edges with a shadow, animated over 120 ms; a tile picked up for a move
- * ([lifted]) grows its frame 10 % and lifts it further. Only the frame moves: the `SurfaceView`
- * underneath keeps its exact position. Animating the tile itself re-positioned the surface on
- * every animation frame, which on Android 10 races the surface's own creation/destruction
- * (`SurfaceView.positionChanged → applySurfaceTransforms`, a use-after-free in `libgui`) and
- * crashed the MiTV at launch while 16 surfaces were being created.
- * A mouse pointer entering the tile requests focus
- * so hover behaves like D-pad navigation; click/OK/tap are the normal click and a long press
- * (held OK, long click or long touch) is the long click, which the grid turns into a menu. The
- * surface is handed to the owner through [onSurface] whenever it is created or destroyed.
+ * Focus is a 4 dp accent border drawn by [TileFocusOverlay], the tile's last child, entirely
+ * inside the tile; a tile picked up for a move ([lifted]) gets a thicker border and an accent
+ * wash. Nothing in the tile is scaled or elevated, and the `SurfaceView` never moves: animating
+ * the tile re-positioned the surface on every frame, which on Android 10 races the surface's own
+ * creation/destruction (`SurfaceView.positionChanged → applySurfaceTransforms`, a use-after-free
+ * in `libgui`) and crashed the MiTV at launch while 16 surfaces were being created.
+ *
+ * The tile clips its children, and that is load-bearing. A `SurfaceView` below the window punches
+ * its hole in `draw()`; up to Android 11 that is `canvas.drawColor(0, CLEAR)` over the *current
+ * clip*, and a child of a `clipChildren = false` parent is not clipped to its own bounds, so the
+ * clear reaches the nearest clipping ancestor: the whole grid. Twelve surfaces then each wipe
+ * every dot, label and border drawn before them, and only the last-drawn tile keeps its overlays
+ * (the round-4 symptom: one dot, a focus border only when the focused tile happened to be drawn
+ * last). Android 12+ punches exactly the view's bounds, which is why the API 34 emulator never
+ * showed it. The surfaces are media overlays so they stack above any other surface (a decoder's
+ * sideband layer, say) but still below the window that carries the overlays.
+ *
+ * A mouse pointer entering the tile requests focus so hover behaves like D-pad navigation;
+ * click/OK/tap are the normal click and a long press (held OK, long click or long touch) is the
+ * long click, which the grid turns into a menu. The surface is handed to the owner through
+ * [onSurface] whenever it is created or destroyed.
  */
 class CameraTileView
     @JvmOverloads
@@ -63,13 +73,16 @@ class CameraTileView
         /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
         val showsRetry: Boolean get() = binding.errorOverlay.visibility == VISIBLE
 
-        /** True while the user is moving this tile: lifted above its neighbours. */
+        /** True while the user is moving this tile: thicker border and an accent wash. */
         var lifted: Boolean = false
             set(value) {
                 if (field == value) return
                 field = value
-                applyTransform(animate = true)
+                binding.focusFrame.lifted = value
             }
+
+        /** True when the focus border is drawn: the tile has focus or is being moved. */
+        val focusBorderVisible: Boolean get() = binding.focusFrame.borderVisible
 
         init {
             binding.name.visibility = GONE
@@ -78,9 +91,9 @@ class CameraTileView
             isClickable = true
             isLongClickable = true
             setBackgroundResource(R.drawable.tile_background)
-            clipChildren = false // the focus frame grows past the tile's edges
-            clipToPadding = false
-            binding.surface.setZOrderMediaOverlay(false)
+            // Never false: see the class KDoc on the Android 10 hole punch.
+            clipChildren = true
+            binding.surface.setZOrderMediaOverlay(true)
             binding.surface.holder.addCallback(
                 object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -221,51 +234,11 @@ class CameraTileView
             previouslyFocusedRect: android.graphics.Rect?,
         ) {
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
-            applyTransform(animate = true)
+            binding.focusFrame.focused = gainFocus
         }
 
-        /** Grows the frame, never the tile: see the class KDoc. */
-        private fun applyTransform(animate: Boolean) {
-            val frame = binding.focusFrame
-            frame.visibility = if (isFocused || lifted) VISIBLE else INVISIBLE
-            val scale =
-                when {
-                    lifted -> LIFT_SCALE
-                    isFocused -> FOCUS_SCALE
-                    else -> 1f
-                }
-            val z =
-                when {
-                    lifted -> resources.getDimension(R.dimen.tile_lift_elevation)
-                    isFocused -> resources.getDimension(R.dimen.tile_focus_elevation)
-                    else -> 0f
-                }
-            if (animate) {
-                frame
-                    .animate()
-                    .scaleX(scale)
-                    .scaleY(scale)
-                    .translationZ(z)
-                    .setDuration(FOCUS_ANIMATION_MILLIS)
-                    .start()
-            } else {
-                frame.scaleX = scale
-                frame.scaleY = scale
-                frame.translationZ = z
-            }
-        }
-
-        /** Focus visuals. */
+        /** Sizes. */
         companion object {
-            /** The frame is 6 % larger than the tile when focused. */
-            const val FOCUS_SCALE: Float = 1.06f
-
-            /** 10 % larger while being moved. */
-            const val LIFT_SCALE: Float = 1.1f
-
-            /** Focus animation length. */
-            const val FOCUS_ANIMATION_MILLIS: Long = 120
-
             /** Thumbnails are never wider than this: a 480-wide still of a 960x480 stream is plenty for a tile. */
             const val STILL_MAX_WIDTH: Int = 480
         }

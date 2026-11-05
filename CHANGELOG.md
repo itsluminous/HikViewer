@@ -18,7 +18,7 @@ All notable changes to HikViewer are recorded here. The format follows
 - Long-press menu on a tile: *Move* (D-pad, mouse drag or touch drag; OK drops, Back cancels),
   *Change* (a focusable list of your cameras; the pick replaces this tile's camera or swaps the two
   if it was already on the grid, remembered per layout like Move) and *Playback*.
-- Live dot in a corner of every tile: green while pictures reach the screen (a decoded frame within
+- Live dot in the top-right corner of every tile: green while pictures reach the screen (a decoded frame within
   2 s, or a freshly rendered still on a keyframe-only tile), red while connecting, stalled or failed.
 - Fullscreen view with LEFT / RIGHT (TV) or swipe (phone) to switch camera and a self-hiding hint.
 - Recorded playback from the cloud: 24 h time bar with recorded spans, speed toggle −10× … +10×
@@ -37,6 +37,14 @@ All notable changes to HikViewer are recorded here. The format follows
 
 ### Fixed
 
+- On Android 10/11 TVs only one tile showed its live dot and the focus border vanished on some
+  UP/DOWN moves. Each tile's `SurfaceView` punches its hole in the window with `drawColor(CLEAR)`
+  over the whole current clip, and the round-4 tile had `clipChildren = false` so its focus frame
+  could grow past the tile, which let every surface wipe the overlays of all tiles drawn before it
+  (Android 12+ clears only the view's bounds, so emulators never showed it). Tiles now clip their
+  children, the surfaces are media overlays, the focus border is a 4 dp stroke drawn inset inside
+  the tile by an overlay view that is the tile's last child (no scale, no elevation; a lifted tile
+  gets a thicker stroke and an accent wash), and the grid draws the focused tile last.
 - Software-decoded tiles froze for a few seconds about once a minute on the MiTV, and in earlier
   builds were then demoted to keyframe stills one after another. The cause was in the decryptor:
   with the "type hint" encryption variant a clear P-slice is mistaken for an encrypted one once in

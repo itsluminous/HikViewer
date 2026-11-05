@@ -45,6 +45,13 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   43 % of one core with 8 live software tiles (budget ≤ 150 % / ≤ 40 %). The fixes removed two churn
   sources (surface switching, hardware retries every 5 s) but the TV has not been re-measured.
 
+- **Confirm the overlay fix on the MiTV.** Round 5 traced the one-dot / missing-focus-border symptom to the
+  Android ≤ 11 `SurfaceView` hole punch (`drawColor(CLEAR)` over the clip) meeting the tile's
+  `clipChildren = false`; the fix (clipped tiles, media-overlay surfaces, an inset border overlay drawn
+  last) was verified on the API 34 TV emulator (Espresso `TileDrawingTest`, demo screenshot), where the
+  bug never reproduced because API 31+ punches only the view's bounds. The proof is a 4 × 3 grid on the
+  TV with twelve dots top-right and a border that follows every D-pad move; if a dot is still missing,
+  `adb shell dumpsys SurfaceFlinger | grep -i hikviewer` shows whether a surface sits above the window.
 - **A 4-minute TV-wide freeze seen once.** During round 4 (12:28, first install of the live-dot build)
   the MiTV stopped logging from every process for four minutes right after launch; `lowmemorykiller`
   had just killed nine cached processes and the load average was 67 afterwards. The app survived and

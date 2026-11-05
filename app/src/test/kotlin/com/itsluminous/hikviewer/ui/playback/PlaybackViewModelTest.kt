@@ -62,13 +62,12 @@ class PlaybackViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(hopMillis: Long = 2_000) = PlaybackViewModel(
+    private fun viewModel() = PlaybackViewModel(
         camera,
         graph.account,
         graph.playbackFactory,
         today,
         io = dispatcher,
-        hopMillis = hopMillis,
         // The seek debounce and acceleration read this clock; the scheduler's time keeps them in step with delay().
         clock = { dispatcher.scheduler.currentTime },
     )
@@ -80,8 +79,8 @@ class PlaybackViewModelTest {
         dispatcher.scheduler.runCurrent()
     }
 
-    private fun started(hopMillis: Long = 2_000): PlaybackViewModel {
-        val vm = viewModel(hopMillis)
+    private fun started(): PlaybackViewModel {
+        val vm = viewModel()
         vm.player.attachSurface(android.view.Surface(android.graphics.SurfaceTexture(1)))
         vm.onStart()
         run()
@@ -309,10 +308,10 @@ class PlaybackViewModelTest {
     }
 
     @Test
-    fun `other speeds hop by factor times the period and stop at the edge of the footage`() {
+    fun `other speeds step one keyframe a second, the speed apart, and stop at the edge of the footage`() {
         cloud.recordings =
             { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(6, 1), RecordSegment.TYPE_TIMING)) }
-        val vm = started(hopMillis = 2_000)
+        val vm = started()
         vm.changeDay(-1, today)
         run()
         vm.togglePause()
@@ -327,36 +326,29 @@ class PlaybackViewModelTest {
         vm.setSpeed(PlaybackSpeed.FORWARD_10)
         run()
         assertThat(vm.state.value.speed).isEqualTo(PlaybackSpeed.FORWARD_10)
-        val first = account.playbackOpened.last().second
-        assertThat(first.begin).isEqualTo(start)
-        assertThat(first.duration).isEqualTo(PlaybackViewModel.HOP_WINDOW)
-        run(2_000)
-        assertThat(
-            account.playbackOpened
-                .last()
-                .second.begin,
-        ).isEqualTo(start.plusSeconds(20))
-        run(2_000) // +40 s is past the segment's end → ended
+        // The stepper opened the first step's window and the next one's ahead of time, a GOP each.
+        val windows = account.playbackOpened.drop(opens).map { it.second }
+        assertThat(windows.map { it.begin }).containsExactly(start, start.plusSeconds(10)).inOrder()
+        assertThat(windows.first().duration).isEqualTo(PlaybackStepper.WINDOW)
+        assertThat(vm.state.value.position).isEqualTo(start)
+        run(1_000)
+        assertThat(vm.state.value.position).isEqualTo(start.plusSeconds(10))
+        run(1_000)
+        assertThat(vm.state.value.position).isEqualTo(start.plusSeconds(20))
+        run(1_000) // +30 s is past the segment's end → ended
         assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.ENDED)
-        assertThat(account.playbackOpened).hasSize(opens + 2)
+        val opensAtEnd = account.playbackOpened.size
 
         vm.setSpeed(PlaybackSpeed.REVERSE_2) // changing speed while ended does not restart
         run()
-        assertThat(account.playbackOpened).hasSize(opens + 2)
+        assertThat(account.playbackOpened).hasSize(opensAtEnd)
         vm.togglePause() // OK after the end resumes in the new direction
         run()
         assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PLAYING)
-        val back =
-            account.playbackOpened
-                .last()
-                .second.begin
-        run(2_000)
-        assertThat(
-            account.playbackOpened
-                .last()
-                .second.begin,
-        ).isEqualTo(back.minusSeconds(4))
-        // Back to 1x plays continuously from the current hop.
+        val back = vm.state.value.position
+        run(1_000)
+        assertThat(vm.state.value.position).isEqualTo(back.minusSeconds(2))
+        // Back to 1x plays continuously from the current step.
         vm.setSpeed(PlaybackSpeed.NORMAL)
         run()
         assertThat(
@@ -392,7 +384,7 @@ class PlaybackViewModelTest {
     }
 
     @Test
-    fun `a seek and a speed change flush the one decoder instead of rebuilding it`() {
+    fun `a seek at 1x and a change between 1x and a fast speed flush the one decoder, steps never touch it`() {
         cloud.recordings =
             { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
         val vm = started()
@@ -401,36 +393,63 @@ class PlaybackViewModelTest {
         assertThat(decoders.created).hasSize(2)
         assertThat(decoders.created[0].released).isTrue()
         val d = decoders.created[1]
+        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(8, 0))) // room to step backwards
+        run(SeekController.DEBOUNCE_MILLIS)
+        assertThat(d.flushes).isEqualTo(1)
         val fedBefore = d.fed.size
 
         vm.seekBy(+1)
         vm.endSeekHold()
         run(SeekController.DEBOUNCE_MILLIS)
         assertThat(decoders.created).hasSize(2)
-        assertThat(d.flushes).isEqualTo(1)
+        assertThat(d.flushes).isEqualTo(2)
         assertThat(d.released).isFalse()
         assertThat(d.fed.size).isGreaterThan(fedBefore) // the new window's pictures reach the same decoder
         assertThat(d.keyframesOnlySet).isFalse()
 
-        vm.setSpeed(PlaybackSpeed.FORWARD_5)
+        vm.setSpeed(PlaybackSpeed.FORWARD_5) // 1x → stepping: one reopen, then one stream for every step
         run()
         assertThat(decoders.created).hasSize(2)
-        assertThat(d.flushes).isEqualTo(2)
-        assertThat(d.keyframesOnlySet).isFalse() // forward hops decode every picture of their window
+        assertThat(d.flushes).isEqualTo(3)
+        assertThat(d.keyframesOnlySet).isTrue()
+        d.emitFirstFrame()
+        assertThat(vm.player.state.value).isEqualTo(TileState.Live)
+        val opens = account.playbackOpened.size
+        repeat(5) {
+            run(1_000)
+            assertThat(vm.player.state.value).isEqualTo(TileState.Live) // no spinner between two steps
+        }
+        assertThat(account.playbackOpened.size).isGreaterThan(opens) // the stepper opened windows meanwhile
+        assertThat(d.flushes).isEqualTo(3)
+
+        vm.setSpeed(PlaybackSpeed.REVERSE_10) // fast → fast turns the stepper around in place
+        run(2_000)
+        assertThat(d.flushes).isEqualTo(3)
+        assertThat(vm.player.state.value).isEqualTo(TileState.Live)
+
+        vm.seekBy(-1) // a seek while stepping restarts the stepper, not the stream
+        vm.endSeekHold()
+        run(SeekController.DEBOUNCE_MILLIS + 1_000)
+        assertThat(d.flushes).isEqualTo(3)
+        assertThat(vm.player.state.value).isEqualTo(TileState.Live)
+
+        vm.setSpeed(PlaybackSpeed.NORMAL) // stepping → 1x reopens the stream once more
+        run()
+        assertThat(d.flushes).isEqualTo(4)
+        assertThat(d.keyframesOnlySet).isFalse()
 
         vm.onStop() // the screen goes away: now the decoder is released
         assertThat(d.released).isTrue()
     }
 
     @Test
-    fun `reverse speeds feed keyframes only, forward speeds and 1x feed every picture`() {
+    fun `fast speeds feed keyframes only, in the direction of travel, with presentation times that only grow`() {
         cloud.recordings =
             { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
-        cloud.playbackFramesPerWindow = 36 // three GOPs of the synthetic clip per window
         val vm = started()
         vm.changeDay(-1, today)
         run()
-        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(8, 0))) // room to hop backwards
+        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(8, 0))) // room to step backwards
         run(SeekController.DEBOUNCE_MILLIS)
         val d = decoders.created.last()
         assertThat(d.fed.any { !it.isKeyframe }).isTrue()
@@ -440,17 +459,25 @@ class PlaybackViewModelTest {
         assertThat(vm.player.keyframesOnly).isTrue()
         assertThat(d.keyframesOnlySet).isTrue()
         val fedAtReverse = d.fed.size
-        run(2_000) // one more hop
+        val positions = ArrayList<java.time.LocalDateTime>()
+        repeat(4) {
+            run(1_000)
+            positions += vm.state.value.position
+        }
         val reverseFed = d.fed.drop(fedAtReverse)
-        assertThat(reverseFed).isNotEmpty()
-        assertThat(reverseFed.all { it.isKeyframe }).isTrue()
+        assertThat(reverseFed.size).isAtLeast(3)
+        assertThat(reverseFed.all { it.isKeyframe && it.config != null }).isTrue()
+        assertThat(reverseFed.map { it.presentationTimeUs!! }).isInStrictOrder()
+        assertThat(positions.reversed()).isInStrictOrder() // 10 s back per second
+        assertThat(positions.first().minusSeconds(10)).isEqualTo(positions[1])
 
         vm.setSpeed(PlaybackSpeed.FORWARD_10)
         run()
-        assertThat(vm.player.keyframesOnly).isFalse()
-        val fedAtForward = d.fed.size
-        run(2_000)
-        assertThat(d.fed.drop(fedAtForward).any { !it.isKeyframe }).isTrue()
+        assertThat(vm.player.keyframesOnly).isTrue()
+        val turned = vm.state.value.position
+        run(1_000)
+        assertThat(vm.state.value.position).isEqualTo(turned.plusSeconds(10))
+        assertThat(d.fed.drop(fedAtReverse).all { it.isKeyframe }).isTrue()
 
         vm.setSpeed(PlaybackSpeed.NORMAL)
         run()
@@ -484,7 +511,8 @@ class PlaybackViewModelTest {
         assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PLAYING)
         vm.onStart()
         run()
-        assertThat(account.playbackOpened).hasSize(opens + 1)
+        // -2x resumes as stepping: the first step's window and the next one's open at once.
+        assertThat(account.playbackOpened).hasSize(opens + PlaybackStepper.PREFETCH_STEPS)
         assertThat(decoders.created.first().released).isTrue()
     }
 }

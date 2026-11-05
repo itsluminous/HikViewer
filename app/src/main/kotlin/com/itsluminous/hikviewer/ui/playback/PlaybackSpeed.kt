@@ -4,9 +4,8 @@ package com.itsluminous.hikviewer.ui.playback
  * The speed button's positions, in cycling order. Negative factors step backwards.
  *
  * Only 1x is true playback: the relay streams a window in real time, so every other speed is
- * implemented as hopping ([PlaybackViewModel.HOP_MILLIS]) between short windows opened
- * `factor * HOP_MILLIS` apart and showing their first pictures — fast forward and reverse are both
- * keyframe stepping, which the help line says.
+ * keyframe stepping ([PlaybackStepper]): one picture a second, each `factor` seconds of footage
+ * apart, forward or backward, which the help line says.
  */
 enum class PlaybackSpeed(
     /** Signed multiple of real time. */

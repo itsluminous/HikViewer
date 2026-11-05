@@ -94,19 +94,20 @@ data class PlaybackUiState(
  *    [SeekController.DEBOUNCE_MILLIS] without further seek input, so a burst of presses, a held
  *    key or a drag along the bar opens one window. A held key accelerates on the controller's
  *    schedule and the playhead is clamped to the day's footage.
- *  * **Other speeds** hop: every [HOP_MILLIS] the playhead moves `factor * HOP_MILLIS` and a short
- *    window opens there. Forward, the screen shows the window's pictures as the relay sends them
- *    (one picture group per hop); backward, only the window's keyframes
- *    ([TilePlayer.keyframesOnly]): the hops run against the direction of prediction, so a P-frame
- *    would be decoded against a reference that was never shown, and that is the green or grey
- *    picture a hardware decoder makes of it.
+ *  * **Other speeds** step through keyframes ([PlaybackStepper]): one picture a second, each
+ *    `factor` seconds of footage apart, forward or backward, out of one stream to the player
+ *    whose every picture is a keyframe ([TilePlayer.keyframesOnly] guards that too). The stepper
+ *    opens the relay windows itself, ahead of time, so the player never reconnects between two
+ *    pictures and never shows the spinner; a step whose picture is late keeps the last one and
+ *    moves the time label. A speed change between two fast speeds turns the stepper around in
+ *    place; a seek while stepping restarts it at the new time.
  *  * **Pause** stops the stream and keeps the last picture; resume reopens at the playhead.
  *
- * Every reopen keeps the one decoder ([TilePlayer.reopen]): the codec is flushed and admits
- * nothing until the new window's first keyframe, so a seek shows the old picture until the new
- * one is decoded instead of a blank surface, and the hardware slot is never released and
- * re-acquired between two hops. The stream is only stopped for good ([TilePlayer.stop]) when the
- * screen goes away, the footage ends or the user pauses.
+ * A switch between 1x and stepping, and a seek at 1x, reopens the player's stream but keeps its
+ * one decoder ([TilePlayer.reopen]): the codec is flushed and admits nothing until the next
+ * keyframe, so the old picture stays until the new one is decoded instead of a blank surface, and
+ * the hardware slot is never released and re-acquired. The stream is only stopped for good
+ * ([TilePlayer.stop]) when the screen goes away, the footage ends or the user pauses.
  *
  * Callbacks from the stream arrive on worker threads; everything that touches the player or the
  * timers is re-dispatched to the main thread through the engine's scope: [viewModelScope] on the
@@ -120,7 +121,8 @@ class PlaybackViewModel(
     factory: PlaybackFactory,
     startDay: LocalDate,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val hopMillis: Long = HOP_MILLIS,
+    /** Time between two pictures at a fast speed; tests shorten it. */
+    private val stepMillis: Long = PlaybackStepper.CADENCE_MILLIS,
     /** Monotonic milliseconds for the seek timing; tests pass their scheduler's time. */
     private val clock: () -> Long = { SystemClock.uptimeMillis() },
     private val externalScope: CoroutineScope? = null,
@@ -162,7 +164,9 @@ class PlaybackViewModel(
      */
     @Volatile private var seeking = false
     private val seek = SeekController(clock)
-    private var hopJob: Job? = null
+
+    // Set on the main thread before the player reopens; read on the stream thread by the opener.
+    @Volatile private var stepper: PlaybackStepper? = null
     private var seekJob: Job? = null
     private var started = false
     private val scope: CoroutineScope get() = externalScope ?: viewModelScope
@@ -242,6 +246,7 @@ class PlaybackViewModel(
     /** Moves the playhead to [target] of the state, clamped to the footage, and arms the debounced reopen. */
     private fun moveTarget(target: (PlaybackUiState) -> LocalDateTime) {
         seeking = true
+        stepper?.pause()
         stateFlow.update { it.copy(position = PlaybackTimeline.clampToRecorded(it.day, it.segments, target(it))) }
         if (seekJob?.isActive == true) return
         seekJob =
@@ -271,7 +276,15 @@ class PlaybackViewModel(
         }
         if (s.segments.isEmpty()) return
         stateFlow.update { it.copy(phase = PlaybackPhase.PLAYING) }
-        resumeTransport()
+        val running = stepper
+        if (running != null && !s.speed.isRealTime) {
+            // The ring is cleared and the walk starts over at the new time; the player's stream
+            // stays open, so the picture on screen is replaced by the one at the new time with no
+            // spinner in between.
+            running.seekTo(s.position)
+        } else {
+            resumeTransport()
+        }
     }
 
     /** OK on the bar. */
@@ -298,9 +311,16 @@ class PlaybackViewModel(
 
     /** Switches to [speed]; takes effect at once while playing. */
     fun setSpeed(speed: PlaybackSpeed) {
-        if (speed == stateFlow.value.speed) return
+        val previous = stateFlow.value.speed
+        if (speed == previous) return
         stateFlow.update { it.copy(speed = speed) }
-        if (stateFlow.value.isPlaying) resumeTransport()
+        if (!stateFlow.value.isPlaying) return
+        val running = stepper
+        if (running != null && !speed.isRealTime && !seeking) {
+            running.setSpeed(speed.factor) // the same stream, the same keyframes, a new stride or direction
+        } else {
+            resumeTransport()
+        }
     }
 
     /**
@@ -313,7 +333,8 @@ class PlaybackViewModel(
         val now = System.nanoTime() / NANOS_PER_MILLI
         player.tick(now)
         if (++ticks % DIAGNOSTICS_EVERY_TICKS == 0) {
-            Log.i(TAG, "${stateFlow.value.speed.label} ${stateFlow.value.phase} ${player.diagnostics(now)}")
+            val stepping = stepper?.describe()?.let { " $it" } ?: ""
+            Log.i(TAG, "${stateFlow.value.speed.label} ${stateFlow.value.phase}$stepping ${player.diagnostics(now)}")
         }
     }
 
@@ -360,8 +381,8 @@ class PlaybackViewModel(
     private fun resumeTransport() {
         stopTransport()
         val speed = stateFlow.value.speed
-        player.keyframesOnly = speed.factor < 0
-        if (speed.isRealTime) playFrom(stateFlow.value.position) else startHopping()
+        player.keyframesOnly = !speed.isRealTime
+        if (speed.isRealTime) playFrom(stateFlow.value.position) else startStepping()
     }
 
     /**
@@ -382,8 +403,8 @@ class PlaybackViewModel(
      * reopens it ([open], which keeps the decoder) or stops it for good.
      */
     private fun stopTransport() {
-        hopJob?.cancel()
-        hopJob = null
+        stepper?.stop()
+        stepper = null
         seekJob?.cancel()
         seekJob = null
         seek.settle()
@@ -403,31 +424,33 @@ class PlaybackViewModel(
         open(next)
     }
 
-    private fun startHopping() {
-        hopJob =
-            scope.launch {
-                var first = true
-                while (true) {
-                    val s = stateFlow.value
-                    val direction = if (s.speed.factor >= 0) 1 else -1
-                    val target =
-                        if (first) {
-                            s.position
-                        } else {
-                            PlaybackTimeline.shift(s.day, s.position, s.speed.factor * hopMillis / MILLIS_PER_SECOND)
-                        }
-                    first = false
-                    val hop = PlaybackTimeline.windowForHop(s.segments, target, direction, HOP_WINDOW)
-                    if (hop == null) {
-                        player.stop()
-                        stateFlow.update { it.copy(phase = PlaybackPhase.ENDED) }
-                        return@launch
-                    }
-                    stateFlow.update { it.copy(position = hop.begin, phase = PlaybackPhase.PLAYING) }
-                    open(hop)
-                    delay(hopMillis)
-                }
-            }
+    /** Opens one stream to the player (the stepper's pictures) and starts the stepper behind it. */
+    private fun startStepping() {
+        val s = stateFlow.value
+        val stepping =
+            PlaybackStepper(
+                segments = s.segments,
+                openWindow = { w -> account.openPlayback(camera, w) },
+                scope = scope,
+                onPosition = ::onStepped,
+                onEnded = ::onSteppingEnded,
+                cadenceMillis = stepMillis,
+            )
+        stepper = stepping
+        window = null
+        generation++
+        player.reopen(scope)
+        stepping.start(s.position, s.speed.factor)
+    }
+
+    private fun onStepped(time: LocalDateTime) {
+        if (seeking) return
+        stateFlow.update { if (it.isPlaying) it.copy(position = time) else it }
+    }
+
+    private fun onSteppingEnded() {
+        player.stop()
+        stateFlow.update { it.copy(phase = PlaybackPhase.ENDED) }
     }
 
     private fun open(next: PlaybackWindow) {
@@ -439,6 +462,14 @@ class PlaybackViewModel(
     }
 
     private fun openCurrentWindow(onStatus: (StreamStatus) -> Unit): Flow<AccessUnit> {
+        val stepping = stepper
+        if (stepping != null) {
+            // One stream for the whole fast-speed session: the player is "streaming" from here
+            // on and every picture it gets is a keyframe the stepper chose.
+            onStatus(StreamStatus.Connecting(1))
+            onStatus(StreamStatus.Streaming)
+            return stepping.frames
+        }
         val w = checkNotNull(window) { "no playback window" }
         val myGeneration = generation
         return account
@@ -484,12 +515,6 @@ class PlaybackViewModel(
 
     /** Tunables. */
     companion object {
-        /** Period of the fast-forward / reverse hops. */
-        const val HOP_MILLIS: Long = 2_000
-
-        /** Footage asked for per hop: one GOP plus the relay's rounding. */
-        val HOP_WINDOW: Duration = Duration.ofSeconds(3)
-
         /** Longest window asked for at 1x; a reopen every hour keeps the playhead honest. */
         val MAX_WINDOW: Duration = Duration.ofHours(1)
 
@@ -502,6 +527,5 @@ class PlaybackViewModel(
         private const val TAG = "PlaybackViewModel"
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val MICROS_PER_MILLI = 1_000L
-        private const val MILLIS_PER_SECOND = 1_000L
     }
 }

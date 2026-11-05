@@ -73,7 +73,7 @@ class PlaybackActivityTest {
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).segments).hasSize(2)
                 assertThat(a.findViewById<View>(R.id.status).visibility).isEqualTo(View.GONE)
-                assertThat(a.text(R.id.help)).contains("keyframes")
+                assertThat(a.text(R.id.help)).contains("keyframe a second")
 
                 // UP → date chip; LEFT → yesterday.
                 a.key(KeyEvent.KEYCODE_DPAD_UP)
@@ -202,12 +202,11 @@ class PlaybackActivityTest {
                     java.util.concurrent.TimeUnit.MILLISECONDS,
                 )
                 awaitUi { account.playbackOpened.size > opens }
+                // At -10x the stepper opens the step's window (and the next one's ahead of it).
                 assertThat(
-                    account.playbackOpened
-                        .last()
+                    account.playbackOpened[opens]
                         .second.begin,
                 ).isEqualTo(LocalDate.now().minusDays(1).atTime(18, 0))
-                assertThat(a.text(R.id.time_label)).isEqualTo("18:00:00")
 
                 // A drag along the bar: every sample moves the label, the stream reopens once where the finger rested.
                 val bar = a.findViewById<TimeBarView>(R.id.time_bar)
@@ -227,10 +226,10 @@ class PlaybackActivityTest {
                     java.util.concurrent.TimeUnit.MILLISECONDS,
                 )
                 awaitUi { account.playbackOpened.size > dragged }
-                assertThat(account.playbackOpened).hasSize(dragged + 1)
+                // Still at -10x: the stepper opens where the finger rested and one step ahead of it.
+                assertThat(account.playbackOpened).hasSize(dragged + PlaybackStepper.PREFETCH_STEPS)
                 assertThat(
-                    account.playbackOpened
-                        .last()
+                    account.playbackOpened[dragged]
                         .second.begin,
                 ).isEqualTo(LocalDate.now().minusDays(1).atTime(19, 12))
             }

@@ -24,6 +24,24 @@ class PlaybackCoordinatorTest {
 
     private fun cameras(n: Int) = (1..n).map { Camera("S", it, "c$it", hasSignal = true, isOnline = true) }
 
+    /** A probe the test sets by hand and that records its start/stop calls. */
+    private class FakeProbe : HeadroomProbe {
+        var started = 0
+        var stopped = 0
+        override var cpuIdleFraction = 0f
+        override var spareMemoryBytes = 0L
+
+        override fun start() {
+            started++
+        }
+
+        override fun stop() {
+            stopped++
+        }
+    }
+
+    private val probe = FakeProbe()
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         capabilities: DeviceCapabilities = TestGraph.tvCapabilities,
     ) = PlaybackCoordinator(
@@ -44,9 +62,45 @@ class PlaybackCoordinatorTest {
             java.util.concurrent.CompletableFuture
                 .completedFuture(null)
         },
+        headroom = probe,
     )
 
     private val pool = NoopKeyframePool()
+
+    @Test
+    fun `the headroom probe runs only with tiles beyond the ceiling and its readings lift the budget above it`() =
+        runTest(dispatcher) {
+            val c = coordinator()
+            c.setCameras(cameras(4)) // ceiling is 8 on the test TV: nothing to probe for
+            c.start()
+            assertThat(probe.started).isEqualTo(0)
+            c.setCameras(cameras(10))
+            assertThat(probe.started).isEqualTo(1)
+            c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+            dispatcher.scheduler.runCurrent()
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(8)
+            // Busy: the budget stays at the ceiling however long it is calm.
+            repeat(60) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(8)
+            // A free core and spare memory: the calm is already there, so one more tile at once (and
+            // the next only after another calm period, outside this window).
+            probe.cpuIdleFraction = 1f
+            probe.spareMemoryBytes = 500L shl 20
+            repeat(20) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(9)
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(9)
+            c.stop()
+            assertThat(probe.stopped).isAtLeast(1)
+            c.release()
+        }
 
     @Test
     fun `start opens every stream in parallel and stop releases everything`() = runTest(dispatcher) {

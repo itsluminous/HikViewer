@@ -1,9 +1,7 @@
 package com.itsluminous.hikviewer.player
 
 import android.util.Log
-import android.view.Surface
 import com.itsluminous.hikviewer.core.devices.Camera
-import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -31,12 +29,14 @@ class PlaybackCoordinator(
     private val quality: StreamQuality = StreamQuality.SUB,
     private val pool: KeyframeDecoderPool = KeyframeDecoderPool(),
     private val pickCodec: (String, Boolean) -> String? = CodecNames::pick,
-    private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
+    private val decoderFactory: DecoderFactory = DecoderFactory.DEFAULT,
     private val tickMillis: Long = DEFAULT_TICK_MILLIS,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
     private val dispatcher: CoroutineDispatcher = StreamThreads.dispatcher,
     /** How players tear decoders down; tests pass a synchronous one. */
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
+    /** CPU and memory readings for probing above the static ceiling; [HeadroomProbe.NONE] never probes. */
+    private val headroom: HeadroomProbe = HeadroomProbe.NONE,
 ) {
     private val budget = LiveBudget(capabilities) { Log.i(TAG, it) }
     private val playersFlow = MutableStateFlow<List<TilePlayer>>(emptyList())
@@ -80,8 +80,16 @@ class PlaybackCoordinator(
             cameras.map { camera -> existing[camera.key] ?: newPlayer(camera) }
         existing.values.filter { it !in next }.forEach { it.stop() }
         playersFlow.value = next
-        if (running) next.forEach { it.start(scope) }
+        if (running) {
+            next.forEach { it.start(scope) }
+            probeIfWorthIt()
+        }
         applyPolicy()
+    }
+
+    /** The probe thread only runs when there is a tile beyond the static ceiling to win. */
+    private fun probeIfWorthIt() {
+        if (playersFlow.value.size > budget.ceiling) headroom.start() else headroom.stop()
     }
 
     private fun newPlayer(camera: Camera) =
@@ -92,6 +100,7 @@ class PlaybackCoordinator(
         if (running) return
         running = true
         playersFlow.value.forEach { it.start(scope) }
+        probeIfWorthIt()
         applyPolicy()
         // On the players' dispatcher, not the owner's (main-thread) scope: a tick walks every
         // player's lock and may detach a stalled decoder, none of which belongs on the UI thread.
@@ -110,6 +119,7 @@ class PlaybackCoordinator(
         running = false
         ticker?.cancel()
         ticker = null
+        headroom.stop()
         playersFlow.value.forEach { it.stop() }
         pool.closeCodecs()
         hardwareOnly = false
@@ -141,12 +151,17 @@ class PlaybackCoordinator(
         val recentStall = lastStallAt?.let { now - it <= LiveBudget.LAG_DEMOTE_MILLIS } == true
         val queued = players.filter { it.mode.isLive }.maxOfOrNull { it.queuedFrames } ?: 0
         val lag = if (recentStall) maxOf(queued, LiveBudget.LAG_FRAMES + 1) else queued
-        if (budget.sample(now, lag) != before) applyPolicy()
+        val idle = headroom.cpuIdleFraction
+        val spare = headroom.spareMemoryBytes
+        if (budget.sample(now, lag, idle, spare) != before) applyPolicy()
         if (now - lastReportAt >= REPORT_MILLIS) {
             lastReportAt = now
+            val spareText = if (spare == Long.MAX_VALUE) "?" else "${spare / MB}"
+            val idlePercent = Math.round(idle * PERCENT)
             Log.i(
                 DIAG_TAG,
-                "live limit=${budget.liveLimit}/${budget.ceiling} queued=$queued pool codecs=${pool.codecsCreated}",
+                "live limit=${budget.liveLimit}/${budget.ceiling}(+${budget.maxLive - budget.ceiling}) " +
+                    "queued=$queued idle=$idlePercent % spare=$spareText MB pool codecs=${pool.codecsCreated}",
             )
             players.forEach { Log.i(DIAG_TAG, it.diagnostics(now)) }
         }
@@ -177,6 +192,8 @@ class PlaybackCoordinator(
         const val REPORT_MILLIS: Long = 10_000
         private const val DIAG_TAG = "HikViewer"
         private const val NANOS_PER_MILLI = 1_000_000L
+        private const val PERCENT = 100f
+        private const val MB = 1024L * 1024L
         private const val TAG = "LiveBudget"
     }
 }

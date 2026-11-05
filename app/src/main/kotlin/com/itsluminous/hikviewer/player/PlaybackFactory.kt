@@ -1,8 +1,6 @@
 package com.itsluminous.hikviewer.player
 
-import android.view.Surface
 import com.itsluminous.hikviewer.core.devices.Camera
-import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -16,13 +14,15 @@ import java.util.concurrent.Future
  */
 class PlaybackFactory(
     private val pickCodec: (String, Boolean) -> String? = CodecNames::pick,
-    private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
+    private val decoderFactory: DecoderFactory = DecoderFactory.DEFAULT,
     private val poolFactory: () -> KeyframeDecoderPool = { KeyframeDecoderPool() },
     /** Where players collect their streams and feed decoders: the low-priority [StreamThreads] pool. */
     private val dispatcher: CoroutineDispatcher = StreamThreads.dispatcher,
     private val tickMillis: Long = PlaybackCoordinator.DEFAULT_TICK_MILLIS,
     /** How players tear decoders down; the recorder tests pass a synchronous one. */
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
+    /** One [HeadroomProbe] per coordinator; the default never lets the budget above its ceiling. */
+    private val headroomFactory: () -> HeadroomProbe = { HeadroomProbe.NONE },
 ) {
     /** A coordinator for [opener] on [scope]. */
     fun create(
@@ -41,6 +41,7 @@ class PlaybackFactory(
         tickMillis = tickMillis,
         dispatcher = dispatcher,
         releaser = releaser,
+        headroom = headroomFactory(),
     )
 
     /**

@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.fakes
 import android.view.Surface
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
+import com.itsluminous.hikviewer.player.DecoderFactory
 import com.itsluminous.hikviewer.player.KeyframeDecoderPool
 import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.player.StillSink
@@ -22,6 +23,8 @@ class RecordingDecoder(
     surface: Surface,
     val listener: TileDecoder.Listener,
     private val failOnStart: Throwable? = null,
+    /** Whether the owner asked for a jitter buffer (software tiles do, the hardware hero does not). */
+    val pacedRequested: Boolean = false,
 ) : TileDecoder(codecName, config, surface, listener) {
     /** Every access unit fed. */
     val fed = CopyOnWriteArrayList<AccessUnit>()
@@ -91,16 +94,12 @@ class RecordingDecoderFactory {
     /** Codec names that must fail at start with the given exception, consumed in order. */
     val startFailures = ArrayDeque<Pair<String, Throwable>>()
 
-    /** The factory lambda for [TileDecoder]'s owners. */
-    val factory: (
-        String,
-        CodecConfig,
-        Surface,
-        TileDecoder.Listener,
-    ) -> TileDecoder = { name, config, surface, listener ->
-        val failure = startFailures.firstOrNull { it.first == name }?.also(startFailures::remove)?.second
-        RecordingDecoder(name, config, surface, listener, failure).also(created::add)
-    }
+    /** The factory for [TileDecoder]'s owners. */
+    val factory: DecoderFactory =
+        DecoderFactory { name, config, surface, listener, paced ->
+            val failure = startFailures.firstOrNull { it.first == name }?.also(startFailures::remove)?.second
+            RecordingDecoder(name, config, surface, listener, failure, paced).also(created::add)
+        }
 
     /** `pickCodec` stand-in: `sw`/`hw` names so tests can tell which path was taken. */
     fun pickCodec(

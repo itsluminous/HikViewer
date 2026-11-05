@@ -219,6 +219,23 @@ class TilePlayerTest {
         }
 
     @Test
+    fun `software decoders get a jitter buffer, the hardware one does not`() = runTest(dispatcher) {
+        val sw = player()
+        sw.attachSurface(surface)
+        sw.mode = TileMode.SW_LIVE
+        run(sw)
+        assertThat(decoders.created.single().pacedRequested).isTrue()
+        sw.stop()
+        val hw = player()
+        hw.attachSurface(surface)
+        hw.mode = TileMode.HW_LIVE
+        run(hw)
+        assertThat(decoders.created.last().codecName).startsWith("fake.hw")
+        assertThat(decoders.created.last().pacedRequested).isFalse()
+        hw.stop()
+    }
+
+    @Test
     fun `a keyframe tile whose pool delivers nothing shows a red dot however many keyframes it submits`() =
         runTest(dispatcher) {
             val k = player() // NoopKeyframePool: swallows every job, like a pool whose decoder keeps failing

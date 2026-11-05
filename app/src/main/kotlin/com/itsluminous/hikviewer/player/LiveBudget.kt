@@ -12,16 +12,28 @@ package com.itsluminous.hikviewer.player
  * direction: every change re-creates decoders, so a limit that oscillates faster than that makes
  * tiles flicker instead of helping. A promotion that lags again within [RELAPSE_MILLIS] was
  * premature, so each relapse doubles the calm period the next promotion must wait for (up to
- * [MAX_HEADROOM_MILLIS]); a promotion that holds resets it. Pure Kotlin so the thresholds are
- * unit-testable; the caller feeds time.
+ * [MAX_HEADROOM_MILLIS]); a promotion that holds resets it.
+ *
+ * Above the static ceiling the budget probes, up to [EXTRA_LIVE_TILES] more: the ceiling was
+ * measured at 12 fps, and a recorder set to 6-8 fps (which the user plans) leaves half the CPU
+ * idle while tiles sit at one still a second. A probe needs the same calm, plus the
+ * [HeadroomProbe]'s say-so: idle CPU for another decoder ([IDLE_PROMOTE_FRACTION]) and memory
+ * for one ([EXTRA_TILE_MEMORY_BYTES]). While
+ * tiles beyond the ceiling are live, headroom that goes away (idle below [IDLE_DEMOTE_FRACTION],
+ * memory below [LOW_MEMORY_BYTES]) counts as lag, so they are shed before the decoders fall behind
+ * or the low-memory killer acts. Pure Kotlin so the thresholds are unit-testable; the caller feeds
+ * time and the readings.
  */
 class LiveBudget(
     capabilities: DeviceCapabilities,
     /** Receives one line per decision, for the INFO log. */
     private val onDecision: (String) -> Unit = {},
 ) {
-    /** Upper bound from the hardware facts alone. */
+    /** Live tiles the hardware facts alone allow; the budget probes above it only with measured headroom. */
     val ceiling: Int = staticCeiling(capabilities)
+
+    /** Hard upper bound, probes included. */
+    val maxLive: Int = ceiling + EXTRA_LIVE_TILES
 
     /** Tiles currently allowed to be live. */
     var liveLimit: Int = ceiling
@@ -44,21 +56,30 @@ class LiveBudget(
     }
 
     /**
-     * Feeds one measurement: [maxQueuedFrames] is the deepest input queue among live decoders.
-     * Returns the limit in force after this sample.
+     * Feeds one measurement: [maxQueuedFrames] is the deepest input queue among live decoders,
+     * [idleFraction] and [spareMemoryBytes] the [HeadroomProbe]'s readings (defaults: unknown,
+     * which keeps the budget at or below the ceiling). Returns the limit in force after this sample.
      */
     fun sample(
         nowMillis: Long,
         maxQueuedFrames: Int,
+        idleFraction: Float = 0f,
+        spareMemoryBytes: Long = 0L,
     ): Int {
         val settled = lastChangeAt?.let { nowMillis - it >= MIN_CHANGE_INTERVAL_MILLIS } ?: true
-        if (maxQueuedFrames > LAG_FRAMES) onLag(nowMillis, maxQueuedFrames, settled) else onCalm(nowMillis, settled)
+        val probing = liveLimit > ceiling
+        val starved = probing && (idleFraction < IDLE_DEMOTE_FRACTION || spareMemoryBytes < LOW_MEMORY_BYTES)
+        when {
+            maxQueuedFrames > LAG_FRAMES -> onLag(nowMillis, "queue=$maxQueuedFrames frames", settled)
+            starved -> onLag(nowMillis, "idle=${percent(idleFraction)} %, spare=${spareMemoryBytes / MB} MB", settled)
+            else -> onCalm(nowMillis, settled, idleFraction, spareMemoryBytes)
+        }
         return liveLimit
     }
 
     private fun onLag(
         nowMillis: Long,
-        maxQueuedFrames: Int,
+        reason: String,
         settled: Boolean,
     ) {
         calmSince = null
@@ -67,23 +88,32 @@ class LiveBudget(
             liveLimit > MIN_LIVE &&
             settled
         ) {
-            demote(nowMillis, maxQueuedFrames)
+            demote(nowMillis, reason)
         }
     }
 
     private fun onCalm(
         nowMillis: Long,
         settled: Boolean,
+        idleFraction: Float,
+        spareMemoryBytes: Long,
     ) {
         lagSince = null
         val since = calmSince ?: nowMillis.also { calmSince = it }
         lastPromotionAt?.let { if (nowMillis - it >= RELAPSE_MILLIS) headroomMillis = HEADROOM_PROMOTE_MILLIS }
-        if (nowMillis - since >= headroomMillis && liveLimit < ceiling && settled) promote(nowMillis)
+        if (nowMillis - since < headroomMillis || !settled) return
+        val room =
+            when {
+                liveLimit < ceiling -> true
+                liveLimit >= maxLive -> false
+                else -> idleFraction >= IDLE_PROMOTE_FRACTION && spareMemoryBytes >= EXTRA_TILE_MEMORY_BYTES
+            }
+        if (room) promote(nowMillis, idleFraction, spareMemoryBytes)
     }
 
     private fun demote(
         nowMillis: Long,
-        maxQueuedFrames: Int,
+        reason: String,
     ) {
         liveLimit--
         lagSince = nowMillis
@@ -92,16 +122,24 @@ class LiveBudget(
         if (relapse) headroomMillis = minOf(headroomMillis * 2, MAX_HEADROOM_MILLIS)
         lastPromotionAt = null
         val note = if (relapse) ", next promotion after ${headroomMillis / MILLIS_PER_SECOND} s calm" else ""
-        onDecision("live budget: demote, queue=$maxQueuedFrames frames, limit=$liveLimit$note")
+        onDecision("live budget: demote, $reason, limit=$liveLimit$note")
     }
 
-    private fun promote(nowMillis: Long) {
+    private fun promote(
+        nowMillis: Long,
+        idleFraction: Float,
+        spareMemoryBytes: Long,
+    ) {
         liveLimit++
         calmSince = nowMillis
         lastChangeAt = nowMillis
         lastPromotionAt = nowMillis
-        onDecision("live budget: promote, limit=$liveLimit")
+        val readings = "idle=${percent(idleFraction)} %, spare=${spareMemoryBytes / MB} MB"
+        val probe = if (liveLimit > ceiling) " above the ceiling ($readings)" else ""
+        onDecision("live budget: promote, limit=$liveLimit$probe")
     }
+
+    private fun percent(fraction: Float): Int = Math.round(fraction * PERCENT)
 
     /** Thresholds. */
     companion object {
@@ -126,9 +164,30 @@ class LiveBudget(
         /** Longest calm period a relapsing device is made to wait before the next promotion. */
         const val MAX_HEADROOM_MILLIS: Long = 240_000
 
+        /** Tiles the budget may probe above the static ceiling. */
+        const val EXTRA_LIVE_TILES: Int = 4
+
+        /**
+         * Idle CPU needed before a tile above the ceiling is tried. The probe's reading tracks the
+         * device's total idle share (on the MiTV it read 15-18 % while `top` showed 13-19 %), and
+         * a software tile costs ~22 % of a core, 5.5 % of the four: a quarter idle is one tile with
+         * room to spare for the UI thread.
+         */
+        const val IDLE_PROMOTE_FRACTION: Float = 0.25f
+
+        /** Below this a tile above the ceiling is shed, like lag: the UI thread is next in line. */
+        const val IDLE_DEMOTE_FRACTION: Float = 0.10f
+
         private const val MILLIS_PER_SECOND = 1_000L
+        private const val PERCENT = 100f
 
         private const val MB = 1024L * 1024L
+
+        /** Memory a tile above the ceiling needs to spare: a software decoder (~17 MB) and its share of the app, with margin. */
+        const val EXTRA_TILE_MEMORY_BYTES: Long = 96 * MB
+
+        /** Spare memory below which a tile above the ceiling is shed. */
+        const val LOW_MEMORY_BYTES: Long = 32 * MB
         private const val LOW_RAM_CEILING = 4
         private const val MID_RAM_CEILING = 8
         private const val HIGH_RAM_CEILING = 16

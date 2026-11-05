@@ -13,6 +13,7 @@ import com.itsluminous.hikviewer.data.HikConnectCloudServices
 import com.itsluminous.hikviewer.data.SessionStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.DeviceCapabilities
+import com.itsluminous.hikviewer.player.DeviceHeadroomProbe
 import com.itsluminous.hikviewer.player.LiveBudget
 import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.player.StreamThreads
@@ -67,11 +68,13 @@ class AppGraph(
             val sessionPrefs = encryptedPrefs(context, SESSION_PREFS)
             val settingsPrefs = encryptedPrefs(context, SETTINGS_PREFS)
             val sessionStore = SessionStore(sessionPrefs)
+            val activityManager = context.getSystemService(ActivityManager::class.java)
             return AppGraph(
                 sessionPrefs = sessionPrefs,
                 settingsPrefs = settingsPrefs,
                 cloud = HikConnectCloudServices({ sessionStore.featureCode() }, StreamThreads.dispatcher),
-                capabilities = DeviceCapabilities.of(context.getSystemService(ActivityManager::class.java)),
+                capabilities = DeviceCapabilities.of(activityManager),
+                playbackFactory = PlaybackFactory(headroomFactory = { DeviceHeadroomProbe(activityManager) }),
             )
         }
 

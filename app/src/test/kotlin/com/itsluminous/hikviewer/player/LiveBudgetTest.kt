@@ -141,3 +141,82 @@ class LiveBudgetTest {
         assertThat(budget.sample(5_000, LiveBudget.LAG_FRAMES)).isEqualTo(8)
     }
 }
+
+class LiveBudgetProbingTest {
+    private val caps = DeviceCapabilities(false, 1_800L shl 20, 4)
+    private val calm = LiveBudget.HEADROOM_PROMOTE_MILLIS
+    private val mb = 1024L * 1024L
+
+    @Test
+    fun `without headroom readings the budget never leaves the ceiling`() {
+        val budget = LiveBudget(caps)
+        assertThat(budget.maxLive).isEqualTo(12)
+        budget.sample(0, 0)
+        assertThat(budget.sample(calm, 0)).isEqualTo(8)
+        assertThat(budget.sample(10 * calm, 0)).isEqualTo(8)
+    }
+
+    @Test
+    fun `probes one tile at a time with a free core and spare memory, up to the extra tiles`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        var now = 0L
+        budget.sample(now, 0, idleFraction = 1f, spareMemoryBytes = 500 * mb)
+        now += calm - 1
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(8)
+        now += 1
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(9)
+        assertThat(log.last()).contains("above the ceiling (idle=100 %, spare=500 MB)")
+        // Each further probe waits for the calm period again.
+        now += calm - 1
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(9)
+        now += 1
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(10)
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(11)
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(12)
+        now += 10 * calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(12)
+    }
+
+    @Test
+    fun `a busy core or little memory withholds the probe but not a promotion below the ceiling`() {
+        val budget = LiveBudget(caps)
+        budget.sample(0, 10)
+        budget.sample(LiveBudget.LAG_DEMOTE_MILLIS, 10)
+        assertThat(budget.liveLimit).isEqualTo(7)
+        var now = 20_000L
+        budget.sample(now, 0, idleFraction = 0f, spareMemoryBytes = 0L)
+        now += calm
+        // Back to the ceiling needs no headroom reading at all.
+        assertThat(budget.sample(now, 0, 0f, 0L)).isEqualTo(8)
+        now += calm
+        assertThat(budget.sample(now, 0, LiveBudget.IDLE_PROMOTE_FRACTION - 0.01f, 500 * mb)).isEqualTo(8)
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, LiveBudget.EXTRA_TILE_MEMORY_BYTES - 1)).isEqualTo(8)
+        now += calm
+        assertThat(
+            budget.sample(now, 0, LiveBudget.IDLE_PROMOTE_FRACTION, LiveBudget.EXTRA_TILE_MEMORY_BYTES),
+        ).isEqualTo(9)
+    }
+
+    @Test
+    fun `a probed tile is shed when the headroom goes, after the lag window, and the relapse backs off`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        budget.sample(0, 0, 1f, 500 * mb)
+        budget.sample(calm, 0, 1f, 500 * mb)
+        assertThat(budget.liveLimit).isEqualTo(9)
+        val busy = calm + LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+        budget.sample(busy, 0, LiveBudget.IDLE_DEMOTE_FRACTION - 0.01f, 500 * mb)
+        assertThat(budget.sample(busy + LiveBudget.LAG_DEMOTE_MILLIS - 1, 0, 0.05f, 500 * mb)).isEqualTo(9)
+        assertThat(budget.sample(busy + LiveBudget.LAG_DEMOTE_MILLIS, 0, 0.05f, 500 * mb)).isEqualTo(8)
+        assertThat(log.last()).contains("demote, idle=5 %, spare=500 MB, limit=8, next promotion after 30 s calm")
+        assertThat(budget.headroomMillis).isEqualTo(2 * calm)
+        // Memory alone does it too, and at the ceiling nothing but a queue can demote.
+        val later = busy + 60_000
+        budget.sample(later, 0, 1f, LiveBudget.LOW_MEMORY_BYTES - 1)
+        assertThat(budget.sample(later + LiveBudget.LAG_DEMOTE_MILLIS, 0, 1f, 0L)).isEqualTo(8)
+    }
+}

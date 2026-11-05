@@ -56,7 +56,7 @@ class TilePlayer(
     private val pool: KeyframeDecoderPool,
     private val quality: StreamQuality = StreamQuality.SUB,
     private val pickCodec: (mimeType: String, software: Boolean) -> String? = CodecNames::pick,
-    private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
+    private val decoderFactory: DecoderFactory = DecoderFactory.DEFAULT,
     /** Where the stream is collected and pictures are queued; a test dispatcher in tests. */
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
@@ -70,6 +70,8 @@ class TilePlayer(
     private val livenessFlow = MutableStateFlow(TileLiveness.NOT_LIVE)
     private var lastStillAtMillis = 0L
     private val keyframeRate = FrameRateMeter()
+    private val arrivalGaps = IntervalStats()
+    private val stillGaps = IntervalStats()
     private val tag = "ch${camera.channelNo}"
     private var surface: Surface? = null
     private var sink: StillSink? = null
@@ -173,6 +175,8 @@ class TilePlayer(
             stale = detachDecoderLocked()
             pool.cancel(this)
             keyframeRate.reset()
+            arrivalGaps.clear()
+            stillGaps.clear()
             lastStillAtMillis = 0L
             frameRateFlow.value = 0f
             livenessFlow.value = TileLiveness.NOT_LIVE
@@ -251,6 +255,7 @@ class TilePlayer(
                     val at = clock()
                     lastStillAtMillis = at
                     keyframeRate.onFrame(at)
+                    stillGaps.onEvent(at)
                     ++stillsDelivered
                 }
             if (n <= FIRST_STILLS_LOGGED) Log.i(TAG, "$tag: still #$n ${width}x$height handed to $target")
@@ -308,8 +313,10 @@ class TilePlayer(
 
     /**
      * One line of state for the periodic INFO log: mode, overlay state, pictures received from the
-     * stream, decoder input/output counts, queue depth and rendered fps. Cheap enough to log every
-     * few seconds per tile; this is what a TV logcat is read with.
+     * stream, decoder input/output counts, queue depth, rendered fps, and the inter-picture gaps of
+     * the window just ended, both as they arrived from the cloud (`arrive=`) and as they reached
+     * the screen (`shown=`, decoder output or delivered stills). Cheap enough to log every few
+     * seconds per tile; this is what a TV logcat is read with.
      */
     fun diagnostics(nowMillis: Long): String = synchronized(lock) {
         val d = decoder
@@ -326,11 +333,21 @@ class TilePlayer(
                 "decoder=none"
             } else {
                 "in=${d.framesIn} out=${d.framesOut} queued=${d.queuedFrames} " +
-                    "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))}"
+                    "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))}" +
+                    d.describePacer()
             }
         val stillAge = if (lastStillAtMillis == 0L) -1 else nowMillis - lastStillAtMillis
         val stills = if (mode.isLive) "" else " stills=$stillsDelivered stillAge=$stillAge"
-        "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created$stills"
+        val arrive = arrivalGaps.describe()
+        arrivalGaps.reset()
+        val shown =
+            if (mode.isLive) {
+                d?.describeOutputGaps() ?: "n=0"
+            } else {
+                stillGaps.describe().also { stillGaps.reset() }
+            }
+        "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created$stills " +
+            "arrive[$arrive] shown[$shown]"
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
@@ -438,6 +455,7 @@ class TilePlayer(
             synchronized(lock) {
                 unitsReceived++
                 lastUnitAtMillis = clock()
+                arrivalGaps.onEvent(lastUnitAtMillis)
                 plan(unit)
             }
         when (plan) {
@@ -510,9 +528,9 @@ class TilePlayer(
             failDecoder("No ${config.codec} decoder")
             return null
         }
-        val d = decoderFactory(name, config, target, this)
-        // The many software tiles share a display cadence; the hardware decoder (hero, fullscreen)
-        // shows every picture as soon as it is decoded. See RenderPacer.
+        // The many software tiles are paced (FramePacer) and share a display cadence (RenderPacer);
+        // the hardware decoder (hero, fullscreen) shows every picture as soon as it is decoded.
+        val d = decoderFactory.create(name, config, target, this, paced = software)
         d.renderSlotNanos = if (software) RenderPacer.DEFAULT_SLOT_NANOS else 0L
         return try {
             d.start()

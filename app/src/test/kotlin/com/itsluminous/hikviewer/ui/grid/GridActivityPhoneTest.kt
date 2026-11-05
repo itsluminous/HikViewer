@@ -122,7 +122,7 @@ class GridActivityPhoneTest {
                 // The arrangement still has every camera; the seventh is only without a cell.
                 a.viewModels<GridViewModel>().value.moveTile(0, 1)
                 assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO_1_6))
-                    .containsExactly("$serial/2", "$serial/1", "$serial/3", "$serial/4", "$serial/5", "$serial/6", "$serial/7", "$serial/8")
+                    .containsExactlyElementsIn(listOf(2, 1, 3, 4, 5, 6, 7, 8).map { "$serial/$it" })
                     .inOrder()
             }
             RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")

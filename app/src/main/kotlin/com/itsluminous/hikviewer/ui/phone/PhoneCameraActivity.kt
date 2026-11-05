@@ -93,7 +93,8 @@ class PhoneCameraActivity : AppCompatActivity() {
         binding.speedButton?.setOnClickListener { viewModel.cycleSpeed() }
         binding.liveButton?.setOnClickListener { viewModel.goLive() }
         if (!hasTimeline) {
-            landscapeHelp = InactivityTimer(binding.help, AppGraph.of(this).topBarAutoHideMillis).also { it.onUserActivity() }
+            landscapeHelp =
+                InactivityTimer(binding.help, AppGraph.of(this).topBarAutoHideMillis).also { it.onUserActivity() }
         }
         observe()
     }

@@ -38,7 +38,9 @@ class GridGeometryTest {
                 GridLayoutMode.HERO_1_11 to Triple(6, 5, 12),
                 GridLayoutMode.HERO_1_15 to Triple(8, 7, 16),
             )
-        assertThat(GridLayoutMode.heroModes.filter { !it.isPortraitHero }).containsExactlyElementsIn(expected.keys).inOrder()
+        assertThat(GridLayoutMode.heroModes.filter { !it.isPortraitHero })
+            .containsExactlyElementsIn(expected.keys)
+            .inOrder()
         expected.forEach { (mode, spec) ->
             val (columns, heroSpan, capacity) = spec
             val shape = GridGeometry.shape(mode, tileCount = 40)
@@ -74,7 +76,8 @@ class GridGeometryTest {
             assertThat(upright.columns).isEqualTo(2)
             assertThat(upright.rows).isEqualTo(2 + n / 2)
             assertThat(upright.capacity).isEqualTo(n + 1)
-            assertThat(upright.capacity).isEqualTo(upright.columns * upright.rows - 3) // every cell but the hero's extra 3 is a tile
+            // Every cell is a tile, apart from the three extra cells the hero spans.
+            assertThat(upright.capacity).isEqualTo(upright.columns * upright.rows - 3)
             assertThat(upright.cells.last()).isEqualTo(Cell(1, upright.rows - 1)) // no empty cell
             val turned = GridGeometry.shape(mode, tileCount = 40, portrait = false)
             val k = n / 2 - 1

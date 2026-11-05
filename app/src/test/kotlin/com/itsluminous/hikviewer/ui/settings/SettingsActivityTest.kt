@@ -221,13 +221,14 @@ class SettingsActivityTest {
                     listOf(R.id.show_names, R.id.show_fps, R.id.quality_main, R.id.layout_spinner, R.id.change_code)
                         .map { a.findViewById<View>(it) } +
                         (0 until list.childCount).flatMap { i ->
-                            listOf(R.id.check, R.id.name, R.id.signal, R.id.handle).map { list.getChildAt(i).findViewById<View>(it) }
+                            listOf(R.id.check, R.id.name, R.id.signal, R.id.handle)
+                                .map { list.getChildAt(i).findViewById<View>(it) }
                         }
                 views.forEach { view ->
                     val where = IntArray(2).also(view::getLocationOnScreen)
-                    assertWithMessage("${a.resources.getResourceEntryName(view.id)} fits").that(where[0] + view.width)
-                        .isAtMost(screenWidth)
-                    assertWithMessage("${a.resources.getResourceEntryName(view.id)} is visible").that(view.width).isGreaterThan(0)
+                    val name = a.resources.getResourceEntryName(view.id)
+                    assertWithMessage("$name fits").that(where[0] + view.width).isAtMost(screenWidth)
+                    assertWithMessage("$name is visible").that(view.width).isGreaterThan(0)
                     assertThat(where[0]).isAtLeast(0)
                 }
                 // The switch's thumb is its right end: the whole widget must be on screen, not just its text.
@@ -235,7 +236,8 @@ class SettingsActivityTest {
                 val signal = row.findViewById<TextView>(R.id.signal)
                 assertThat(signal.text.toString()).isEqualTo("signal")
                 assertThat(signal.layout.getEllipsisCount(0)).isEqualTo(0)
-                assertThat(list.getChildAt(3).findViewById<TextView>(R.id.signal).text.toString()).isEqualTo("no signal")
+                val fourth = list.getChildAt(3).findViewById<TextView>(R.id.signal)
+                assertThat(fourth.text.toString()).isEqualTo("no signal")
             }
         }
     }

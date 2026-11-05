@@ -58,13 +58,17 @@ class LiveBudget(
     /**
      * Feeds one measurement: [maxQueuedFrames] is the deepest input queue among live decoders,
      * [idleFraction] and [spareMemoryBytes] the [HeadroomProbe]'s readings (defaults: unknown,
-     * which keeps the budget at or below the ceiling). Returns the limit in force after this sample.
+     * which keeps the budget at or below the ceiling, and sheds any tile already above it), and
+     * [tileCount] how many tiles there are: the limit never probes past them, so a small grid
+     * cannot leave a limit behind that the next, bigger grid would start all at once. Returns the
+     * limit in force after this sample.
      */
     fun sample(
         nowMillis: Long,
         maxQueuedFrames: Int,
         idleFraction: Float = 0f,
         spareMemoryBytes: Long = 0L,
+        tileCount: Int = Int.MAX_VALUE,
     ): Int {
         val settled = lastChangeAt?.let { nowMillis - it >= MIN_CHANGE_INTERVAL_MILLIS } ?: true
         val probing = liveLimit > ceiling
@@ -72,7 +76,7 @@ class LiveBudget(
         when {
             maxQueuedFrames > LAG_FRAMES -> onLag(nowMillis, "queue=$maxQueuedFrames frames", settled)
             starved -> onLag(nowMillis, "idle=${percent(idleFraction)} %, spare=${spareMemoryBytes / MB} MB", settled)
-            else -> onCalm(nowMillis, settled, idleFraction, spareMemoryBytes)
+            else -> onCalm(nowMillis, settled, idleFraction, spareMemoryBytes, tileCount)
         }
         return liveLimit
     }
@@ -97,6 +101,7 @@ class LiveBudget(
         settled: Boolean,
         idleFraction: Float,
         spareMemoryBytes: Long,
+        tileCount: Int,
     ) {
         lagSince = null
         val since = calmSince ?: nowMillis.also { calmSince = it }
@@ -105,7 +110,7 @@ class LiveBudget(
         val room =
             when {
                 liveLimit < ceiling -> true
-                liveLimit >= maxLive -> false
+                liveLimit >= maxLive || liveLimit >= tileCount -> false
                 else -> idleFraction >= IDLE_PROMOTE_FRACTION && spareMemoryBytes >= EXTRA_TILE_MEMORY_BYTES
             }
         if (room) promote(nowMillis, idleFraction, spareMemoryBytes)

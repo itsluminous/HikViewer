@@ -24,12 +24,15 @@ class PlaybackCoordinatorTest {
 
     private fun cameras(n: Int) = (1..n).map { Camera("S", it, "c$it", hasSignal = true, isOnline = true) }
 
-    /** A probe the test sets by hand and that records its start/stop calls. */
+    /**
+     * A probe the test sets by hand and that records its start/stop calls. Its readings default
+     * to "everything is free": a coordinator may only believe them while it has started the probe.
+     */
     private class FakeProbe : HeadroomProbe {
         var started = 0
         var stopped = 0
-        override var cpuIdleFraction = 0f
-        override var spareMemoryBytes = 0L
+        override var cpuIdleFraction = 1f
+        override var spareMemoryBytes = Long.MAX_VALUE
 
         override fun start() {
             started++
@@ -76,6 +79,8 @@ class PlaybackCoordinatorTest {
             assertThat(probe.started).isEqualTo(0)
             c.setCameras(cameras(10))
             assertThat(probe.started).isEqualTo(1)
+            probe.cpuIdleFraction = 0f
+            probe.spareMemoryBytes = 0L
             c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
             dispatcher.scheduler.runCurrent()
             assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(8)
@@ -99,6 +104,56 @@ class PlaybackCoordinatorTest {
             assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(9)
             c.stop()
             assertThat(probe.stopped).isAtLeast(1)
+            c.release()
+        }
+
+    @Test
+    fun `below the ceiling the probe is never read and a grid of four stays at the ceiling however idle it looks`() =
+        runTest(dispatcher) {
+            val c = coordinator()
+            c.setCameras(cameras(4))
+            c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+            c.start()
+            dispatcher.scheduler.runCurrent()
+            assertThat(probe.started).isEqualTo(0)
+            repeat(120) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(8)
+            // Growing the grid past the ceiling starts the probe; the limit still is the ceiling, so
+            // the new tiles beyond it start as stills, not as twelve software decoders at once.
+            c.setCameras(cameras(12))
+            c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+            dispatcher.scheduler.runCurrent()
+            assertThat(probe.started).isEqualTo(1)
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(8)
+            c.release()
+        }
+
+    @Test
+    fun `shrinking the grid back under the ceiling stops the probe and drops a probed limit back to it`() =
+        runTest(dispatcher) {
+            val c = coordinator()
+            c.setCameras(cameras(10))
+            c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+            c.start()
+            probe.spareMemoryBytes = 500L shl 20
+            repeat(40) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(9)
+            c.setCameras(cameras(4))
+            assertThat(probe.stopped).isEqualTo(1)
+            repeat(30) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(8)
             c.release()
         }
 

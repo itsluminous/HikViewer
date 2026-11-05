@@ -35,7 +35,7 @@ class PlaybackCoordinator(
     private val dispatcher: CoroutineDispatcher = StreamThreads.dispatcher,
     /** How players tear decoders down; tests pass a synchronous one. */
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
-    /** CPU and memory readings for probing above the static ceiling; [HeadroomProbe.NONE] never probes. */
+    /** CPU and memory readings for probing above the static ceiling; [HeadroomProbe.NONE] reads as none, so the budget stays at its ceiling. */
     private val headroom: HeadroomProbe = HeadroomProbe.NONE,
 ) {
     private val budget = LiveBudget(capabilities) { Log.i(TAG, it) }
@@ -44,6 +44,9 @@ class PlaybackCoordinator(
     private var running = false
     private var lastStallAt: Long? = null
     private var lastReportAt = 0L
+
+    /** Whether [headroom] is running; its readings are fed to the budget only then. */
+    private var probing = false
 
     /** One player per visible camera, in grid order. */
     val players: StateFlow<List<TilePlayer>> = playersFlow.asStateFlow()
@@ -87,9 +90,18 @@ class PlaybackCoordinator(
         applyPolicy()
     }
 
-    /** The probe thread only runs when there is a tile beyond the static ceiling to win. */
+    /**
+     * The probe thread only runs when there is a tile beyond the static ceiling to win. While it
+     * does not, the budget is told nothing (0 idle, 0 spare), so it can never climb above the
+     * ceiling on a reading that was not taken: an unfilled probe once read as 100 % idle and
+     * promoted a six-tile grid to a limit of twelve, which the next, bigger grid then started
+     * all at once.
+     */
     private fun probeIfWorthIt() {
-        if (playersFlow.value.size > budget.ceiling) headroom.start() else headroom.stop()
+        val worth = playersFlow.value.size > budget.ceiling
+        if (worth == probing) return
+        probing = worth
+        if (worth) headroom.start() else headroom.stop()
     }
 
     private fun newPlayer(camera: Camera) =
@@ -119,6 +131,7 @@ class PlaybackCoordinator(
         running = false
         ticker?.cancel()
         ticker = null
+        probing = false
         headroom.stop()
         playersFlow.value.forEach { it.stop() }
         pool.closeCodecs()
@@ -151,17 +164,17 @@ class PlaybackCoordinator(
         val recentStall = lastStallAt?.let { now - it <= LiveBudget.LAG_DEMOTE_MILLIS } == true
         val queued = players.filter { it.mode.isLive }.maxOfOrNull { it.queuedFrames } ?: 0
         val lag = if (recentStall) maxOf(queued, LiveBudget.LAG_FRAMES + 1) else queued
-        val idle = headroom.cpuIdleFraction
-        val spare = headroom.spareMemoryBytes
-        if (budget.sample(now, lag, idle, spare) != before) applyPolicy()
+        val idle = if (probing) headroom.cpuIdleFraction else 0f
+        val spare = if (probing) headroom.spareMemoryBytes else 0L
+        if (budget.sample(now, lag, idle, spare, players.size) != before) applyPolicy()
         if (now - lastReportAt >= REPORT_MILLIS) {
             lastReportAt = now
-            val spareText = if (spare == Long.MAX_VALUE) "?" else "${spare / MB}"
-            val idlePercent = Math.round(idle * PERCENT)
+            val headroomText =
+                if (probing) "idle=${Math.round(idle * PERCENT)} % spare=${spare / MB} MB" else "not probing"
             Log.i(
                 DIAG_TAG,
                 "live limit=${budget.liveLimit}/${budget.ceiling}(+${budget.maxLive - budget.ceiling}) " +
-                    "queued=$queued idle=$idlePercent % spare=$spareText MB pool codecs=${pool.codecsCreated}",
+                    "queued=$queued $headroomText pool codecs=${pool.codecsCreated}",
             )
             players.forEach { Log.i(DIAG_TAG, it.diagnostics(now)) }
         }

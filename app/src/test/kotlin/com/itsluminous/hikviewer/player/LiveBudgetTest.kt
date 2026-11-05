@@ -157,6 +157,37 @@ class LiveBudgetProbingTest {
     }
 
     @Test
+    fun `the NONE probe reads as no headroom, and a limit above the ceiling without readings is shed`() {
+        val none = HeadroomProbe.NONE
+        assertThat(none.cpuIdleFraction).isEqualTo(0f)
+        assertThat(none.spareMemoryBytes).isEqualTo(0L)
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        budget.sample(0, 0, 1f, 500 * mb)
+        assertThat(budget.sample(calm, 0, 1f, 500 * mb)).isEqualTo(9)
+        var now = calm + LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+        budget.sample(now, 0, none.cpuIdleFraction, none.spareMemoryBytes)
+        now += LiveBudget.LAG_DEMOTE_MILLIS
+        assertThat(budget.sample(now, 0, none.cpuIdleFraction, none.spareMemoryBytes)).isEqualTo(8)
+        assertThat(log.last()).contains("demote, idle=0 %, spare=0 MB")
+        assertThat(budget.sample(now + 10 * calm, 0, none.cpuIdleFraction, none.spareMemoryBytes)).isEqualTo(8)
+    }
+
+    @Test
+    fun `never probes past the tiles there are`() {
+        val budget = LiveBudget(caps)
+        var now = 0L
+        budget.sample(now, 0, 1f, 500 * mb, tileCount = 9)
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 9)).isEqualTo(9)
+        now += 10 * calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 9)).isEqualTo(9)
+        // A bigger grid may go on from there.
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 12)).isEqualTo(10)
+    }
+
+    @Test
     fun `probes one tile at a time with a free core and spare memory, up to the extra tiles`() {
         val log = mutableListOf<String>()
         val budget = LiveBudget(caps, log::add)

@@ -3,6 +3,8 @@ package com.itsluminous.hikviewer.ui.grid
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -183,6 +185,11 @@ class GridActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // How long the key waited for the main thread: the number a TV logcat is read for when
+        // the remote feels slow. One line per press and release, nothing per frame.
+        val waited = SystemClock.uptimeMillis() - event.eventTime
+        val action = if (event.action == KeyEvent.ACTION_DOWN) "down" else "up"
+        Log.i(TAG, "key ${KeyEvent.keyCodeToString(event.keyCode)} $action reached the grid $waited ms after the press")
         if (event.action == KeyEvent.ACTION_DOWN) topBar?.onUserActivity()
         if (move.isMoving && move.onKey(event)) return true
         return super.dispatchKeyEvent(event)
@@ -378,4 +385,8 @@ class GridActivity : AppCompatActivity() {
 
     /** True while a tile is lifted. */
     val isMoving: Boolean get() = move.isMoving
+
+    private companion object {
+        const val TAG = "HikViewer"
+    }
 }

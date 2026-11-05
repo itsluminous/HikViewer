@@ -7,6 +7,12 @@
         <activity
             android:name=".demo.DemoActivity"
             android:exported="true" />
+
+        <!-- Installs the main-thread watchdog and StrictMode before Application.onCreate. -->
+        <provider
+            android:name=".diagnostics.DebugInitProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -163,6 +163,20 @@ class TilePlayer(
             }
         }
 
+    /**
+     * Feed the decoder keyframes only. Reverse recorded playback hops backwards through the day,
+     * so the P-frames of a hop predict from pictures that were never decoded; each hop shows its
+     * keyframe and nothing else ([KeyframeGate]). Non-keyframes are dropped here, before the copy
+     * into an input buffer, and the decoder's own gate drops them again if one slips through.
+     */
+    var keyframesOnly: Boolean = false
+        set(value) {
+            synchronized(lock) {
+                field = value
+                decoder?.keyframesOnly = value
+            }
+        }
+
     /** Decoder input backlog, for [LiveBudget]. */
     val queuedFrames: Int get() = synchronized(lock) { decoder?.queuedFrames ?: 0 }
 
@@ -172,6 +186,7 @@ class TilePlayer(
             if (job != null) return
             stateFlow.value = TileState.Connecting
             pictureShown = false
+            val epoch = ++streamEpoch
             // Off the main thread: codec creation takes ~100 ms and every picture is copied into
             // an input buffer; the UI must not pay for either.
             job =
@@ -179,9 +194,52 @@ class TilePlayer(
                     opener
                         .open(camera, quality, ::onStatus)
                         .catch { e -> onStreamFailed(e) }
-                        .collect(::onAccessUnit)
+                        .collect { unit -> onAccessUnit(unit, epoch) }
                 }
         }
+    }
+
+    /**
+     * Which stream the pictures belong to. Cancelling a stream's job does not stop a picture that
+     * is already on its way through [onAccessUnit] on the stream thread; without this check a
+     * P-frame of the window just closed could land in the decoder after a [reopen], predicted
+     * from a picture of a different time, and that is one way to a green or grey picture.
+     */
+    private var streamEpoch = 0
+
+    /**
+     * Closes the stream and opens it again on [scope], keeping the decoder: it is flushed and
+     * waits for the next keyframe ([TileDecoder.flush]), so the last picture stays on the surface
+     * (under the connecting spinner) until the new stream's first keyframe replaces it. This is
+     * what a seek or a speed change in recorded playback does; [stop] + [start] would hand the
+     * hardware slot back, show a blank surface (black or green, depending on the SoC) for the
+     * second it takes to configure a new codec and decode its first picture, and race the codec
+     * being released for the surface. A decoder that refuses the flush is released and rebuilt at
+     * the next keyframe instead.
+     */
+    fun reopen(scope: CoroutineScope) {
+        var stale: TileDecoder? = null
+        synchronized(lock) {
+            job?.cancel()
+            job = null
+            streaming = false
+            generation++
+            streamEpoch++
+            pool.cancel(this)
+            arrivalGaps.clear()
+            lastUnitAtMillis = 0L
+            val d = decoder
+            if (d != null && !d.flush()) {
+                Log.w(TAG, "$tag: decoder refused to flush, rebuilding at the next keyframe")
+                stale = detachDecoderLocked()
+            }
+            // Connecting over the held picture: the spinner says a new window is on its way, and
+            // the kept decoder reports its next picture as a first frame, which clears it.
+            stateFlow.value = TileState.Connecting
+            pictureShown = false
+        }
+        stale?.let(::releaseLater)
+        start(scope)
     }
 
     /** Stops the stream and releases the decoder. */
@@ -192,6 +250,7 @@ class TilePlayer(
             job = null
             streaming = false
             generation++
+            streamEpoch++
             stale = detachDecoderLocked()
             pool.cancel(this)
             keyframeRate.reset()
@@ -353,8 +412,8 @@ class TilePlayer(
                 "decoder=none"
             } else {
                 "in=${d.framesIn} out=${d.framesOut} queued=${d.queuedFrames} " +
-                    "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))}" +
-                    d.describePacer()
+                    "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))} " +
+                    d.describeGate() + d.describePacer()
             }
         val stillAge = if (lastStillAtMillis == 0L) -1 else nowMillis - lastStillAtMillis
         val stills = if (mode.isLive) "" else " stills=$stillsDelivered stillAge=$stillAge"
@@ -471,9 +530,13 @@ class TilePlayer(
         ) : Plan()
     }
 
-    private fun onAccessUnit(unit: AccessUnit) {
+    private fun onAccessUnit(
+        unit: AccessUnit,
+        epoch: Int,
+    ) {
         val plan =
             synchronized(lock) {
+                if (epoch != streamEpoch) return
                 unitsReceived++
                 lastUnitAtMillis = clock()
                 arrivalGaps.onEvent(lastUnitAtMillis)
@@ -500,6 +563,7 @@ class TilePlayer(
     private fun planLive(unit: AccessUnit): Plan {
         val target = surface
         if (target == null || decoderDisabled) return Plan.Skip
+        if (keyframesOnly && !unit.isKeyframe) return Plan.Skip
         val config = unit.config
         if (!needsNewDecoder(config)) return decoder?.let(Plan::Feed) ?: Plan.Skip
         if (!unit.isKeyframe || config == null) return Plan.Skip
@@ -528,6 +592,7 @@ class TilePlayer(
             synchronized(lock) {
                 val wanted = generation == plan.generation && decoder == null && mode.isLive
                 if (wanted) {
+                    d.keyframesOnly = keyframesOnly
                     decoder = d
                     decoderConfig = plan.config
                     decoderIsSoftware = software

@@ -44,6 +44,28 @@ class RecordingDecoder(
     /** What [checkStall] answers. */
     var stalled = false
 
+    /** Times the owner flushed this decoder instead of replacing it (a seek, a speed change). */
+    var flushes = 0
+        private set
+
+    /** What [flush] answers; false makes the owner rebuild the decoder. */
+    var flushSucceeds = true
+
+    /** The last [keyframesOnly] the owner set, including the value given at install time. */
+    var keyframesOnlySet: Boolean? = null
+        private set
+
+    override var keyframesOnly: Boolean
+        get() = keyframesOnlySet ?: false
+        set(value) {
+            keyframesOnlySet = value
+        }
+
+    override fun flush(): Boolean {
+        flushes++
+        return flushSucceeds
+    }
+
     /** What [queuedFrames] answers. */
     var queued = 0
 

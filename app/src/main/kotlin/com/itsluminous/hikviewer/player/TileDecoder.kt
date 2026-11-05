@@ -32,7 +32,12 @@ import java.util.ArrayDeque
  * microseconds), far below what a decoder thread costs; a slow `releaseOutputBuffer` on it would
  * delay every tile's next picture, which the diagnostics' `shown` gap would show. A thread hop
  * per frame and a looper per tile were measured on the 1 GB TV with twelve tiles and bought
- * nothing. Decoding starts at the first keyframe so a mid-GOP start never shows grey blocks. A
+ * nothing. A [KeyframeGate] lets nothing but an IRAP through until one has been decoded: at the
+ * start, so a mid-GOP start never shows grey blocks, and again after every [flush], which is how a
+ * seek or a speed change in recorded playback reuses this decoder instead of building a new one
+ * (the surface keeps its last picture instead of going blank, and the hardware slot is never
+ * handed back and forth). The parameter sets are queued again after a flush, as `CODEC_CONFIG`
+ * buffers, so a decoder that forgot them with its buffers gets them before the keyframe. A
  * watchdog ([checkStall], rules in [StallDetector]) reports a codec that accepts input but
  * produces nothing; the owner then recreates it.
  */
@@ -95,11 +100,21 @@ open class TileDecoder(
     val framesIn: Int get() = synchronized(lock) { framesQueued }
 
     /** Pictures the codec produced so far. */
-    val framesOut: Int get() = synchronized(lock) { framesRendered }
+    val framesOut: Int get() = synchronized(lock) { framesDecoded }
 
     private var framesQueued = 0
-    private var framesRendered = 0
-    private var keyframeAdmitted = false
+    private var framesDecoded = 0
+    private val gate = KeyframeGate()
+    private var csdToSend = 0
+    private var flushes = 0
+
+    /**
+     * Admit keyframes only (reverse playback: each hop shows its keyframe, see [KeyframeGate]).
+     * Switching it off re-arms the gate, so the next picture fed is again a keyframe.
+     */
+    open var keyframesOnly: Boolean
+        get() = synchronized(lock) { gate.keyframesOnly }
+        set(value) = synchronized(lock) { gate.keyframesOnly = value }
 
     /**
      * Pictures are shown at the next multiple of this many nanoseconds instead of at once, so
@@ -122,6 +137,11 @@ open class TileDecoder(
     fun describePacer(): String = synchronized(lock) {
         val p = pacer ?: return ""
         " paced=${p.size} rebuffers=${p.rebuffers} remaps=${p.remaps} catchUps=${p.catchUps} dropped=${p.dropped}"
+    }
+
+    /** Diagnostic: the keyframe gate's state and counters, and how often this decoder was flushed. */
+    open fun describeGate(): String = synchronized(lock) {
+        "${gate.describe()} flushes=$flushes"
     }
 
     /**
@@ -157,17 +177,14 @@ open class TileDecoder(
     }
 
     /**
-     * Queues [unit]; non-keyframes are dropped until the first keyframe. "Until" means admitted,
-     * not yet handed to the codec: a paced decoder holds the keyframe for the latency, and the
-     * pictures that follow it meanwhile belong to its GOP.
+     * Queues [unit]; non-keyframes are dropped until the first keyframe ([KeyframeGate]). "Until"
+     * means admitted, not yet handed to the codec: a paced decoder holds the keyframe for the
+     * latency, and the pictures that follow it meanwhile belong to its GOP.
      */
     open fun feed(unit: AccessUnit) {
         synchronized(lock) {
             if (released || !started) return
-            if (!keyframeAdmitted) {
-                if (!unit.isKeyframe) return
-                keyframeAdmitted = true
-            }
+            if (!gate.admits(unit)) return
             if (pacer != null) {
                 pacer.offer(unit, now())
             } else {
@@ -209,6 +226,39 @@ open class TileDecoder(
     /** The looper's uptime clock for a time on this class's monotonic clock; the two tick together. */
     private fun uptimeFor(nowMillis: Long): Long = SystemClock.uptimeMillis() + (nowMillis - now())
 
+    /**
+     * Drops every picture the codec holds and starts over at the next keyframe, keeping the codec
+     * and its surface (the last picture stays on screen). The stream that follows may begin
+     * anywhere: a seek landed somewhere else in the recording, a speed change hops windows. The
+     * parameter sets are queued again before the first picture. Returns false when the codec
+     * refused (it is then in an unknown state and the owner must replace it); true also for a
+     * decoder that was never started or is already released, which has nothing to flush. The
+     * next picture decoded is reported as a first frame again ([Listener.onFirstFrame]), so the
+     * owner can show that it is waiting and when the wait is over.
+     */
+    open fun flush(): Boolean {
+        synchronized(lock) {
+            val c = codec ?: return true
+            if (released || !started) return true
+            pending.clear()
+            pacer?.clear()
+            freeInputs.clear()
+            handler.removeCallbacksAndMessages(token)
+            wakeUpAt = null
+            gate.await()
+            flushes++
+            // Asynchronous mode: flush() leaves the codec stopped until start() is called again,
+            // and every input buffer index handed out before is void.
+            val ok = runCatching { c.flush() }.isSuccess && runCatching { c.start() }.isSuccess
+            if (!ok) return false
+            csdToSend = config.csd.size
+            stall.reset(now())
+            // The next picture out is a first frame again: the owner shows "connecting" until then.
+            firstOutputSeen = false
+            return true
+        }
+    }
+
     /** True when input is being accepted but nothing comes out ([StallDetector]); the owner recreates the codec. */
     open fun checkStall(nowMillis: Long): Boolean = synchronized(lock) { started && stall.isStalled(nowMillis) }
 
@@ -239,22 +289,48 @@ open class TileDecoder(
                 if (released || !started) return
                 val nowMillis = now()
                 admitDueLocked(nowMillis)
-                if (freeInputs.isEmpty() || pending.isEmpty()) return
+                if (freeInputs.isEmpty()) return
                 val index = freeInputs.pollFirst()
+                // An index the codec handed out before a flush is void; the picture it would have
+                // carried must wait for a valid one, or the keyframe the gate just let through is
+                // lost and every P-frame behind it is decoded against nothing.
+                if (csdToSend > 0) {
+                    val csd = config.csd[config.csd.size - csdToSend]
+                    if (queueLocked(c, index, csd, 0L, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)) csdToSend--
+                    return@synchronized // the loop comes back for the next buffer
+                }
+                if (pending.isEmpty()) return
                 val unit = pending.pollFirst()
+                val pts = unit.presentationTimeUs ?: 0L
+                if (!queueLocked(c, index, unit.data, pts, 0)) {
+                    pending.addFirst(unit)
+                    return@synchronized
+                }
                 framesQueued++
                 stall.onInput(nowMillis)
-                val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return
-                buffer.clear()
-                if (inputCapacity < 0) inputCapacity = buffer.remaining()
-                val size = minOf(unit.data.size, buffer.remaining())
-                if (size < unit.data.size) truncated++
-                buffer.put(unit.data, 0, size)
-                val pts = unit.presentationTimeUs ?: 0L
                 recent.recordIn(pts, unit.data.size, unit.isKeyframe)
-                runCatching { c.queueInputBuffer(index, 0, size, pts, 0) }
             }
         }
+    }
+
+    /**
+     * Copies [data] into input buffer [index] and queues it; under [lock]. False when the codec
+     * refused the index (void after a flush) or the buffer, in which case nothing was consumed.
+     */
+    private fun queueLocked(
+        c: MediaCodec,
+        index: Int,
+        data: ByteArray,
+        pts: Long,
+        flags: Int,
+    ): Boolean {
+        val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return false
+        buffer.clear()
+        if (inputCapacity < 0) inputCapacity = buffer.remaining()
+        val size = minOf(data.size, buffer.remaining())
+        if (size < data.size) truncated++
+        buffer.put(data, 0, size)
+        return runCatching { c.queueInputBuffer(index, 0, size, pts, flags) }.isSuccess
     }
 
     private val callback =
@@ -277,7 +353,7 @@ open class TileDecoder(
                     if (released) return
                     val now = now()
                     stall.onOutput(now)
-                    framesRendered++
+                    framesDecoded++
                     recent.recordOut(info.presentationTimeUs)
                     frameRate.onFrame(now)
                     outputGaps.onEvent(now)

@@ -95,8 +95,18 @@ data class PlaybackUiState(
  *    key or a drag along the bar opens one window. A held key accelerates on the controller's
  *    schedule and the playhead is clamped to the day's footage.
  *  * **Other speeds** hop: every [HOP_MILLIS] the playhead moves `factor * HOP_MILLIS` and a short
- *    window opens there, so the screen shows one picture group per hop, forward or backward.
+ *    window opens there. Forward, the screen shows the window's pictures as the relay sends them
+ *    (one picture group per hop); backward, only the window's keyframes
+ *    ([TilePlayer.keyframesOnly]): the hops run against the direction of prediction, so a P-frame
+ *    would be decoded against a reference that was never shown, and that is the green or grey
+ *    picture a hardware decoder makes of it.
  *  * **Pause** stops the stream and keeps the last picture; resume reopens at the playhead.
+ *
+ * Every reopen keeps the one decoder ([TilePlayer.reopen]): the codec is flushed and admits
+ * nothing until the new window's first keyframe, so a seek shows the old picture until the new
+ * one is decoded instead of a blank surface, and the hardware slot is never released and
+ * re-acquired between two hops. The stream is only stopped for good ([TilePlayer.stop]) when the
+ * screen goes away, the footage ends or the user pauses.
  *
  * Callbacks from the stream arrive on worker threads; everything that touches the player or the
  * timers is re-dispatched to the main thread through the engine's scope: [viewModelScope] on the
@@ -293,11 +303,21 @@ class PlaybackViewModel(
         if (stateFlow.value.isPlaying) resumeTransport()
     }
 
-    /** Periodic watchdog from the Activity: recreates a wedged decoder. */
+    /**
+     * Periodic watchdog from the Activity: recreates a wedged decoder, and every
+     * [DIAGNOSTICS_EVERY_TICKS] ticks logs the player's state line (decoder in/out counts, the
+     * keyframe gate, flushes), which is what a TV logcat of a playback problem is read with.
+     */
     fun tick() {
         // The player stack stamps everything with System.nanoTime, so the watchdog gets that clock.
-        player.tick(System.nanoTime() / NANOS_PER_MILLI)
+        val now = System.nanoTime() / NANOS_PER_MILLI
+        player.tick(now)
+        if (++ticks % DIAGNOSTICS_EVERY_TICKS == 0) {
+            Log.i(TAG, "${stateFlow.value.speed.label} ${stateFlow.value.phase} ${player.diagnostics(now)}")
+        }
     }
+
+    private var ticks = 0
 
     override fun onCleared() {
         close()
@@ -339,7 +359,9 @@ class PlaybackViewModel(
 
     private fun resumeTransport() {
         stopTransport()
-        if (stateFlow.value.speed.isRealTime) playFrom(stateFlow.value.position) else startHopping()
+        val speed = stateFlow.value.speed
+        player.keyframesOnly = speed.factor < 0
+        if (speed.isRealTime) playFrom(stateFlow.value.position) else startHopping()
     }
 
     /**
@@ -351,9 +373,14 @@ class PlaybackViewModel(
     private fun stopTransportAndHold() {
         seek.release()
         stopTransport()
+        player.stop()
     }
 
-    /** Stops the stream and every timer; a pending debounced reopen is dropped (whoever restarts reopens at the playhead). */
+    /**
+     * Stops every timer and forgets the current window; a pending debounced reopen is dropped
+     * (whoever restarts reopens at the playhead). The player is left alone: the caller either
+     * reopens it ([open], which keeps the decoder) or stops it for good.
+     */
     private fun stopTransport() {
         hopJob?.cancel()
         hopJob = null
@@ -362,13 +389,13 @@ class PlaybackViewModel(
         seek.settle()
         seeking = false
         generation++
-        player.stop()
     }
 
     private fun playFrom(time: LocalDateTime) {
         val s = stateFlow.value
         val next = PlaybackTimeline.windowForward(s.segments, time, MAX_WINDOW)
         if (next == null) {
+            player.stop()
             stateFlow.update { it.copy(phase = PlaybackPhase.ENDED) }
             return
         }
@@ -404,12 +431,11 @@ class PlaybackViewModel(
     }
 
     private fun open(next: PlaybackWindow) {
-        player.stop()
         window = next
         generation++
         firstPtsUs = null
         firstPictureAt = null
-        player.start(scope)
+        player.reopen(scope)
     }
 
     private fun openCurrentWindow(onStatus: (StreamStatus) -> Unit): Flow<AccessUnit> {
@@ -469,6 +495,9 @@ class PlaybackViewModel(
 
         /** Where today's playback starts: a few minutes before the latest footage. */
         val INITIAL_LOOKBACK: Duration = Duration.ofMinutes(5)
+
+        /** The player's state line is logged every this many watchdog ticks (every 5 s at the default 500 ms). */
+        const val DIAGNOSTICS_EVERY_TICKS: Int = 10
 
         private const val TAG = "PlaybackViewModel"
         private const val NANOS_PER_MILLI = 1_000_000L

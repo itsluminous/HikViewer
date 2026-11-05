@@ -392,6 +392,73 @@ class PlaybackViewModelTest {
     }
 
     @Test
+    fun `a seek and a speed change flush the one decoder instead of rebuilding it`() {
+        cloud.recordings =
+            { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
+        val vm = started()
+        vm.changeDay(-1, today) // a day change stops the player for good: a second decoder is built
+        run()
+        assertThat(decoders.created).hasSize(2)
+        assertThat(decoders.created[0].released).isTrue()
+        val d = decoders.created[1]
+        val fedBefore = d.fed.size
+
+        vm.seekBy(+1)
+        vm.endSeekHold()
+        run(SeekController.DEBOUNCE_MILLIS)
+        assertThat(decoders.created).hasSize(2)
+        assertThat(d.flushes).isEqualTo(1)
+        assertThat(d.released).isFalse()
+        assertThat(d.fed.size).isGreaterThan(fedBefore) // the new window's pictures reach the same decoder
+        assertThat(d.keyframesOnlySet).isFalse()
+
+        vm.setSpeed(PlaybackSpeed.FORWARD_5)
+        run()
+        assertThat(decoders.created).hasSize(2)
+        assertThat(d.flushes).isEqualTo(2)
+        assertThat(d.keyframesOnlySet).isFalse() // forward hops decode every picture of their window
+
+        vm.onStop() // the screen goes away: now the decoder is released
+        assertThat(d.released).isTrue()
+    }
+
+    @Test
+    fun `reverse speeds feed keyframes only, forward speeds and 1x feed every picture`() {
+        cloud.recordings =
+            { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
+        cloud.playbackFramesPerWindow = 36 // three GOPs of the synthetic clip per window
+        val vm = started()
+        vm.changeDay(-1, today)
+        run()
+        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(8, 0))) // room to hop backwards
+        run(SeekController.DEBOUNCE_MILLIS)
+        val d = decoders.created.last()
+        assertThat(d.fed.any { !it.isKeyframe }).isTrue()
+
+        vm.setSpeed(PlaybackSpeed.REVERSE_10)
+        run()
+        assertThat(vm.player.keyframesOnly).isTrue()
+        assertThat(d.keyframesOnlySet).isTrue()
+        val fedAtReverse = d.fed.size
+        run(2_000) // one more hop
+        val reverseFed = d.fed.drop(fedAtReverse)
+        assertThat(reverseFed).isNotEmpty()
+        assertThat(reverseFed.all { it.isKeyframe }).isTrue()
+
+        vm.setSpeed(PlaybackSpeed.FORWARD_10)
+        run()
+        assertThat(vm.player.keyframesOnly).isFalse()
+        val fedAtForward = d.fed.size
+        run(2_000)
+        assertThat(d.fed.drop(fedAtForward).any { !it.isKeyframe }).isTrue()
+
+        vm.setSpeed(PlaybackSpeed.NORMAL)
+        run()
+        assertThat(vm.player.keyframesOnly).isFalse()
+        vm.onStop()
+    }
+
+    @Test
     fun `controls cycle and stop releases the stream while keeping the phase`() {
         val vm = started()
         assertThat(vm.state.value.control).isEqualTo(PlaybackControl.BAR)

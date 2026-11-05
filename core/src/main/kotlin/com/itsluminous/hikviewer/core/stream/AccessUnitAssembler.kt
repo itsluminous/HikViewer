@@ -82,11 +82,15 @@ public class AccessUnitAssembler(
         return CodecConfig(codec, vps, s, p)
     }
 
-    /** Adds [nal]; returns the previous picture when [nal] starts a new one. */
+    /**
+     * Adds [nal]; returns the previous picture when [nal] starts a new one. An H.264 SPS is passed
+     * through [H264SpsRewriter] first (both the copy in the picture and the one in [config]), so
+     * every decoder sees a stream that declares no reordering; see there for why.
+     */
     public fun feed(nal: NalUnit): AccessUnit? {
-        val data = nal.data
-        if (data.isEmpty()) return null
-        val type = codec.nalType(data[0])
+        if (nal.data.isEmpty()) return null
+        val type = codec.nalType(nal.data[0])
+        val data = prepared(type, nal.data)
         val vcl = codec.isVcl(type)
         val timestamp = nal.timestamp90k?.let(::unwrap)
         rememberParameterSet(type, data)
@@ -135,6 +139,12 @@ public class AccessUnitAssembler(
         currentTimestamp = null
         return unit
     }
+
+    /** An H.264 SPS is rewritten to declare no reordering; every other NAL is used as is. */
+    private fun prepared(
+        type: Int,
+        data: ByteArray,
+    ): ByteArray = if (codec == VideoCodec.H264 && codec.isSps(type)) H264SpsRewriter.withoutReordering(data) else data
 
     private fun rememberParameterSet(
         type: Int,

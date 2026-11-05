@@ -20,8 +20,16 @@ class AccessUnitAssemblerTest {
         assertThat(units.first().isKeyframe).isTrue()
         assertThat(units.first().presentationTimeUs).isEqualTo(126000L * 1_000_000 / 90_000)
         assertThat(units[1].presentationTimeUs!! - units[0].presentationTimeUs!!).isEqualTo(83_333)
-        assertThat(units.sumOf { it.size }).isEqualTo(nals.sumOf { it.size + 4 })
+        // The SPS is rewritten (bitstream_restriction added or replaced) in both the picture and the config.
+        val isSps = { n: NalUnit -> VideoCodec.H264.isSps(VideoCodec.H264.nalType(n.data[0])) }
+        val originalSps = nals.first(isSps)
+        val rewrittenSps = H264SpsRewriter.withoutReordering(originalSps.data)
+        val grownBy = nals.count(isSps) * (rewrittenSps.size - originalSps.size)
+        assertThat(units.sumOf { it.size }).isEqualTo(nals.sumOf { it.size + 4 } + grownBy)
         val config = units.first().config!!
+        assertThat(config.sps).isEqualTo(start + rewrittenSps)
+        val firstPicture = units.first().data.toList()
+        assertThat(firstPicture.windowed(rewrittenSps.size).count { it == rewrittenSps.toList() }).isEqualTo(1)
         assertThat(config.codec).isEqualTo(VideoCodec.H264)
         assertThat(config.vps).isNull()
         assertThat(config.sps.toList().take(5)).isEqualTo(listOf<Byte>(0, 0, 0, 1, 0x67))

@@ -76,7 +76,7 @@ class GridActivityPhoneTest {
 
     @Test
     @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
-    fun `landscape stands the bar down the left edge and a tap opens fullscreen`() {
+    fun `landscape stands the bar down the left edge and a tap opens the phone camera screen`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->
                 val bar = a.findViewById<LinearLayout>(R.id.top_bar)
@@ -91,8 +91,10 @@ class GridActivityPhoneTest {
                 assertThat((grid.layoutParams as FrameLayout.LayoutParams).marginStart).isEqualTo(width)
                 assertThat(grid.shape.columns).isEqualTo(3) // 6 cameras: AUTO → 3x3, landscape
                 grid.getChildAt(1).performClick()
+                // The same screen as upright: it follows the phone, so the TV's fullscreen is never used here.
                 val next = shadowOf(a).nextStartedActivity
-                assertThat(next.component!!.className).isEqualTo(FullscreenActivity::class.java.name)
+                assertThat(next.component!!.className).isEqualTo(PhoneCameraActivity::class.java.name)
+                assertThat(next.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(1)
             }
         }
     }

@@ -1,6 +1,5 @@
 package com.itsluminous.hikviewer.ui.phone
 
-import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.view.MotionEvent
 import android.view.View
@@ -20,6 +19,7 @@ import com.itsluminous.hikviewer.ui.playback.TimeBarView
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
@@ -66,7 +66,7 @@ class PhoneCameraActivityTest {
         ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
             awaitUi { account.searched.isNotEmpty() && account.opened.isNotEmpty() }
             scenario.onActivity { a ->
-                assertThat(a.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+                assertThat(a.hasTimeline).isTrue()
                 assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
                 assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.VISIBLE)
                 assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isFalse()
@@ -181,5 +181,84 @@ class PhoneCameraActivityTest {
             dispatchTouchEvent(MotionEvent.obtain(t0, t0 + i * 10L, MotionEvent.ACTION_MOVE, x, y, 0))
         }
         dispatchTouchEvent(MotionEvent.obtain(t0, t0 + steps * 10L + 5, MotionEvent.ACTION_UP, toX, y, 0))
+    }
+
+    /**
+     * Turning the phone swaps the layout under the same ViewModel: sideways the picture alone fills
+     * the height and the footage keeps playing from where it was; upright again the bar is back at
+     * that position.
+     */
+    @Test
+    fun `turning the phone shows the picture alone and keeps the camera and the playback position`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() && scenario.bar().segments.size == 2 }
+            scenario.onActivity { a ->
+                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
+                val tap = MotionEvent.obtain(0, 0, MotionEvent.ACTION_UP, bar.width / 2f, bar.height / 2f, 0)
+                bar.dispatchTouchEvent(tap)
+                tap.recycle()
+            }
+            ShadowLooper.idleMainLooper(SeekController.DEBOUNCE_MILLIS + 1, java.util.concurrent.TimeUnit.MILLISECONDS)
+            awaitUi { account.playbackOpened.size == 1 }
+            val noon = LocalDate.now().atTime(12, 0)
+            assertThat(account.playbackOpened.single().second.begin).isEqualTo(noon)
+
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            awaitUi { account.playbackOpened.size >= 2 } // the same engine reopened at its position
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.findViewById<View?>(R.id.time_bar)).isNull()
+                assertThat(a.findViewById<View?>(R.id.speed_button)).isNull()
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.index.value).isEqualTo(1)
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.GONE)
+                // The picture fills the height, 16:9, centred.
+                val frame = a.findViewById<View>(R.id.video_frame)
+                val root = a.findViewById<View>(R.id.root)
+                assertThat(frame.height).isEqualTo(root.height - root.paddingTop - root.paddingBottom)
+                assertThat(frame.width).isEqualTo(frame.height * 16 / 9)
+                assertThat(a.text(R.id.time_label)).startsWith("12:00")
+            }
+            val reopened = account.playbackOpened.last().second.begin
+            assertThat(reopened).isAtLeast(noon)
+            assertThat(reopened).isLessThan(noon.plusMinutes(1))
+            assertThat(account.opened).hasSize(1) // live was not reopened: the footage kept the surface
+
+            val openedSideways = account.playbackOpened.size
+            RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
+            scenario.recreate()
+            awaitUi { account.playbackOpened.size > openedSideways }
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isTrue()
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
+                assertThat(a.text(R.id.time_label)).startsWith("12:00")
+                assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `opened sideways it is the picture alone, live, and swiping still switches camera`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 0)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() }
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.findViewById<View>(R.id.help).visibility).isEqualTo(View.VISIBLE)
+                val frame = a.findViewById<View>(R.id.video_frame)
+                a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height / 2f)
+                ShadowLooper.idleMainLooper()
+                assertThat(a.viewModels<PhoneCameraViewModel>().value.index.value).isEqualTo(1)
+                // The help line hides after the idle time, like the TV's fullscreen hint.
+                ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.findViewById<View>(R.id.help).visibility).isNotEqualTo(View.VISIBLE)
+            }
+        }
     }
 }

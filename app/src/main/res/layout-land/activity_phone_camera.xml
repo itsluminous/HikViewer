@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The phone's single-camera screen turned sideways: the same Activity and ViewModel as the
+     portrait layout, but the picture alone, as large as the screen allows, like the TV's
+     fullscreen. The transport controls have no view here; the recorded engine keeps playing
+     from the same position and gets its bar back when the phone is upright again. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    tools:context=".ui.phone.PhoneCameraActivity">
+
+    <!-- Fills the height; swipe left/right here to switch camera. -->
+    <com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout
+        android:id="@+id/video_frame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center">
+
+        <com.itsluminous.hikviewer.ui.grid.CameraTileView
+            android:id="@+id/video"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/live_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="2dp"
+            android:text="@string/phone_live_badge"
+            android:textColor="@color/accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:textColor="@color/on_background"
+            android:textSize="14sp"
+            android:visibility="gone"
+            tools:text="@string/playback_no_recordings"
+            tools:visibility="visible" />
+
+        <!-- The clock while live, the playhead while playing footage. -->
+        <TextView
+            android:id="@+id/time_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="12dp"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="3dp"
+            android:textColor="@color/on_background"
+            android:textSize="14sp"
+            tools:text="17:13:51" />
+
+        <TextView
+            android:id="@+id/help"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_margin="12dp"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="3dp"
+            android:text="@string/phone_help_landscape"
+            android:textColor="@color/on_background"
+            android:textSize="12sp" />
+    </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
+</FrameLayout>

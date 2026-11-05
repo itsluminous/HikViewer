@@ -5,8 +5,10 @@ import android.util.AttributeSet
 import android.widget.FrameLayout
 
 /**
- * A frame as wide as it is given and 16:9 tall, for the phone's live picture: the video keeps its
- * shape in portrait and the controls take the rest of the screen below it.
+ * A 16:9 frame for the phone's live picture: as wide as it is given and 16:9 tall when the height
+ * is free (portrait: the controls take the rest of the screen below it), and the largest 16:9
+ * rectangle that fits when the height is bounded too (landscape: the picture fills the screen's
+ * height and is centred by its parent).
  */
 class AspectRatioFrameLayout
     @JvmOverloads
@@ -18,8 +20,13 @@ class AspectRatioFrameLayout
             widthMeasureSpec: Int,
             heightMeasureSpec: Int,
         ) {
-            val width = MeasureSpec.getSize(widthMeasureSpec)
-            val height = width * HEIGHT_RATIO / WIDTH_RATIO
+            var width = MeasureSpec.getSize(widthMeasureSpec)
+            var height = width * HEIGHT_RATIO / WIDTH_RATIO
+            val maxHeight = MeasureSpec.getSize(heightMeasureSpec)
+            if (MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED && height > maxHeight) {
+                height = maxHeight
+                width = height * WIDTH_RATIO / HEIGHT_RATIO
+            }
             super.onMeasure(
                 MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),

@@ -39,8 +39,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Screens are recreated on rotation only for the grid (portrait → 2 columns); the others
-             keep their state through the ViewModel anyway. -->
+        <!-- The grid and the phone camera screen are recreated on rotation (portrait → 2 columns;
+             live + timeline → picture alone) and keep their state in their ViewModels. -->
         <activity
             android:name=".ui.grid.GridActivity"
             android:exported="false"
@@ -50,7 +50,7 @@
             android:exported="false"
             android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi" />
-        <!-- Portrait is requested at runtime on phones only (FormFactor), so no screenOrientation here. -->
+        <!-- Follows the phone's orientation: layout/ upright, layout-land/ sideways. -->
         <activity
             android:name=".ui.phone.PhoneCameraActivity"
             android:exported="false" />

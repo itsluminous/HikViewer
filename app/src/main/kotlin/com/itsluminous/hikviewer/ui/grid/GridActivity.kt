@@ -49,8 +49,8 @@ import kotlinx.coroutines.launch
  * on screen: along the top in portrait, down the left edge in landscape (see [FormFactor]). Back
  * leaves the app (this is the root of the task once logged in).
  *
- * Tapping a tile opens the camera full screen; on a phone held upright it opens the portrait
- * [PhoneCameraActivity] (live on top, timeline below) so the screen does not rotate.
+ * Tapping a tile opens the camera full screen on a TV; on a phone it opens [PhoneCameraActivity],
+ * which shows live + timeline upright and the picture alone sideways, following the phone.
  *
  * A long press on a tile (held OK, long click, long touch) opens a small menu of [TileAction]s:
  * Move hands the tile to a [TileMoveController], Change lists the cameras in a
@@ -323,13 +323,16 @@ class GridActivity : AppCompatActivity() {
         if (!binding.topBar.hasFocus()) grid.childAtPosition(wanted)?.requestFocus()
     }
 
-    /** Phones held upright get the portrait live + timeline screen; everything else goes full screen. */
+    /**
+     * A phone gets the single-camera screen that follows the phone's orientation (live + timeline
+     * upright, the picture alone sideways); a TV goes to the fullscreen screen with the D-pad hint.
+     */
     private fun openFullscreen(index: Int) {
         viewModel.focusedIndex = index
-        if (!television && portrait) {
-            fullscreen.launch(PhoneCameraActivity.intent(this, index))
-        } else {
+        if (television) {
             fullscreen.launch(FullscreenActivity.intent(this, index))
+        } else {
+            fullscreen.launch(PhoneCameraActivity.intent(this, index))
         }
     }
 

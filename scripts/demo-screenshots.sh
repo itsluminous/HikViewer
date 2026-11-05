@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Captures the README screenshots from the debug build's demo mode (synthetic test patterns,
+# Captures the README screenshots from the debug build's demo mode (stock pictures of empty rooms,
 # placeholder camera names; never a real account). Usage:
 #
 #   scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]
 #
 # Needs the debug APK installed on each device (`./gradlew assembleDebug`, then
 # `adb -s <serial> install -r -t app/build/outputs/apk/debug/app-debug.apk`), `sips` (macOS) or
-# `pngquant`/`cwebp` to keep each file under 400 KB, and nothing else running on the devices.
+# its JPEG encoder to keep each file under 400 KB, and nothing else running on the devices.
 set -euo pipefail
 
 TV=${1:?usage: $0 <tv-serial> [<phone-serial>]}
@@ -27,18 +27,16 @@ demo() {
 
 key() { adb -s "$1" shell input keyevent "$2"; }
 
-# screencap -p on the device, then shrink in place until the file is under MAX_BYTES.
+# screencap -p on the device, saved as JPEG: the demo tiles are photographs, which PNG stores at
+# several megabytes a screen. Quality steps down until the file is under MAX_BYTES; the size stays.
 shoot() {
-    local serial=$1 name=$2 file="$OUT/$2.png"
-    adb -s "$serial" exec-out screencap -p > "$file"
-    local longest
-    longest=$(sips -g pixelWidth -g pixelHeight "$file" | awk '/pixel/ {if ($2 > m) m = $2} END {print m}')
-    # Test-pattern tiles compress badly as PNG; step the longest side down until the file fits.
-    for candidate in 1600 1280 960 720; do
+    local serial=$1 name=$2 png="$OUT/.$2.png" file="$OUT/$2.jpg"
+    adb -s "$serial" exec-out screencap -p > "$png"
+    for quality in 85 75 65 55; do
+        sips -s format jpeg -s formatOptions "$quality" "$png" --out "$file" > /dev/null
         [ "$(stat -f %z "$file")" -le "$MAX_BYTES" ] && break
-        [ "$candidate" -lt "$longest" ] || continue
-        sips -Z "$candidate" "$file" > /dev/null
     done
+    rm -f "$png"
     printf '%-18s %s  %s bytes\n' "$name" "$(sips -g pixelWidth -g pixelHeight "$file" | awk '/pixel/ {printf "%s ", $2}')" "$(stat -f %z "$file")"
 }
 

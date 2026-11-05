@@ -23,15 +23,15 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 
 | Sign in | 4 × 3 grid with the top bar | 1 + 7 (hero) layout |
 | :---: | :---: | :---: |
-| ![Login screen](docs/screenshots/login.png) | ![4x3 grid, top bar shown](docs/screenshots/grid-4x3.png) | ![1 + 7 layout](docs/screenshots/grid-1-plus-7.png) |
+| ![Login screen](docs/screenshots/login.jpg) | ![4x3 grid, top bar shown](docs/screenshots/grid-4x3.jpg) | ![1 + 7 layout](docs/screenshots/grid-1-plus-7.jpg) |
 
 | Fullscreen | Recorded playback | Settings |
 | :---: | :---: | :---: |
-| ![Fullscreen camera](docs/screenshots/fullscreen.png) | ![Playback with the 24 h time bar](docs/screenshots/playback.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Fullscreen camera](docs/screenshots/fullscreen.jpg) | ![Playback with the 24 h time bar](docs/screenshots/playback.jpg) | ![Settings](docs/screenshots/settings.jpg) |
 
 | Phone grid (portrait) | Phone camera: live on top, timeline below |
 | :---: | :---: |
-| ![Phone grid](docs/screenshots/phone-grid.png) | ![Phone camera screen](docs/screenshots/phone-camera.png) |
+| ![Phone grid](docs/screenshots/phone-grid.jpg) | ![Phone camera screen](docs/screenshots/phone-camera.jpg) |
 
 ## Features
 

@@ -45,15 +45,23 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   1 + 15: one large hero tile with N small ones to its right and below). The menu only offers
   layouts every tile of which would show a camera. Tile positions are remembered per layout and the
   last layout is restored on launch.
-- **Move tiles**: long-press a tile (hold OK, long click or long touch) → *Move*, then push it with
-  the D-pad, drag it with the mouse or your finger; OK drops it, Back cancels. In a 1 + N layout the
-  first position is the hero.
+- **Tile menu**: long-press a tile (hold OK, long click or long touch) for *Move*, *Change* and
+  *Playback*. **Move**: push the tile with the D-pad, drag it with the mouse or your finger; OK drops
+  it, Back cancels. In a 1 + N layout the first position is the hero. **Change**: pick any of your
+  cameras from a list (the current one is highlighted); it replaces this tile's camera, or swaps
+  the two if it was already on the grid. Both are remembered per layout, like the tile order.
+- **Live dot**: a small dot in each tile's corner is green while pictures reach the screen (a frame
+  within the last 2 s, a fresh still for a keyframe-only tile) and red while the tile is connecting,
+  stalled or failed. No text badge.
 - **Fullscreen**: OK on a tile. LEFT / RIGHT (or a swipe on a phone) switches camera, Back returns to
   the same tile. The hint hides after 5 s.
 - **Recorded playback** from the long-press menu: fullscreen video, a 24 h time bar with the recorded
-  spans highlighted, LEFT / RIGHT seek (hold to accelerate), a speed toggle (−10× … +10×; speeds other
-  than 1× step between keyframes, reverse included, because the cloud only plays forward at 1×), and
-  a date chip. Times are the recorder's own clock.
+  spans highlighted, a speed toggle (−10× … +10×; speeds other than 1× step between keyframes,
+  reverse included, because the cloud only plays forward at 1×), and a date chip. LEFT / RIGHT seek
+  10 s; hold the key and the steps grow 10 s → 30 s → 1 min → 5 min → 15 min, resetting when you let
+  go. The time label follows every press at once; the video reopens 0.6 s after the last one, so a
+  burst of presses or a long hold costs one reconnect. On a phone, drag the bar: the finger's
+  position is the time. Times are the recorder's own clock.
 - **Hidden top bar on TV**: any key shows it, it hides 5 s after the last key, and it never steals
   focus. UP from the top row of tiles reaches its layout and settings buttons. On a phone the bar is
   always on screen (top in portrait, left edge in landscape) because there is no D-pad to summon it.
@@ -67,7 +75,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 - **Built for weak TVs**: hardware decoders for the two tiles you are looking at (focused or hero),
   software decoders for the rest, and a shared keyframe-only decoder pool for tiles beyond what the
   device can decode live. The live budget adapts to RAM, cores and measured decode lag, and tiles
-  are promoted back when headroom returns. A failed tile dims and shows a single *Retry* button.
+  are promoted back when headroom returns. A decoder that stops producing pictures is caught within
+  about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims and shows a
+  single *Retry* button.
 - **Clean lifecycle**: every stream, socket and decoder is released in `onStop`; there are no
   services, jobs or alarms, so the app costs nothing when it is not on screen.
 - **Settings**: layout, visible cameras and their order, hero camera, fullscreen stream quality
@@ -87,7 +97,10 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
    session, and connect over plain TCP to the relay (`ysproto://` framing). Live streams come as
    RTP or MPEG-PS; recordings as MPEG-PS from `/v3/streaming/records` spans.
 4. **Decrypt on the device**: each H.264/H.265 NAL body is AES-ECB encrypted with your verification
-   code as the key; the three key variants seen in the wild are detected from the parameter sets.
+   code as the key; the three key variants seen in the wild are detected from the parameter sets,
+   and which NAL types a recorder leaves in the clear is learnt from the stream (this DVR encrypts
+   only keyframes, parameter sets and long-term-reference P-frames). The H.264 SPS is rewritten to
+   declare no frame reordering, so software decoders show each picture as soon as it is decoded.
 5. **Decode with `MediaCodec`**, feeding access units straight to the codec. At most two hardware
    decoders are used (the focused and hero tiles); the rest are software, or keyframe-only stills
    from a shared pool when the device runs out of CPU.
@@ -116,6 +129,10 @@ Download `HikViewer-<version>-universal.apk` from the
   (*Record → Parameters → Sub-stream*); software decoding costs about a fifth of a core per
   960 × 480 @ 12 fps tile, so halving the pixels and the frame rate is what lets a 1 GB TV keep every
   tile live instead of falling back to keyframe stills.
+- **The first minutes on a slow TV**: right after launch a weak TV can be busy enough that the app
+  temporarily shows one or two tiles as 1 fps stills (their dot stays green while stills arrive);
+  they return to live video within a couple of minutes once the device settles. Fewer visible
+  cameras or a lower sub-stream frame rate on the recorder removes the dip.
 - **Region sets the country code**: pick your region on the sign-in screen and type the mobile number
   without the country code (India → 91 is added for you). Type a leading `+` to send exactly what you
   typed, or your e-mail address if the account uses one.

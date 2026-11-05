@@ -178,6 +178,15 @@ stills. Twenty seconds after HOME the process uses 0 % CPU, holds no sockets and
 Back it is a plain cached process of roughly 45 MB PSS, 35 MB of which are shared framework pages.
 Check with `adb shell dumpsys meminfo com.itsluminous.hikviewer | grep "TOTAL PSS"`.
 
+Reading a TV session: the release build logs one INFO line per tile every 10 s under the
+`HikViewer` tag (`chN mode=… state=… in= out= queued= fps= created=`) plus the live budget's
+`live limit=`, and the `TilePlayer` / `LiveBudget` / `KeyframePool` tags carry the events
+(`decoder stalled`, `stream lost`, `live budget: demote|promote`, `codec #N`). Channels are named by
+number only; no serial or session id is ever logged. A healthy MiTV (Android 10, 4×A55) shows every
+live tile at the recorder's frame rate with `in − out ≤ 5`, `queued=0`, no `decoder stalled` after the
+first minutes, `media.codec`/OMX around 150–200 % and the app 60–90 % of one core with 7 software tiles,
+and about 85 MB PSS.
+
 ## Release signing
 
 `assembleRelease` looks for signing material in this order and falls back to the debug keystore when

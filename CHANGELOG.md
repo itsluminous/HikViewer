@@ -15,12 +15,17 @@ All notable changes to HikViewer are recorded here. The format follows
 - Camera grid of the account's channels with layouts Auto, 3 × 3, 4 × 3, 4 × 4 and 1 + 5 / 1 + 7 /
   1 + 9 / 1 + 11 / 1 + 15 (hero layouts); the menu lists only layouts every tile of which has a
   camera. Tile positions are kept per layout, the last layout is restored on launch.
-- Long-press menu on a tile: *Move* (D-pad, mouse drag or touch drag; OK drops, Back cancels) and
-  *Playback*.
+- Long-press menu on a tile: *Move* (D-pad, mouse drag or touch drag; OK drops, Back cancels),
+  *Change* (a focusable list of your cameras; the pick replaces this tile's camera or swaps the two
+  if it was already on the grid, remembered per layout like Move) and *Playback*.
+- Live dot in a corner of every tile: green while pictures reach the screen (a decoded frame within
+  2 s, or a freshly rendered still on a keyframe-only tile), red while connecting, stalled or failed.
 - Fullscreen view with LEFT / RIGHT (TV) or swipe (phone) to switch camera and a self-hiding hint.
-- Recorded playback from the cloud: 24 h time bar with recorded spans, LEFT / RIGHT seek with
-  hold-to-accelerate, speed toggle −10× … +10× (speeds other than 1× step between keyframes), date
-  chip, pause. Times are the recorder's clock.
+- Recorded playback from the cloud: 24 h time bar with recorded spans, speed toggle −10× … +10×
+  (speeds other than 1× step between keyframes), date chip, pause. LEFT / RIGHT seek 10 s and a held
+  key accelerates 10 s → 30 s → 1 min → 5 min → 15 min (reset on release); the time label moves at
+  once and the stream reopens 600 ms after the last seek input, so a burst of presses, a hold or a
+  drag of the bar on a phone costs one reconnect. Times are the recorder's clock.
 - Hidden top bar on TV (any key shows it, hides after 5 s, never takes focus); persistent bar on
   phones (top in portrait, left edge in landscape).
 - Phone portrait camera screen: live video on top, the playback timeline, speed and date below.
@@ -29,10 +34,32 @@ All notable changes to HikViewer are recorded here. The format follows
 - On-device decryption of encrypted streams (AES-ECB per NAL, three key variants detected
   automatically). The verification code is checked locally against the recorder's `MD5(MD5(code))`,
   stored in encrypted preferences and never asked again unless the recorder's code changes.
+
+### Fixed
+
+- Software-decoded tiles froze for a few seconds about once a minute on the MiTV, and in earlier
+  builds were then demoted to keyframe stills one after another. The cause was in the decryptor:
+  with the "type hint" encryption variant a clear P-slice is mistaken for an encrypted one once in
+  256 and decrypted into garbage, which hardware decoders conceal but the TV's software H.264
+  decoder answers by producing no more output. The decryptor now learns which NAL header classes a
+  recorder encrypts and leaves the others alone (0 garbled slices in 5759 against the real account,
+  9 in 3599 before).
+- Per-tile diagnostics in logcat (`HikViewer`, `TilePlayer` tags) name channels by number only; the
+  recorder's serial no longer appears in any log line.
+- Rotating a phone with the camera picker or the verification-code dialog open no longer leaks the
+  dialog window.
+- A seek key held while the focus moved to the date chip or the speed button no longer keeps its
+  accelerated step for the next press on the bar.
 - Adaptive decoding for weak TVs: at most two hardware decoders (focused and hero tiles), software
   decoders for the rest, a shared keyframe-only pool for tiles beyond the live budget, which adapts
-  to RAM, cores and measured decode lag. Hardware refusals back off exponentially; a failed tile
-  dims and offers *Retry*.
+  to RAM, cores and measured decode lag. Only the tiles the layout shows are streamed. Hardware
+  refusals back off exponentially; a `configure` refused while the previous codec still holds the
+  surface is retried at the next keyframes; a failed tile dims and offers *Retry*.
+- Decoder watchdog: a decoder that accepts pictures but produces none is caught after ten swallowed
+  pictures and 1.2 s (at any frame rate, 6 to 12 fps) instead of 3 s, and rebuilt without counting
+  as decode lag, so a wedged software decoder never demotes its tile to keyframe stills.
+- The H.264 SPS is rewritten to declare no frame reordering (`max_num_reorder_frames = 0`), so
+  software decoders show each picture as soon as it is decoded instead of holding ten of them.
 - Clean lifecycle: every stream, socket and decoder is released in `onStop`; no services, jobs or
   alarms.
 - Universal APK (no ABI splits), Android TV and phone launchers in one build, `minSdk` 26.

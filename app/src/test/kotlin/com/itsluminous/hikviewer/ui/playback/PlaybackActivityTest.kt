@@ -144,14 +144,15 @@ class PlaybackActivityTest {
                 awaitUi { account.searched.size == 2 }
                 a.key(KeyEvent.KEYCODE_DPAD_DOWN)
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
-                // Hold RIGHT on the bar for four seconds (down, then auto-repeats): the step grows to minutes.
+                // Hold RIGHT on the bar for four seconds (down, then auto-repeats every 100 ms as a
+                // remote does, so the debounce never runs out mid-hold): the step grows to minutes.
                 a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
-                repeat(4) {
-                    ShadowLooper.idleMainLooper(1_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                repeat(40) {
+                    ShadowLooper.idleMainLooper(100, java.util.concurrent.TimeUnit.MILLISECONDS)
                     a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, it + 1))
                 }
                 val before = seconds()
-                a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 5))
+                a.dispatchKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, 41))
                 assertThat(seconds() - before).isAtLeast(60)
                 // UP moves to the date chip while RIGHT is still held; then RIGHT goes up there.
                 a.key(KeyEvent.KEYCODE_DPAD_UP)
@@ -166,7 +167,9 @@ class PlaybackActivityTest {
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
                 val rested = seconds()
                 a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
-                assertThat(seconds() - rested).isEqualTo(10)
+                val step = seconds() - rested
+                assertThat(step).isAtLeast(10) // 10 s, plus whatever the reopened stream delivered meanwhile
+                assertThat(step).isLessThan(30)
             }
         }
     }

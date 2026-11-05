@@ -48,10 +48,8 @@ import kotlinx.coroutines.launch
  * Tapping a tile opens the camera full screen; on a phone held upright it opens the portrait
  * [PhoneCameraActivity] (live on top, timeline below) so the screen does not rotate.
  *
- * A long press on a tile (held OK, long click, long touch) opens a small menu of [TileAction]s.
- * Move lifts the tile; D-pad keys swap it with the neighbour in that direction, a mouse or finger
- * drag swaps it with the tile under the pointer, OK or release drops it, Back puts the original
- * arrangement back. Every swap is persisted for the current layout by the view model.
+ * A long press on a tile (held OK, long click, long touch) opens a small menu of [TileAction]s:
+ * Move hands the tile to a [TileMoveController], Playback opens the recording screen.
  */
 class GridActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGridBinding
@@ -64,11 +62,8 @@ class GridActivity : AppCompatActivity() {
     private val tilesByKey = LinkedHashMap<String, CameraTileView>()
     private var pendingFocus: Int? = null
 
-    /** The lifted tile while a move is in progress; its index is read from the grid, since swaps move it. */
-    private var moving: CameraTileView? = null
-
-    /** Arrangement when the move began, restored on Back. */
-    private var moveOrigin: List<String>? = null
+    /** Lift-and-swap of a tile (long press → Move); see [TileMoveController]. */
+    private lateinit var move: TileMoveController
 
     private val viewModel: GridViewModel by viewModels {
         val graph = AppGraph.of(this)
@@ -105,6 +100,7 @@ class GridActivity : AppCompatActivity() {
         television = FormFactor.isTelevision(this)
         portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         binding.grid.portrait = portrait
+        move = TileMoveController(binding.grid, binding.moveHint, viewModel)
         placeBar()
         binding.grid.onTopEdgeUp = {
             topBar?.onUserActivity()
@@ -177,7 +173,7 @@ class GridActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) topBar?.onUserActivity()
-        if (moving != null && handleMoveKey(event)) return true
+        if (move.isMoving && move.onKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
 
@@ -187,7 +183,7 @@ class GridActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (moving != null && handleMoveTouch(ev)) return true
+        if (move.isMoving && move.onTouch(ev)) return true
         return super.dispatchTouchEvent(ev)
     }
 
@@ -245,13 +241,13 @@ class GridActivity : AppCompatActivity() {
         tile.setOnClickListener {
             val index = binding.grid.positionOf(tile)
             when {
-                moving != null -> endMove()
+                move.isMoving -> move.end()
                 tile.showsRetry -> viewModel.retry(index)
                 else -> openFullscreen(index)
             }
         }
         tile.setOnLongClickListener {
-            if (moving == null) showTileMenu(tile)
+            if (!move.isMoving) showTileMenu(tile)
             true
         }
         tile.setOnFocusChangeListener { _, focused ->
@@ -333,7 +329,7 @@ class GridActivity : AppCompatActivity() {
         }
         // The popup is its own window: while it is up the tile cannot hold focus, so once it is
         // gone the lifted tile (or the one the menu was opened on) takes focus back.
-        menu.setOnDismissListener { (moving ?: tile).requestFocus() }
+        menu.setOnDismissListener { (move.lifted ?: tile).requestFocus() }
         menu.show()
     }
 
@@ -343,116 +339,11 @@ class GridActivity : AppCompatActivity() {
         action: TileAction,
     ) {
         when (action) {
-            TileAction.MOVE -> beginMove(position)
+            TileAction.MOVE -> move.begin(position)
             TileAction.PLAYBACK -> openPlayback(position)
         }
     }
 
-    // --- Move mode -----------------------------------------------------------------------------
-
     /** True while a tile is lifted. */
-    val isMoving: Boolean get() = moving != null
-
-    private fun beginMove(position: Int) {
-        val tile = binding.grid.childAtPosition(position) as? CameraTileView ?: return
-        moving = tile
-        moveOrigin = (viewModel.state.value as? GridUiState.Ready)?.cameras?.map { it.key }
-        tile.lifted = true
-        tile.requestFocus()
-        binding.moveHint.visibility = View.VISIBLE
-    }
-
-    private fun endMove() {
-        moving?.lifted = false
-        moving = null
-        moveOrigin = null
-        binding.moveHint.visibility = View.GONE
-    }
-
-    private fun cancelMove() {
-        val origin = moveOrigin
-        val lifted = moving
-        endMove()
-        if (origin != null && lifted != null) {
-            // The lifted camera's index in the original arrangement is where focus must land.
-            val key =
-                (viewModel.state.value as? GridUiState.Ready)
-                    ?.cameras
-                    ?.getOrNull(
-                        binding.grid.positionOf(lifted),
-                    )?.key
-            viewModel.focusedIndex = origin.indexOf(key).coerceAtLeast(0)
-            viewModel.restoreArrangement(origin)
-        }
-    }
-
-    /**
-     * Swaps the lifted tile with the one at [target]. The view model persists the new order and
-     * moves focus to [target]; the re-render then moves the lifted view there and focuses it.
-     */
-    private fun swapLifted(target: Int) {
-        val from = binding.grid.positionOf(moving ?: return)
-        if (target < 0 || target == from || target >= binding.grid.childCount) return
-        viewModel.moveTile(from, target)
-    }
-
-    private fun handleMoveKey(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) {
-            // Swallow the UP of every key we handled on DOWN (OK's UP would otherwise click the tile).
-            return event.keyCode in MOVE_KEYS
-        }
-        val from = binding.grid.positionOf(moving ?: return false)
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_BACK -> cancelMove()
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> endMove()
-            KeyEvent.KEYCODE_DPAD_LEFT -> swapLifted(binding.grid.neighbour(from, -1, 0))
-            KeyEvent.KEYCODE_DPAD_RIGHT -> swapLifted(binding.grid.neighbour(from, +1, 0))
-            KeyEvent.KEYCODE_DPAD_UP -> swapLifted(binding.grid.neighbour(from, 0, -1))
-            KeyEvent.KEYCODE_DPAD_DOWN -> swapLifted(binding.grid.neighbour(from, 0, +1))
-            else -> return false
-        }
-        return true
-    }
-
-    /** Drag with a finger or a pressed mouse button: swap with whatever tile is under the pointer. */
-    private fun handleMoveTouch(ev: MotionEvent): Boolean {
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                val target = binding.grid.tileUnder(ev.rawX, ev.rawY)
-                if (target >= 0) swapLifted(target)
-            }
-            MotionEvent.ACTION_UP -> endMove()
-            MotionEvent.ACTION_CANCEL -> cancelMove()
-            else -> return false
-        }
-        return true
-    }
-
-    private fun CameraGridLayout.tileUnder(
-        rawX: Float,
-        rawY: Float,
-    ): Int {
-        val origin = IntArray(2).also(::getLocationOnScreen)
-        val x = (rawX - origin[0]).toInt()
-        val y = (rawY - origin[1]).toInt()
-        for (i in 0 until childCount) {
-            val c = getChildAt(i)
-            if (x in c.left until c.right && y in c.top until c.bottom) return positionOf(c)
-        }
-        return -1
-    }
-
-    private companion object {
-        val MOVE_KEYS =
-            setOf(
-                KeyEvent.KEYCODE_BACK,
-                KeyEvent.KEYCODE_DPAD_CENTER,
-                KeyEvent.KEYCODE_ENTER,
-                KeyEvent.KEYCODE_NUMPAD_ENTER,
-                KeyEvent.KEYCODE_DPAD_LEFT,
-                KeyEvent.KEYCODE_DPAD_RIGHT,
-                KeyEvent.KEYCODE_DPAD_UP,
-                KeyEvent.KEYCODE_DPAD_DOWN,
-            )
-    }
+    val isMoving: Boolean get() = move.isMoving
 }

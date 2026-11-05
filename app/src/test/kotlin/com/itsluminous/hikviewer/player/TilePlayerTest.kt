@@ -100,6 +100,7 @@ class TilePlayerTest {
         val d = decoders.created.single()
         assertThat(d.codecName).isEqualTo("fake.sw.video/avc")
         assertThat(d.started).isTrue()
+        assertThat(d.renderSlotNanos).isEqualTo(RenderPacer.DEFAULT_SLOT_NANOS) // software tiles share a cadence
         assertThat(d.fed.first().isKeyframe).isTrue()
         assertThat(d.fed.size).isEqualTo(FRAMES - SyntheticStream.pictures.indexOfFirst { it.isKeyframe })
         assertThat(p.state.value).isEqualTo(TileState.Connecting)
@@ -120,7 +121,9 @@ class TilePlayerTest {
             decoders.created.map { it.codecName },
         ).containsExactly("fake.hw.video/avc", "fake.sw.video/avc").inOrder()
         assertThat(decoders.created[0].released).isTrue()
+        assertThat(decoders.created[0].renderSlotNanos).isEqualTo(0L) // hardware renders at once
         assertThat(decoders.created[1].started).isTrue()
+        assertThat(decoders.created[1].renderSlotNanos).isEqualTo(RenderPacer.DEFAULT_SLOT_NANOS)
         p.stop()
     }
 

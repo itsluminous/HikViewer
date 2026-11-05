@@ -503,6 +503,9 @@ class TilePlayer(
             return null
         }
         val d = decoderFactory(name, config, target, this)
+        // The many software tiles share a display cadence; the hardware decoder (hero, fullscreen)
+        // shows every picture as soon as it is decoded. See RenderPacer.
+        d.renderSlotNanos = if (software) RenderPacer.DEFAULT_SLOT_NANOS else 0L
         return try {
             d.start()
             synchronized(lock) { configureRefusals = 0 }

@@ -83,6 +83,15 @@ open class TileDecoder(
     private var framesQueued = 0
     private var framesRendered = 0
 
+    /**
+     * Pictures are shown at the next multiple of this many nanoseconds instead of at once, so
+     * every decoder in the process that shares the value lands its pictures in the same display
+     * frames; 0 renders immediately. See [RenderPacer]: on the MiTV eight live tiles at 12 fps
+     * each used to wake SurfaceFlinger for ~60 GPU compositions a second, one per tile per
+     * picture, and the UI's own frames (focus border, top bar) queued behind them.
+     */
+    @Volatile var renderSlotNanos: Long = 0L
+
     private val recent = RecentPictures(RECENT)
     private var inputCapacity = -1
     private var truncated = 0
@@ -191,11 +200,12 @@ open class TileDecoder(
                     first = !firstOutputSeen
                     firstOutputSeen = true
                 }
-                // Rendered "now", not at the stream's presentation time: the relay already paces
-                // the pictures, and a camera clock hours away from the TV's uptime made
-                // SurfaceFlinger log an "implausible timestamp" line for every frame of every tile
-                // (~50 lines/s, measurable in logd on the TV).
-                runCatching { codec.releaseOutputBuffer(index, System.nanoTime()) }
+                // Rendered at (or just after) "now", not at the stream's presentation time: the
+                // relay already paces the pictures, and a camera clock hours away from the TV's
+                // uptime made SurfaceFlinger log an "implausible timestamp" line for every frame
+                // of every tile (~50 lines/s, measurable in logd on the TV).
+                val at = RenderPacer.presentAt(System.nanoTime(), renderSlotNanos)
+                runCatching { codec.releaseOutputBuffer(index, at) }
                 if (first) listener.onFirstFrame(this@TileDecoder)
             }
 

@@ -12,5 +12,7 @@
     <!-- Phone landscape: the bar's actions stand in a column down the left edge. -->
     <dimen name="side_bar_width">64dp</dimen>
     <dimen name="side_bar_padding">8dp</dimen>
+    <!-- Phone bars show Layout and Settings as icons only; this keeps each a 48 dp touch target. -->
+    <dimen name="icon_button_padding">12dp</dimen>
     <dimen name="form_width">420dp</dimen>
 </resources>

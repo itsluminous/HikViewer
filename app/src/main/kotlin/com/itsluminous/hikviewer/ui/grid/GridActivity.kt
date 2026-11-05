@@ -146,9 +146,11 @@ class GridActivity : AppCompatActivity() {
     }
 
     /**
-     * TV: the bar overlays the grid, hidden until a key arrives. Phone portrait: it stays at the
-     * top and the grid starts under it. Phone landscape: the same actions stand in a column down
-     * the left edge, icons only, and the grid starts to its right.
+     * TV: the bar overlays the grid, hidden until a key arrives, its buttons labelled. Phone: the
+     * bar stays on screen and its buttons are icons only (the label survives as the content
+     * description), since a 360 dp screen has no room for "Layout" and "Settings" next to the
+     * status. Portrait: along the top, the grid starts under it. Landscape: the same actions stand
+     * in a column down the left edge and the grid starts to its right.
      */
     private fun placeBar() {
         val bar = binding.topBar
@@ -159,6 +161,8 @@ class GridActivity : AppCompatActivity() {
         bar.visibility = View.VISIBLE
         SystemBarInsets.pad(binding.root)
         val gridParams = binding.grid.layoutParams as FrameLayout.LayoutParams
+        val buttons = listOf(binding.layoutButton, binding.settingsButton)
+        buttons.forEach(::iconOnly)
         if (portrait) {
             gridParams.topMargin = resources.getDimensionPixelSize(R.dimen.top_bar_height)
         } else {
@@ -172,19 +176,25 @@ class GridActivity : AppCompatActivity() {
             binding.title.visibility = View.GONE
             binding.status.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
             binding.status.gravity = android.view.Gravity.CENTER_HORIZONTAL
-            listOf(binding.layoutButton, binding.settingsButton).forEach { button ->
-                button.contentDescription = button.text
-                button.text = ""
-                button.iconPadding = 0
-                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
-                button.minWidth = 0
-                button.minimumWidth = 0
+            buttons.forEach { button ->
                 button.setPadding(0, button.paddingTop, 0, button.paddingBottom)
                 button.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
             gridParams.marginStart = width
         }
         binding.grid.layoutParams = gridParams
+    }
+
+    /** Drops a bar button's text, keeping it as the content description, and shrinks it to its icon. */
+    private fun iconOnly(button: MaterialButton) {
+        button.contentDescription = button.text
+        button.text = ""
+        button.iconPadding = 0
+        button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+        button.minWidth = 0
+        button.minimumWidth = 0
+        val pad = resources.getDimensionPixelSize(R.dimen.icon_button_padding)
+        button.setPadding(pad, button.paddingTop, pad, button.paddingBottom)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

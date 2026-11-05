@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.material.button.MaterialButton
 import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
@@ -53,6 +54,14 @@ class GridActivityPhoneTest {
                 assertThat((grid.layoutParams as FrameLayout.LayoutParams).topMargin)
                     .isEqualTo(a.resources.getDimensionPixelSize(R.dimen.top_bar_height))
                 assertThat(grid.shape.columns).isEqualTo(2)
+                // Icons only, the label kept for accessibility: 360 dp has no room for the words.
+                listOf(R.id.layout_button to "Layout", R.id.settings_button to "Settings").forEach { (id, label) ->
+                    val button = a.findViewById<android.widget.Button>(id)
+                    assertThat(button.text.toString()).isEmpty()
+                    assertThat(button.contentDescription.toString()).isEqualTo(label)
+                    assertThat(button.compoundDrawables.any { it != null } || (button as MaterialButton).icon != null)
+                        .isTrue()
+                }
                 ShadowLooper.idleMainLooper(2, TimeUnit.SECONDS) // well past the TV's auto-hide
                 assertThat(bar.visibility).isEqualTo(View.VISIBLE)
                 grid.getChildAt(2).performClick()

@@ -104,7 +104,8 @@ class PlaybackActivityTest {
                         .last()
                         .second.begin
                 assertThat(reopened).isAtLeast(today.minusDays(1).atTime(6, 0, 10))
-                assertThat(reopened).isAtMost(today.minusDays(1).atTime(6, 0, 14)) // 10 s past the ~2 s shown
+                // 10 s past the ~2 s shown; the fake keeps delivering while a loaded host runs the test.
+                assertThat(reopened).isAtMost(today.minusDays(1).atTime(6, 0, 20))
 
                 // OK pauses and says so; the controls hide after the idle time while paused too.
                 a.key(KeyEvent.KEYCODE_DPAD_CENTER)

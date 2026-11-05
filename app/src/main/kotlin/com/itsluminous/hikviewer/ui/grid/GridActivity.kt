@@ -7,6 +7,9 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -21,9 +24,11 @@ import com.itsluminous.hikviewer.databinding.ActivityGridBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
+import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import com.itsluminous.hikviewer.ui.playback.PlaybackActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.Job
@@ -32,9 +37,14 @@ import kotlinx.coroutines.launch
 /**
  * The camera grid. Tiles are [CameraTileView]s inside a [CameraGridLayout], one per camera and
  * keyed by the camera; rearranging only changes the layout's position order, so no view is
- * reparented (which would destroy its surface) and no stream is rebound. The hidden top bar is driven by an [InactivityTimer] from `dispatchKeyEvent` and hover
- * events so it appears on any input without stealing focus. Back leaves the app (this is the root
- * of the task once logged in).
+ * reparented (which would destroy its surface) and no stream is rebound. On a TV the hidden top
+ * bar is driven by an [InactivityTimer] from `dispatchKeyEvent` and hover events so it appears on
+ * any input without stealing focus; a phone has no D-pad to summon it, so there the bar is always
+ * on screen: along the top in portrait, down the left edge in landscape (see [FormFactor]). Back
+ * leaves the app (this is the root of the task once logged in).
+ *
+ * Tapping a tile opens the camera full screen; on a phone held upright it opens the portrait
+ * [PhoneCameraActivity] (live on top, timeline below) so the screen does not rotate.
  *
  * A long press on a tile (held OK, long click, long touch) opens a small menu of [TileAction]s.
  * Move lifts the tile; D-pad keys swap it with the neighbour in that direction, a mouse or finger
@@ -43,7 +53,11 @@ import kotlinx.coroutines.launch
  */
 class GridActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGridBinding
-    private lateinit var topBar: InactivityTimer
+
+    /** Auto-hide policy of the bar; null on phones, where the bar is persistent. */
+    private var topBar: InactivityTimer? = null
+    private var television = true
+    private var portrait = false
     private val tileJobs = mutableListOf<Job>()
     private val tilesByKey = LinkedHashMap<String, CameraTileView>()
     private var pendingFocus: Int? = null
@@ -86,10 +100,12 @@ class GridActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityGridBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        topBar = InactivityTimer(binding.topBar, AppGraph.of(this).topBarAutoHideMillis)
-        binding.grid.portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        television = FormFactor.isTelevision(this)
+        portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        binding.grid.portrait = portrait
+        placeBar()
         binding.grid.onTopEdgeUp = {
-            topBar.onUserActivity()
+            topBar?.onUserActivity()
             binding.layoutButton
         }
         binding.layoutButton.setOnClickListener { showLayoutMenu(it) }
@@ -97,7 +113,7 @@ class GridActivity : AppCompatActivity() {
             settings.launch(Intent(this, SettingsActivity::class.java))
         }
         binding.root.setOnHoverListener { _, _ ->
-            topBar.onUserActivity()
+            topBar?.onUserActivity()
             false
         }
         observe()
@@ -111,18 +127,56 @@ class GridActivity : AppCompatActivity() {
 
     override fun onStop() {
         viewModel.onStop()
-        topBar.hideNow()
+        topBar?.hideNow()
         super.onStop()
     }
 
+    /**
+     * TV: the bar overlays the grid, hidden until a key arrives. Phone portrait: it stays at the
+     * top and the grid starts under it. Phone landscape: the same actions stand in a column down
+     * the left edge, icons only, and the grid starts to its right.
+     */
+    private fun placeBar() {
+        val bar = binding.topBar
+        if (television) {
+            topBar = InactivityTimer(bar, AppGraph.of(this).topBarAutoHideMillis)
+            return
+        }
+        bar.visibility = View.VISIBLE
+        val gridParams = binding.grid.layoutParams as FrameLayout.LayoutParams
+        if (portrait) {
+            gridParams.topMargin = resources.getDimensionPixelSize(R.dimen.top_bar_height)
+        } else {
+            val width = resources.getDimensionPixelSize(R.dimen.side_bar_width)
+            bar.orientation = LinearLayout.VERTICAL
+            bar.layoutParams =
+                FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    gravity = android.view.Gravity.START
+                }
+            bar.setPadding(0, resources.getDimensionPixelSize(R.dimen.side_bar_padding), 0, 0)
+            binding.title.visibility = View.GONE
+            binding.status.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            binding.status.gravity = android.view.Gravity.CENTER_HORIZONTAL
+            listOf(binding.layoutButton, binding.settingsButton).forEach { button ->
+                button.contentDescription = button.text
+                button.text = ""
+                button.minWidth = 0
+                button.minimumWidth = 0
+                button.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            gridParams.marginStart = width
+        }
+        binding.grid.layoutParams = gridParams
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) topBar.onUserActivity()
+        if (event.action == KeyEvent.ACTION_DOWN) topBar?.onUserActivity()
         if (moving != null && handleMoveKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
-        if (ev.isFromSource(InputDevice.SOURCE_MOUSE)) topBar.onUserActivity()
+        if (ev.isFromSource(InputDevice.SOURCE_MOUSE)) topBar?.onUserActivity()
         return super.dispatchGenericMotionEvent(ev)
     }
 
@@ -240,9 +294,14 @@ class GridActivity : AppCompatActivity() {
         if (!binding.topBar.hasFocus()) grid.childAtPosition(wanted)?.requestFocus()
     }
 
+    /** Phones held upright get the portrait live + timeline screen; everything else goes full screen. */
     private fun openFullscreen(index: Int) {
         viewModel.focusedIndex = index
-        fullscreen.launch(FullscreenActivity.intent(this, index))
+        if (!television && portrait) {
+            fullscreen.launch(PhoneCameraActivity.intent(this, index))
+        } else {
+            fullscreen.launch(FullscreenActivity.intent(this, index))
+        }
     }
 
     private fun openPlayback(position: Int) {

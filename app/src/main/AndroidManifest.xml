@@ -50,6 +50,10 @@
             android:exported="false"
             android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi" />
+        <!-- Portrait is requested at runtime on phones only (FormFactor), so no screenOrientation here. -->
+        <activity
+            android:name=".ui.phone.PhoneCameraActivity"
+            android:exported="false" />
         <activity
             android:name=".ui.settings.SettingsActivity"
             android:exported="false" />

@@ -5,5 +5,8 @@
     <dimen name="tile_focus_elevation">8dp</dimen>
     <dimen name="tile_lift_elevation">16dp</dimen>
     <dimen name="top_bar_height">56dp</dimen>
+    <!-- Phone landscape: the bar's actions stand in a column down the left edge. -->
+    <dimen name="side_bar_width">64dp</dimen>
+    <dimen name="side_bar_padding">8dp</dimen>
     <dimen name="form_width">420dp</dimen>
 </resources>

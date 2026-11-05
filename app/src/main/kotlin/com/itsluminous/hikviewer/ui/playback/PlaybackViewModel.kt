@@ -13,6 +13,7 @@ import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.player.StreamOpener
 import com.itsluminous.hikviewer.player.TilePlayer
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,7 +96,9 @@ data class PlaybackUiState(
  *  * **Pause** stops the stream and keeps the last picture; resume reopens at the playhead.
  *
  * Callbacks from the stream arrive on worker threads; everything that touches the player or the
- * timers is re-dispatched to the main thread through [viewModelScope].
+ * timers is re-dispatched to the main thread through the engine's scope: [viewModelScope] on the
+ * TV playback screen, or the owning ViewModel's scope when the phone screen embeds one engine
+ * per camera ([externalScope]); that owner calls [close] when it drops the engine.
  */
 class PlaybackViewModel(
     /** The camera whose recording plays. */
@@ -107,6 +110,7 @@ class PlaybackViewModel(
     private val hopMillis: Long = HOP_MILLIS,
     private val seekCommitMillis: Long = SEEK_COMMIT_MILLIS,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
+    private val externalScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val stateFlow = MutableStateFlow(PlaybackUiState(day = startDay))
 
@@ -136,6 +140,23 @@ class PlaybackViewModel(
     private var hopJob: Job? = null
     private var seekJob: Job? = null
     private var started = false
+    private val scope: CoroutineScope get() = externalScope ?: viewModelScope
+
+    /**
+     * Lists the day's footage for the time bar without playing anything: the phone screen shows
+     * the bar under the live picture and only opens a window once the user scrubs.
+     */
+    fun listDay() {
+        if (stateFlow.value.segments.isEmpty() && stateFlow.value.phase == PlaybackPhase.LOADING) {
+            loadDay(stateFlow.value.day, initial = true)
+        }
+    }
+
+    /** Stops everything for good; what [onCleared] does, for an owner that is not a ViewModelStore. */
+    fun close() {
+        started = false
+        stopTransport()
+    }
 
     /** The screen is visible: list the day and play. */
     fun onStart() {
@@ -182,7 +203,7 @@ class PlaybackViewModel(
         stateFlow.update { it.copy(position = PlaybackTimeline.shift(it.day, it.position, seconds)) }
         seekJob?.cancel()
         seekJob =
-            viewModelScope.launch {
+            scope.launch {
                 delay(seekCommitMillis)
                 commitSeek()
             }
@@ -245,7 +266,7 @@ class PlaybackViewModel(
     }
 
     override fun onCleared() {
-        stopTransport()
+        close()
     }
 
     // --- Day loading --------------------------------------------------------------------------
@@ -254,7 +275,7 @@ class PlaybackViewModel(
         day: LocalDate,
         initial: Boolean,
     ) {
-        viewModelScope.launch {
+        scope.launch {
             val segments =
                 try {
                     withContext(io) { account.searchRecordings(camera, day) }
@@ -309,7 +330,7 @@ class PlaybackViewModel(
 
     private fun startHopping() {
         hopJob =
-            viewModelScope.launch {
+            scope.launch {
                 var first = true
                 while (true) {
                     val s = stateFlow.value
@@ -340,7 +361,7 @@ class PlaybackViewModel(
         generation++
         firstPtsUs = null
         firstPictureAt = null
-        player.start(viewModelScope)
+        player.start(scope)
     }
 
     private fun openCurrentWindow(onStatus: (StreamStatus) -> Unit): Flow<AccessUnit> {
@@ -378,7 +399,7 @@ class PlaybackViewModel(
     }
 
     private fun onWindowEnded(myGeneration: Int) {
-        viewModelScope.launch {
+        scope.launch {
             val s = stateFlow.value
             if (myGeneration != generation || !s.isPlaying || !s.speed.isRealTime) return@launch
             // Roll into the next segment from the end of the window just played.

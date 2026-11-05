@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".ui.phone.PhoneCameraActivity">
+
+    <!-- Top: the picture, always 16:9, live or recorded. Swipe left/right here to switch camera. -->
+    <com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout
+        android:id="@+id/video_frame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.itsluminous.hikviewer.ui.grid.CameraTileView
+            android:id="@+id/video"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/live_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="2dp"
+            android:text="@string/phone_live_badge"
+            android:textColor="@color/accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/label_background"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:textColor="@color/on_background"
+            android:textSize="14sp"
+            android:visibility="gone"
+            tools:text="@string/playback_no_recordings"
+            tools:visibility="visible" />
+    </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
+
+    <!-- Bottom: the day's timeline and transport controls. -->
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="12dp">
+
+        <TextView
+            android:id="@+id/camera_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/on_background"
+            android:textSize="18sp"
+            tools:text="Front gate" />
+
+        <TextView
+            android:id="@+id/time_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:textColor="@color/on_background"
+            android:textSize="28sp"
+            tools:text="17:13:51" />
+
+        <com.itsluminous.hikviewer.ui.playback.TimeBarView
+            android:id="@+id/time_bar"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:contentDescription="@string/playback_bar_description" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/day_back"
+                style="@style/Widget.HikViewer.BarButton"
+                android:layout_marginStart="0dp"
+                android:contentDescription="@string/phone_day_back"
+                android:text="@string/phone_arrow_back" />
+
+            <TextView
+                android:id="@+id/date_chip"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textColor="@color/on_background"
+                android:textSize="16sp"
+                tools:text="2026-11-04" />
+
+            <Button
+                android:id="@+id/day_forward"
+                style="@style/Widget.HikViewer.BarButton"
+                android:contentDescription="@string/phone_day_forward"
+                android:text="@string/phone_arrow_forward" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/speed_button"
+                style="@style/Widget.HikViewer.BarButton"
+                android:layout_marginStart="0dp"
+                android:minWidth="72dp"
+                tools:text="1x" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/live_button"
+                style="@style/Widget.HikViewer.BarButton"
+                android:text="@string/phone_live_button" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/help"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/phone_help"
+            android:textColor="@color/on_background"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

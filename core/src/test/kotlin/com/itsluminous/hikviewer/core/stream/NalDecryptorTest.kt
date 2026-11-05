@@ -104,6 +104,56 @@ class NalDecryptorTest {
             assertSameNals(out, clear)
         }
 
+        /**
+         * The recorder sends most P-slices in the clear under TYPE_HINT, and a clear slice's first
+         * block decrypts to its own header byte by chance once in 256. Such a slice must not be
+         * "decrypted" into garbage once the decryptor has seen that its header class is clear.
+         */
+        @Test
+        fun `type-hint chance probe match on a clear slice is passed through once its class is known clear`() {
+            val decryptor = NalDecryptor(KEY)
+            val pSlices = clear.filter { it[0] == 0x41.toByte() }
+            val hinted = clear.take(4).map(::hint)
+            val collision = probeCollision(pSlices[0])
+            val longTerm = pSlices.take(2).map { it.copyOf().also { n -> n[0] = 0x61 } } // an encrypted header class
+            val units =
+                hinted + pSlices.take(8) + listOf(collision) +
+                    longTerm.map { it.copyOf(1) + encryptBody(it, 0) } + listOf(collision)
+
+            val out = run(decryptor, units)
+
+            assertThat(decryptor.variant).isEqualTo(NalDecryptor.Variant.TYPE_HINT)
+            val expected = clear.take(4) + pSlices.take(8) + listOf(collision) + longTerm + listOf(collision)
+            assertSameNals(out, expected)
+        }
+
+        @Test
+        fun `type-hint probe still decides before a header class is known`() {
+            val decryptor = NalDecryptor(KEY)
+            val pSlices = clear.filter { it[0] == 0x41.toByte() }
+            val hinted = clear.take(4).map(::hint)
+            val collision = probeCollision(pSlices[0])
+
+            val out = run(decryptor, hinted + pSlices.take(2) + listOf(collision))
+
+            // The third slice of its class: no evidence yet, the matching probe is believed (and wrong).
+            val last = out.last()
+            assertThat(last.size).isEqualTo(collision.size - 1)
+            assertThat(last[0]).isEqualTo(0x41.toByte())
+            assertThat(last.copyOfRange(1, 16)).isNotEqualTo(collision.copyOfRange(2, 17))
+        }
+
+        /** TYPE_HINT framing: a clear header byte, then the whole NAL encrypted (short NALs stay clear). */
+        private fun hint(nal: ByteArray): ByteArray = nal.copyOf(1) + if (nal.size > 16) encryptBody(nal, 0) else nal
+
+        /** A clear slice whose first body block AES-decrypts to its own header byte, as one in 256 does. */
+        private fun probeCollision(slice: ByteArray): ByteArray {
+            val cipher = Cipher.getInstance("AES/ECB/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(NalDecryptor.keyBytes(KEY), "AES"))
+            val plain = ByteArray(16) { (it * 37 + 11).toByte() }.also { it[0] = slice[0] }
+            return slice.copyOf(1) + cipher.doFinal(plain) + slice.copyOfRange(17, slice.size)
+        }
+
         @Test
         fun `a cached inter decision skips the buffering and is still verified`() {
             val wrongHint = NalDecryptor(KEY, interEncryptedHint = true)

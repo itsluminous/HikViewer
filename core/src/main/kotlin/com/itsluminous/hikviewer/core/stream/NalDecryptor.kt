@@ -75,6 +75,8 @@ public class NalDecryptor(
 
     private var verifyingHint = interEncryptedHint != null
     private val scratchBlock = ByteArray(AES_BLOCK)
+    private val hintSeen = IntArray(HEADER_CLASSES)
+    private val hintMatched = IntArray(HEADER_CLASSES)
     private val undecided = ArrayList<NalUnit>()
     private var pending: ArrayList<Pending>? = null
     private var pendingBytes = 0
@@ -271,6 +273,18 @@ public class NalDecryptor(
      * reproduces it); a short clear NAL carries a duplicated header; a plain clear NAL (P-slice)
      * carries nothing extra. The header is encrypted so the IRAP gate cannot apply here.
      *
+     * The probe alone is not enough for H.264, whose header is one byte: decrypting a *clear* slice's
+     * first block reproduces that byte by chance once in 256, and the recorder sends most P-slices in
+     * the clear (only IDR, parameter sets and the long-term-reference P-slices, `nal_ref_idc` 3,
+     * are encrypted). Three clear slices out of a thousand were therefore "decrypted" into garbage
+     * (`frame_num` 223, order count 25336…): hardware decoders and ffmpeg conceal such a picture,
+     * the MiTV's software decoder stops producing output until it is rebuilt — the once-a-minute
+     * freeze of every software tile. So which header bytes are encrypted is learnt as the stream
+     * goes ([hintSeen]/[hintMatched], same idea as the inter-slice sampler of HEADER_CLEAR): an
+     * encrypted header byte passes the probe every time, a clear one almost never, and once a byte
+     * has [HINT_CLASS_SAMPLES] NALs behind it a chance match in a clear class is passed through
+     * untouched. Before that the probe decides, as it always did.
+     *
      * This is the variant the user's recorder sends, so it is the hot path: the probe decrypts the
      * first block once into [scratchBlock] and compares in place, and that block is reused for the
      * output instead of being decrypted a second time. One allocation per NAL (the stripped copy).
@@ -281,10 +295,22 @@ public class NalDecryptor(
     ): ByteArray {
         if (n.size >= hdr + AES_BLOCK) {
             cipher.doFinal(n, hdr, AES_BLOCK, scratchBlock, 0)
-            if (startsWith(scratchBlock, n, hdr)) return decryptBodyAfterProbe(n, hdr)
+            val matched = startsWith(scratchBlock, n, hdr)
+            val cls = n[0].toInt() and BYTE_MASK
+            hintSeen[cls]++
+            if (matched) {
+                hintMatched[cls]++
+                if (!clearHeaderClass(cls)) return decryptBodyAfterProbe(n, hdr)
+            }
         }
         if (n.size >= 2 * hdr && regionMatches(n, hdr, n, 0, hdr)) return n.copyOfRange(hdr, n.size)
         return n
+    }
+
+    /** True once enough NALs with this header byte were seen and fewer than half of them passed the probe. */
+    private fun clearHeaderClass(cls: Int): Boolean {
+        val seen = hintSeen[cls]
+        return seen >= HINT_CLASS_SAMPLES && hintMatched[cls] * 2 < seen
     }
 
     /** Body after [hdr] with its first block already in [scratchBlock]; decrypts the rest. */
@@ -472,6 +498,10 @@ public class NalDecryptor(
         private const val MIN_KEY_ERROR_COUNT = 24
         private const val MAX_GATED_SLICES = 400
         private const val INTER_SAMPLES = 8
+        private const val HEADER_CLASSES = 256
+
+        /** NALs of one header byte seen before a chance type-hint match in a clear class is ignored. */
+        private const val HINT_CLASS_SAMPLES = 8
         private const val INTER_MARGIN = 0.25
         private const val MAX_PENDING_BYTES = 4 shl 20
         private const val FORBIDDEN_BIT = 0x80

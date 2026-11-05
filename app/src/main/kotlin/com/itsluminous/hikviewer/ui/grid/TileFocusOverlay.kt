@@ -19,8 +19,9 @@ import com.itsluminous.hikviewer.R
  * The view owns no transform: no scale, no elevation. The round-4 frame grew 6 % past the tile
  * with a shadow, which needed `clipChildren = false` on the tile, and on Android 10 an unclipped
  * `SurfaceView` punches its hole with `drawColor(CLEAR)` over the whole grid (see [CameraTileView]).
- * Everything here redraws from [focused] and [lifted] alone, so a layout pass or an animation
- * elsewhere cannot leave the border half drawn.
+ * Everything here redraws from [focused], [shown] and [lifted] alone, so a layout pass or an
+ * animation elsewhere cannot leave the border half drawn. [shown] is the grid's idle switch: off
+ * after 5 s without input, so a focused tile stops drawing its border while it keeps the focus.
  */
 class TileFocusOverlay
     @JvmOverloads
@@ -59,15 +60,23 @@ class TileFocusOverlay
                 invalidate()
             }
 
-        /** True when the border is drawn on the next frame: focused or lifted. */
-        val borderVisible: Boolean get() = focused || lifted
+        /** False while input has been idle: a focused tile draws no border. Lifting ignores it. */
+        var shown: Boolean = true
+            set(value) {
+                if (field == value) return
+                field = value
+                invalidate()
+            }
+
+        /** True when the border is drawn on the next frame: focused (with visuals shown) or lifted. */
+        val borderVisible: Boolean get() = (focused && shown) || lifted
 
         /** The stroke's current width in pixels (0 when nothing is drawn). */
         val borderWidth: Float
             get() =
                 when {
                     lifted -> strokeWidth * LIFT_STROKE_FACTOR
-                    focused -> strokeWidth
+                    focused && shown -> strokeWidth
                     else -> 0f
                 }
 

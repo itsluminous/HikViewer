@@ -1,5 +1,8 @@
 package com.itsluminous.hikviewer.ui.grid
 
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
@@ -247,5 +250,103 @@ class CameraGridLayoutTest {
         tiles[0].clearFocus()
         assertThat(tiles[0].focusBorderVisible).isFalse()
         assertThat((0 until 4).map { grid.childDrawnAt(it) }).containsExactlyElementsIn(tiles).inOrder()
+    }
+
+    /** A manual scheduler standing in for `postDelayed`: the test's clock. */
+    private var armed: Pair<Runnable, Long>? = null
+
+    /** Installs a 5 s focus timer on the manual clock; returns the tiles. */
+    private fun tilesWithFocusTimer(n: Int = 4): List<CameraTileView> {
+        val tiles = fillTiles(n, GridLayoutMode.GRID_3X3)
+        grid.installFocusTimer(
+            autoHideMillis = 5_000,
+            schedule = { r, ms -> armed = r to ms },
+            cancel = { armed = null },
+        )
+        return tiles
+    }
+
+    private fun fire() {
+        val (r, _) = checkNotNull(armed) { "no timer armed" }
+        armed = null
+        r.run()
+    }
+
+    @Test
+    fun `the focused tile's border hides 5 s after the last key and focus stays put`() {
+        val tiles = tilesWithFocusTimer()
+        assertThat(tiles[1].requestFocus()).isTrue()
+        assertThat(tiles[1].focusBorderVisible).isTrue()
+        assertThat(armed?.second).isEqualTo(5_000)
+        fire()
+        assertThat(grid.focusVisualShown).isFalse()
+        assertThat(tiles[1].focusBorderVisible).isFalse()
+        assertThat(tiles[1].isFocused).isTrue()
+        assertThat(tiles[1].hasFocus()).isTrue()
+        assertThat(grid.findFocus()).isSameInstanceAs(tiles[1])
+        assertThat(armed).isNull()
+        // A key to the focused tile passes through the grid: the border is back at once, timer re-armed.
+        grid.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
+        assertThat(tiles[1].focusBorderVisible).isTrue()
+        assertThat(tiles[1].isFocused).isTrue()
+        assertThat(armed?.second).isEqualTo(5_000)
+        // Key-up is not activity; the pending timer is left alone.
+        val pending = armed
+        grid.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))
+        assertThat(armed).isSameInstanceAs(pending)
+    }
+
+    @Test
+    fun `a mouse move or any hover over the grid shows the border again, a touch does not`() {
+        val tiles = tilesWithFocusTimer()
+        tiles[0].requestFocus()
+        fire()
+        assertThat(tiles[0].focusBorderVisible).isFalse()
+        val touch = MotionEvent.obtain(0, 0, MotionEvent.ACTION_MOVE, 10f, 10f, 0)
+        touch.source = InputDevice.SOURCE_TOUCHSCREEN
+        grid.dispatchGenericMotionEvent(touch)
+        grid.dispatchTouchEvent(touch)
+        assertThat(tiles[0].focusBorderVisible).isFalse()
+        val scroll = MotionEvent.obtain(0, 0, MotionEvent.ACTION_SCROLL, 10f, 10f, 0)
+        scroll.source = InputDevice.SOURCE_MOUSE
+        grid.dispatchGenericMotionEvent(scroll)
+        assertThat(tiles[0].focusBorderVisible).isTrue()
+        assertThat(armed?.second).isEqualTo(5_000)
+        fire()
+        assertThat(tiles[0].focusBorderVisible).isFalse()
+        val hover = MotionEvent.obtain(0, 0, MotionEvent.ACTION_HOVER_MOVE, 10f, 10f, 0)
+        hover.source = InputDevice.SOURCE_STYLUS
+        grid.dispatchGenericMotionEvent(hover)
+        assertThat(tiles[0].focusBorderVisible).isTrue()
+        assertThat(tiles[0].isFocused).isTrue()
+        assertThat(armed?.second).isEqualTo(5_000)
+    }
+
+    @Test
+    fun `focus arriving on a tile shows the border, and a tile added while hidden starts hidden`() {
+        val tiles = tilesWithFocusTimer()
+        tiles[0].requestFocus()
+        fire()
+        assertThat(grid.focusVisualShown).isFalse()
+        val late = CameraTileView(context).apply { isFocusableInTouchMode = true }
+        grid.addView(late)
+        assertThat(late.focusVisualShown).isFalse()
+        // Moving focus (what a D-pad key does) is activity: every tile is switched back on.
+        assertThat(tiles[2].requestFocus()).isTrue()
+        assertThat(grid.focusVisualShown).isTrue()
+        assertThat(tiles[2].focusBorderVisible).isTrue()
+        assertThat(late.focusVisualShown).isTrue()
+        assertThat(tiles[0].focusBorderVisible).isFalse() // not focused any more
+    }
+
+    @Test
+    fun `installing the production timer shows a focused tile at once`() {
+        val tiles = tilesWithFocusTimer()
+        tiles[3].requestFocus()
+        fire()
+        assertThat(tiles[3].focusBorderVisible).isFalse()
+        grid.focusAutoHideMillis = 1_000
+        assertThat(tiles[3].focusBorderVisible).isTrue()
+        assertThat(tiles[3].isFocused).isTrue()
     }
 }

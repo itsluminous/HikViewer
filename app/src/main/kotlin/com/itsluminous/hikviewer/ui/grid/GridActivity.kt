@@ -107,6 +107,8 @@ class GridActivity : AppCompatActivity() {
         binding.grid.portrait = portrait
         move = TileMoveController(binding.grid, binding.moveHint, viewModel)
         placeBar()
+        // The focus border follows the top bar's idle policy (see CameraGridLayout).
+        binding.grid.focusAutoHideMillis = AppGraph.of(this).topBarAutoHideMillis
         binding.grid.onTopEdgeUp = {
             topBar?.onUserActivity()
             binding.layoutButton

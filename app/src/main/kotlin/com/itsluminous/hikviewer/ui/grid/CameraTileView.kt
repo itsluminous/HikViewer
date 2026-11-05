@@ -83,8 +83,19 @@ class CameraTileView
                 binding.focusFrame.lifted = value
             }
 
-        /** True when the focus border is drawn: the tile has focus or is being moved. */
+        /** True when the focus border is drawn: the tile has focus (and the visuals are shown) or is being moved. */
         val focusBorderVisible: Boolean get() = binding.focusFrame.borderVisible
+
+        /**
+         * Whether a focused tile draws its border. The grid turns this off on every tile after 5 s
+         * without a key or pointer and back on at the next one, so a parked remote leaves a clean
+         * picture; focus itself is untouched (a hidden border still belongs to the focused tile).
+         */
+        var focusVisualShown: Boolean
+            get() = binding.focusFrame.shown
+            set(value) {
+                binding.focusFrame.shown = value
+            }
 
         init {
             binding.name.visibility = GONE

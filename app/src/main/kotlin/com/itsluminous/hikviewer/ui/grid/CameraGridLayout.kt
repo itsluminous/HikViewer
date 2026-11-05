@@ -2,9 +2,14 @@ package com.itsluminous.hikviewer.ui.grid
 
 import android.content.Context
 import android.util.AttributeSet
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import com.itsluminous.hikviewer.R
+import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.ui.common.InactivityTimer
 
 /**
  * Lays its children out on the cells of [GridGeometry] for the current [mode].
@@ -24,6 +29,11 @@ import com.itsluminous.hikviewer.R
  * when it draws, and a tile drawn after its neighbour can only ever cover, never be covered by, the
  * neighbour's punch: drawing the focused tile last keeps its border on top whatever a device's
  * `SurfaceView` clears. Focus changes invalidate the grid so the order takes effect on that frame.
+ *
+ * The focus border is a transient visual like the top bar: an [InactivityTimer] hides it on every
+ * tile [focusAutoHideMillis] after the last key or pointer event seen by the grid (every key to a
+ * focused tile passes through here, as does a pointer over the grid) and shows it again at the
+ * next one, or when focus arrives on a tile. Only the drawing changes; focus never moves.
  */
 class CameraGridLayout
     @JvmOverloads
@@ -76,8 +86,64 @@ class CameraGridLayout
         /** Child index of the tile that holds focus, or -1; drawn last. */
         private var focusedChild = -1
 
+        /** The tiles' border switch, driven by [focusTimer]; hidden until the first input or focus. */
+        private val focusVisual =
+            object : InactivityTimer.Visual {
+                override var isShown: Boolean = true
+                    private set
+
+                override fun show() = setShown(true)
+
+                override fun hide() = setShown(false)
+
+                private fun setShown(value: Boolean) {
+                    isShown = value
+                    for (i in 0 until childCount) (getChildAt(i) as? CameraTileView)?.focusVisualShown = value
+                }
+            }
+
+        private var focusTimer = newFocusTimer(AppGraph.DEFAULT_TOP_BAR_AUTO_HIDE_MILLIS)
+
+        /**
+         * Idle time after which the focused tile stops drawing its border; the screen sets it from
+         * the app graph so tests can shorten it, and the top bar's 5 s is the default.
+         */
+        var focusAutoHideMillis: Long = AppGraph.DEFAULT_TOP_BAR_AUTO_HIDE_MILLIS
+            set(value) {
+                if (field == value) return
+                field = value
+                installFocusTimer(newFocusTimer(value))
+            }
+
+        private fun newFocusTimer(autoHideMillis: Long) =
+            InactivityTimer(focusVisual, autoHideMillis, { r, ms -> postDelayed(r, ms) }, { removeCallbacks(it) })
+
+        /**
+         * Puts the border on a timer with an injected clock (tests); a focused tile is shown again,
+         * and the new timer armed, at once.
+         */
+        internal fun installFocusTimer(
+            autoHideMillis: Long,
+            schedule: (Runnable, Long) -> Unit,
+            cancel: (Runnable) -> Unit,
+        ) = installFocusTimer(InactivityTimer(focusVisual, autoHideMillis, schedule, cancel))
+
+        private fun installFocusTimer(timer: InactivityTimer) {
+            focusTimer.hideNow()
+            focusTimer = timer
+            if (hasFocus()) focusTimer.onUserActivity()
+        }
+
+        /** True while the focused tile draws its border. */
+        val focusVisualShown: Boolean get() = focusVisual.isShown
+
         init {
             isChildrenDrawingOrderEnabled = true
+        }
+
+        override fun onViewAdded(child: View?) {
+            super.onViewAdded(child)
+            (child as? CameraTileView)?.focusVisualShown = focusVisual.isShown
         }
 
         override fun requestChildFocus(
@@ -86,6 +152,26 @@ class CameraGridLayout
         ) {
             super.requestChildFocus(child, focused)
             setFocusedChildIndex(indexOfChild(child))
+            // Focus arriving (first render, back from another screen, a D-pad move) is activity too.
+            focusTimer.onUserActivity()
+        }
+
+        /** Every key to a focused tile is dispatched through its ancestors: a press shows the border. */
+        override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            if (event.action == KeyEvent.ACTION_DOWN) focusTimer.onUserActivity()
+            return super.dispatchKeyEvent(event)
+        }
+
+        /**
+         * A mouse (any of its events) or a hovering pointer over the grid shows the border. Touch
+         * goes through `dispatchTouchEvent` and never counts: a finger draws no focus anyway.
+         */
+        override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+            val hover =
+                event.actionMasked == MotionEvent.ACTION_HOVER_ENTER ||
+                    event.actionMasked == MotionEvent.ACTION_HOVER_MOVE
+            if (hover || event.isFromSource(InputDevice.SOURCE_MOUSE)) focusTimer.onUserActivity()
+            return super.dispatchGenericMotionEvent(event)
         }
 
         override fun clearChildFocus(child: View?) {

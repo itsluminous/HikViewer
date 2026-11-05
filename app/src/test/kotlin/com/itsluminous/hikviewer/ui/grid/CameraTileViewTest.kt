@@ -188,6 +188,25 @@ class CameraTileViewTest {
     }
 
     @Test
+    fun `hiding the focus visual drops the border but not the focus, and lifting still draws`() {
+        val frame = tile.findViewById<TileFocusOverlay>(R.id.focus_frame)
+        tile.isFocusableInTouchMode = true
+        assertThat(tile.requestFocus()).isTrue()
+        assertThat(tile.focusVisualShown).isTrue()
+        tile.focusVisualShown = false
+        assertThat(tile.isFocused).isTrue()
+        assertThat(tile.hasFocus()).isTrue()
+        assertThat(tile.focusBorderVisible).isFalse()
+        assertThat(frame.borderWidth).isEqualTo(0f)
+        tile.lifted = true
+        assertThat(tile.focusBorderVisible).isTrue()
+        tile.lifted = false
+        tile.focusVisualShown = true
+        assertThat(tile.focusBorderVisible).isTrue()
+        assertThat(frame.borderWidth).isEqualTo(context.resources.getDimension(R.dimen.tile_focus_border))
+    }
+
+    @Test
     fun `the tile clips its children so a surface's hole punch stays inside it`() {
         // Android 10 clears the whole clip for an unclipped SurfaceView; see the class KDoc.
         assertThat(tile.clipChildren).isTrue()

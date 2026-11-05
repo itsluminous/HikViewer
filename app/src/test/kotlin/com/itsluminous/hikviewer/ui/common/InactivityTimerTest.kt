@@ -80,4 +80,36 @@ class InactivityTimerTest {
         assertThat(controller.isVisible).isFalse()
         assertThat(scheduled).isNull()
     }
+
+    @Test
+    fun `a custom visual is hidden on construction, shown on activity and hidden when idle`() {
+        var shown = true
+        val visual =
+            object : InactivityTimer.Visual {
+                override val isShown: Boolean get() = shown
+
+                override fun show() {
+                    shown = true
+                }
+
+                override fun hide() {
+                    shown = false
+                }
+            }
+        val timer =
+            InactivityTimer(
+                visual,
+                autoHideMillis = 5_000,
+                schedule = { r, ms -> scheduled = r to ms },
+                cancel = { scheduled = null },
+            )
+        assertThat(shown).isFalse()
+        timer.onUserActivity()
+        assertThat(shown).isTrue()
+        assertThat(scheduled?.second).isEqualTo(5_000)
+        fire()
+        // holdsFocus defaults to false: nothing keeps the visual up.
+        assertThat(shown).isFalse()
+        assertThat(timer.isVisible).isFalse()
+    }
 }

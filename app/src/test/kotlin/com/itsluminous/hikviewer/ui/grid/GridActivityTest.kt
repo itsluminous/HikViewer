@@ -91,6 +91,42 @@ class GridActivityTest {
     }
 
     @Test
+    fun `the focus border hides after the timeout, focus stays, and the next key brings it back`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val first = grid.getChildAt(0) as CameraTileView
+                assertThat(first.isFocused).isTrue()
+                assertThat(first.focusBorderVisible).isTrue()
+                // A key restarts the 1 s timer (the top bar's policy in this test graph) at a known
+                // instant. Robolectric's window does no focus navigation, so the key leaves focus put.
+                a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                assertThat(first.isFocused).isTrue()
+                assertThat(first.focusBorderVisible).isTrue()
+                ShadowLooper.idleMainLooper(999, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(first.focusBorderVisible).isTrue()
+                ShadowLooper.idleMainLooper(2, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(first.focusBorderVisible).isFalse()
+                assertThat(grid.focusVisualShown).isFalse()
+                // Focus did not move or vanish with the border.
+                assertThat(first.isFocused).isTrue()
+                assertThat(first.hasFocus()).isTrue()
+                assertThat(grid.findFocus()).isSameInstanceAs(first)
+                // The next key brings the border straight back (and OK is a key too).
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
+                assertThat(first.focusBorderVisible).isTrue()
+                assertThat(first.isFocused).isTrue()
+                ShadowLooper.idleMainLooper(1_001, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(first.focusBorderVisible).isFalse()
+                // Focus moving to another tile (what a D-pad key does on a device) shows it there.
+                val second = grid.getChildAt(1) as CameraTileView
+                assertThat(second.requestFocus()).isTrue()
+                assertThat(second.focusBorderVisible).isTrue()
+                assertThat(first.focusBorderVisible).isFalse()
+            }
+        }
+    }
+
+    @Test
     fun `UP from the top row focuses the layout button`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->

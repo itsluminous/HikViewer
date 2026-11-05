@@ -203,6 +203,15 @@ that tool takes 2–3 s on a loaded TV. `scripts/tv-login.sh <apk> <package>` in
 real TV through `tv.py` (no stock adb) and types the credentials and the verification code from
 `local.env`, the way `emu-login.sh` does on an emulator.
 
+## TV launcher banner
+
+Android TV shows `app/src/main/res/drawable-xhdpi/banner.webp` on its home screen; it must be exactly
+320 × 180 px. `scripts/gen-banner.py` draws it (lens glyph, the name, an accent rule) with Pillow,
+sizes the text from the width left of the glyph and asserts in pixels that all ink stays inside a
+20 px padding before writing the lossless WebP with `cwebp`; `BannerTest` keeps the committed file
+at 320 × 180 by reading its header. Re-run the script after changing the design; never hand-edit
+the image.
+
 ## Release signing
 
 `assembleRelease` looks for signing material in this order and falls back to the debug keystore when
@@ -263,6 +272,6 @@ app/                 Android application (:app)
 core/                pure-JVM protocol module (:core) with synthetic fixtures (scripts/gen-fixtures.sh)
 config/              detekt and Lint configuration
 docs/                screenshots, FOLLOW-UPS.md
-scripts/             emulator helpers (login, verification code, demo screenshots), gen-fixtures.sh
+scripts/             emulator helpers (login, verification code, demo screenshots), gen-fixtures.sh, gen-banner.py
 .github/workflows/   ci.yml, release.yml
 ```

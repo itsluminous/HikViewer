@@ -23,16 +23,18 @@ import kotlinx.coroutines.launch
 
 /**
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
- * nothing has been drawn yet, a dim scrim with a centred Retry while the stream is down, and a
+ * nothing has been drawn yet, a dim scrim with a centred retry icon while the stream is down, and a
  * dot in the top-right corner that is green while pictures reach the screen and red otherwise
  * ([framesFlowing]; the player samples it twice a second, so the dot never redraws per frame).
  *
  * Focus is a 4 dp accent border drawn by [TileFocusOverlay], the tile's last child, entirely
  * inside the tile; a tile picked up for a move ([lifted]) gets a thicker border and an accent
- * wash. Nothing in the tile is scaled or elevated, and the `SurfaceView` never moves: animating
- * the tile re-positioned the surface on every frame, which on Android 10 races the surface's own
- * creation/destruction (`SurfaceView.positionChanged → applySurfaceTransforms`, a use-after-free
- * in `libgui`) and crashed the MiTV at launch while 16 surfaces were being created.
+ * wash. The border hides after 5 s without input ([focusVisualShown], driven by the grid) and the
+ * tile keeps focus meanwhile. Nothing in the tile is scaled or elevated, and the `SurfaceView`
+ * never moves: animating the tile re-positioned the surface on every frame, which on Android 10
+ * races the surface's own creation/destruction (`SurfaceView.positionChanged →
+ * applySurfaceTransforms`, a use-after-free in `libgui`) and crashed the MiTV at launch while 16
+ * surfaces were being created.
  *
  * The tile clips its children, and that is load-bearing. A `SurfaceView` below the window punches
  * its hole in `draw()`; up to Android 11 that is `canvas.drawColor(0, CLEAR)` over the *current
@@ -93,6 +95,16 @@ class CameraTileView
             setBackgroundResource(R.drawable.tile_background)
             // Never false: see the class KDoc on the Android 10 hole punch.
             clipChildren = true
+            // The retry icon is the tile's own click (OK on the tile retries as well), so one code
+            // path reopens the stream however the user got there; the icon grows a tenth with focus
+            // since the tile's border cannot say which of the two holds it. The icon is an ordinary
+            // view inside the scrim: scaling it never touches the surface.
+            binding.retry.setOnClickListener { performClick() }
+            binding.retry.setOnFocusChangeListener { button, focused ->
+                val scale = if (focused) RETRY_FOCUS_SCALE else 1f
+                button.scaleX = scale
+                button.scaleY = scale
+            }
             binding.surface.setZOrderMediaOverlay(true)
             binding.surface.holder.addCallback(
                 object : SurfaceHolder.Callback {
@@ -241,5 +253,8 @@ class CameraTileView
         companion object {
             /** Thumbnails are never wider than this: a 480-wide still of a 960x480 stream is plenty for a tile. */
             const val STILL_MAX_WIDTH: Int = 480
+
+            /** The retry icon grows this much while it holds focus. */
+            const val RETRY_FOCUS_SCALE: Float = 1.1f
         }
     }

@@ -1,7 +1,11 @@
 package com.itsluminous.hikviewer.ui.grid
 
 import android.graphics.drawable.AnimationDrawable
+import android.graphics.drawable.VectorDrawable
 import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -11,6 +15,7 @@ import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.player.TileState
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class CameraTileViewTest {
@@ -56,13 +61,53 @@ class CameraTileViewTest {
         assertThat(overlay.visibility).isEqualTo(View.VISIBLE)
         assertThat(tile.showsRetry).isTrue()
         assertThat(tile.findViewById<TextView>(R.id.error_message).text.toString()).isEqualTo("No video")
-        assertThat(tile.findViewById<TextView>(R.id.retry).text.toString())
-            .isEqualTo(context.getString(R.string.tile_retry))
-        // The overlay never steals D-pad focus from the tile.
-        assertThat(tile.findViewById<View>(R.id.retry).isFocusable).isFalse()
         tile.bind(TileState.Live)
         assertThat(overlay.visibility).isEqualTo(View.GONE)
     }
+
+    @Test
+    fun `the retry control is an icon-only transparent button, 48 dp, with no text anywhere but the reason`() {
+        tile.bind(TileState.Error("No video"))
+        val retry = tile.findViewById<ImageButton>(R.id.retry)
+        assertThat(retry.drawable).isInstanceOf(VectorDrawable::class.java)
+        assertThat(shadowOf(retry.drawable).createdFromResId).isEqualTo(R.drawable.ic_retry)
+        assertThat(retry.background).isNull()
+        assertThat(retry.contentDescription.toString()).isEqualTo(context.getString(R.string.tile_retry))
+        val size = context.resources.getDimensionPixelSize(R.dimen.tile_retry_icon)
+        assertThat(retry.layoutParams.width to retry.layoutParams.height).isEqualTo(size to size)
+        assertThat(size).isEqualTo((48 * context.resources.displayMetrics.density).toInt())
+        // The only text on the overlay is the reason; the button itself is a glyph.
+        val texts = overlay.descendants().filterIsInstance<TextView>()
+        assertThat(texts).containsExactly(tile.findViewById<TextView>(R.id.error_message))
+        assertThat(overlay.descendants().filterIsInstance<Button>()).isEmpty()
+    }
+
+    @Test
+    fun `the retry icon is focusable, grows a tenth with focus and its click is the tile's click`() {
+        tile.bind(TileState.Error("No video"))
+        val retry = tile.findViewById<ImageButton>(R.id.retry)
+        assertThat(retry.isFocusable).isTrue()
+        assertThat(retry.isFocusableInTouchMode).isFalse()
+        // The tile takes focus before its descendants, so the D-pad lands on the tile, not the icon.
+        tile.isFocusableInTouchMode = true
+        assertThat(tile.requestFocus()).isTrue()
+        assertThat(tile.isFocused).isTrue()
+        assertThat(retry.isFocused).isFalse()
+        retry.isFocusableInTouchMode = true
+        assertThat(retry.requestFocus()).isTrue()
+        assertThat(retry.scaleX to retry.scaleY)
+            .isEqualTo(CameraTileView.RETRY_FOCUS_SCALE to CameraTileView.RETRY_FOCUS_SCALE)
+        tile.requestFocus()
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(1f to 1f)
+        // Clicking the icon is clicking the tile: the grid's one click path reopens the stream.
+        var tileClicks = 0
+        tile.setOnClickListener { tileClicks++ }
+        assertThat(retry.performClick()).isTrue()
+        assertThat(tileClicks).isEqualTo(1)
+    }
+
+    private fun View.descendants(): List<View> =
+        if (this is ViewGroup) (0 until childCount).flatMap { getChildAt(it).descendants() } + this else listOf(this)
 
     @Test
     fun `the corner dot is red until frames flow and green while they do`() {

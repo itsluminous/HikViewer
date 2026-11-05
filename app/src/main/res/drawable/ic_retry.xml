@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Retry: two semicircular arrows chasing each other round a circle (the refresh glyph). The top
+     arc runs clockwise from the left over the top and ends in an arrow head on the right; the
+     bottom arc runs from the right under the bottom and ends in a head on the left. The same open
+     path is stroked twice, black 3.5 dp underneath and white 1.5 dp on top, so the white glyph keeps
+     a 1 dp black outline on any picture behind it. Centre (24, 24), radius 14; heads are 6 dp Vs at
+     35 degrees off the arc's tangent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:pathData="M10.6,20 A14,14 0 0 1 37.4,20 M39.4,14.3 L37.4,20 L32.7,16.2 M37.4,28 A14,14 0 0 1 10.6,28 M8.6,33.7 L10.6,28 L15.3,31.8"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3.5" />
+    <path
+        android:pathData="M10.6,20 A14,14 0 0 1 37.4,20 M39.4,14.3 L37.4,20 L32.7,16.2 M37.4,28 A14,14 0 0 1 10.6,28 M8.6,33.7 L10.6,28 L15.3,31.8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.5" />
+</vector>

@@ -168,6 +168,15 @@ class GridActivityTest {
                         .first.channelNo,
                 ).isEqualTo(2)
                 assertThat(shadowOf(a).nextStartedActivity).isNull()
+                // The retry icon itself (a pointer's or accessibility's target) reopens the stream too.
+                val players = vm.playback.players.value
+                account.nextStreamError = StreamException.ChannelOffline(players[1].camera)
+                vm.retry(1)
+                awaitUi { tile.showsRetry }
+                val reopened = account.opened.size
+                tile.findViewById<View>(R.id.retry).performClick()
+                awaitUi { account.opened.size == reopened + 1 && !tile.showsRetry }
+                assertThat(shadowOf(a).nextStartedActivity).isNull()
             }
         }
     }

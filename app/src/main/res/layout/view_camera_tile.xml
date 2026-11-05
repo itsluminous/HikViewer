@@ -62,13 +62,16 @@
         tools:text="25 fps"
         tools:visibility="visible" />
 
+    <!-- Connecting cue: an 8-steps-a-second arc (see tile_spinner.xml), not the platform's
+         60 fps AnimatedVectorDrawable. -->
     <ProgressBar
         android:id="@+id/spinner"
-        style="?android:attr/progressBarStyleSmall"
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:layout_gravity="center"
-        android:indeterminateTint="@color/on_background"
+        android:indeterminate="true"
+        android:indeterminateDrawable="@drawable/tile_spinner"
+        android:indeterminateOnly="true"
         android:visibility="gone"
         tools:visibility="visible" />
 

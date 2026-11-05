@@ -1,6 +1,8 @@
 package com.itsluminous.hikviewer.ui.grid
 
+import android.graphics.drawable.AnimationDrawable
 import android.view.View
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,6 +24,18 @@ class CameraTileViewTest {
         assertThat(tile.isFocusable).isTrue()
         assertThat(tile.isClickable).isTrue()
         assertThat(tile.isFocusableInTouchMode).isFalse()
+    }
+
+    @Test
+    fun `the connecting spinner is an 8 fps frame animation, not the platform's 60 fps vector animation`() {
+        // The platform's indeterminate drawable redraws on every vsync; eight steps a second is
+        // enough for "not yet" and costs the main thread an eighth of the frames while tiles connect.
+        val drawable = tile.findViewById<ProgressBar>(R.id.spinner).indeterminateDrawable
+        assertThat(drawable).isInstanceOf(AnimationDrawable::class.java)
+        val frames = drawable as AnimationDrawable
+        assertThat(frames.numberOfFrames).isEqualTo(8)
+        assertThat((0 until frames.numberOfFrames).sumOf { frames.getDuration(it) }).isEqualTo(1000)
+        assertThat(frames.isOneShot).isFalse()
     }
 
     @Test

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The connecting spinner of a camera tile: the arc turns in 8 steps a second.
+
+     The platform's small indeterminate ProgressBar is an AnimatedVectorDrawable that invalidates
+     its view on every one of the 60 vsyncs, and inflating it cost the grid 1.2 s of main thread
+     for 16 tiles at launch on the MiTV (measured with the debug main-thread watchdog). While any
+     tile connects, that is 60 UI frames a second on a TV already short of CPU; 8 is plenty for a
+     cue that only says "not yet". A frame animation schedules itself once per frame, so the view
+     is invalidated 8 times a second and ProgressBar runs no animator of its own for it. -->
+<animation-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:oneshot="false">
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="0"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="0" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="45"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="45" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="90"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="90" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="135"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="135" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="180"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="180" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="225"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="225" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="270"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="270" />
+    </item>
+    <item android:duration="125">
+        <rotate
+            android:drawable="@drawable/tile_spinner_arc"
+            android:fromDegrees="315"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="315" />
+    </item>
+</animation-list>

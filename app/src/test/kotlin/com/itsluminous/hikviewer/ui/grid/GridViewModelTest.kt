@@ -169,6 +169,53 @@ class GridViewModelTest {
     }
 
     @Test
+    fun `changing a tile's camera swaps or replaces, persists per layout and picks the hero`() = runTest(dispatcher) {
+        graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        val vm = viewModel()
+        vm.load()
+        dispatcher.scheduler.advanceUntilIdle()
+        vm.onStart()
+        settle()
+        val key = { n: Int -> "${FakeCloudServices.SERIAL}/$n" }
+        val before = vm.playback.players.value
+
+        // 12 cameras, AUTO → 4x3: every camera is on the grid, so a pick trades places.
+        vm.changeTile(2, key(7))
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(8)).containsExactly(1, 2, 7, 4, 5, 6, 3, 8).inOrder()
+        assertThat(vm.focusedIndex).isEqualTo(2)
+        assertThat(graph.arrangementStore.order(GridLayoutMode.AUTO)!![2]).isEqualTo(key(7))
+        assertThat(vm.playback.players.value).containsExactlyElementsIn(before) // nothing reconnected
+        // Picking the camera already there changes nothing.
+        vm.changeTile(2, key(7))
+        assertThat(ready(vm).cameras[2].channelNo).isEqualTo(7)
+
+        // 1 + 5 shows six tiles: a camera beyond them replaces this tile's camera, which leaves the screen.
+        vm.setLayout(GridLayoutMode.HERO_1_5)
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(6)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+        vm.changeTile(3, key(11))
+        settle()
+        val shown =
+            vm.playback.players.value
+                .map { it.camera.channelNo }
+        assertThat(shown).containsExactly(1, 2, 3, 11, 5, 6).inOrder()
+        assertThat(graph.arrangementStore.order(GridLayoutMode.HERO_1_5)!!.indexOf(key(4))).isEqualTo(10)
+        // Position 0 is the hero: Change there picks the hero camera.
+        vm.changeTile(0, key(9))
+        settle()
+        assertThat(
+            vm.playback.players.value
+                .first()
+                .camera.channelNo,
+        ).isEqualTo(9)
+        assertThat(vm.playback.heroIndex).isEqualTo(0)
+        // The 4x3 arrangement was not touched.
+        vm.setLayout(GridLayoutMode.AUTO)
+        assertThat(ready(vm).cameras.map { it.channelNo }.take(3)).containsExactly(1, 2, 7).inOrder()
+        vm.onStop()
+        vm.playback.release()
+    }
+
+    @Test
     fun `settings choose the visible cameras`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
         graph.settingsStore.visibleCameraKeys =

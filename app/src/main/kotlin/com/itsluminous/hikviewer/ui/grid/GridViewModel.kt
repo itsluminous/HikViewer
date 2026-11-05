@@ -155,6 +155,26 @@ class GridViewModel(
     }
 
     /**
+     * The tile menu's Change: shows the camera with [cameraKey] at grid [position] and persists
+     * the current layout's arrangement. A camera already on the grid trades places with this
+     * tile's camera; one past the layout's capacity (visible in Settings but not on screen) takes
+     * the slot and sends this tile's camera off screen. Position 0 of a 1 + N layout is the hero,
+     * so this also picks the hero. Focus stays on the tile.
+     */
+    fun changeTile(
+        position: Int,
+        cameraKey: String,
+    ) {
+        val s = stateFlow.value as? GridUiState.Ready ?: return
+        val keys = s.cameras.map { it.key }
+        val next = GridArrangement.replaced(keys, position, cameraKey)
+        if (next == keys) return
+        arrangement.setOrder(s.layout, next)
+        focusedIndex = position
+        applySettings()
+    }
+
+    /**
      * Checks [code] against the recorder's `encryptPwd`; stores it and starts playback when it
      * matches, otherwise flags the rejection for the dialog.
      */

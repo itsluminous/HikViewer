@@ -9,12 +9,15 @@ import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressKey
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.Visibility
 import androidx.test.espresso.matcher.ViewMatchers.hasFocus
+import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility
 import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.itsluminous.hikviewer.EspressoApp
@@ -273,6 +276,32 @@ class GridNavigationTest {
         onView(tile(0)).check(matches(tileNamed("Camera 2")))
         onView(tile(5)).check(matches(tileNamed("Camera 1")))
         assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.AUTO)
+    }
+
+    @Test
+    fun longPressChangeListsTheCamerasAndThePickTakesTheTile() {
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        onView(tile(1)).check(matches(allOf(hasFocus(), tileNamed("Camera 2"))))
+        longOk()
+        popupItem(R.string.tile_action_change).check(matches(isDisplayed()))
+        pickPopupEntry(1) // Move, Change, Playback
+        // The list dialog starts on this tile's camera; four DOWNs reach Camera 6.
+        onView(withText("Camera 6")).inRoot(isDialog()).check(matches(isDisplayed()))
+        onView(withText("Camera 2")).inRoot(isDialog()).check(matches(isChecked()))
+        repeat(4) { dpad(KeyEvent.KEYCODE_DPAD_DOWN) }
+        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        waitFor(POPUP_DISMISS_MILLIS)
+        onView(tile(1)).check(matches(allOf(hasFocus(), tileNamed("Camera 6"))))
+        onView(tile(5)).check(matches(tileNamed("Camera 2")))
+        val serial = FakeCloudServices.SERIAL
+        val order = app.graph.arrangementStore.order(GridLayoutMode.AUTO)!!
+        assert(order[1] == "$serial/6" && order[5] == "$serial/2") { "persisted $order" }
+        // Back on the dialog changes nothing.
+        longOk()
+        pickPopupEntry(1)
+        onView(withText(R.string.tile_change_title)).inRoot(isDialog()).check(matches(isDisplayed()))
+        pressBack()
+        onView(tile(1)).check(matches(allOf(hasFocus(), tileNamed("Camera 6"))))
     }
 
     @Test

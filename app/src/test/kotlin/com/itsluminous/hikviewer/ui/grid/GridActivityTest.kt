@@ -319,6 +319,50 @@ class GridActivityTest {
     }
 
     @Test
+    fun `the menu's Change entry lists the cameras and the pick takes the tile`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tile = grid.childAtPosition(1) as CameraTileView
+                tile.performLongClick()
+                val popup =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                val change = TileAction.entries.indexOf(TileAction.CHANGE)
+                assertThat(change).isEqualTo(1) // Move, Change, Playback
+                assertThat(
+                    popup.menu
+                        .getItem(change)
+                        .title
+                        .toString(),
+                ).isEqualTo(a.getString(R.string.tile_action_change))
+                popup.menu.performIdentifierAction(change, 0)
+                ShadowLooper.idleMainLooper()
+                val dialog =
+                    org.robolectric.shadows.ShadowDialog
+                        .getLatestDialog() as AlertDialog
+                assertThat(dialog.isShowing).isTrue()
+                val list = dialog.listView
+                assertThat(list.count).isEqualTo(12) // every camera Settings shows
+                assertThat(list.checkedItemPosition).isEqualTo(1) // this tile's camera
+                assertThat(list.adapter.getItem(5)).isEqualTo("Camera 6")
+                list.performItemClick(list.getChildAt(5) ?: list, 5, list.getItemIdAtPosition(5))
+                ShadowLooper.idleMainLooper()
+                assertThat(dialog.isShowing).isFalse()
+                assertThat(grid.names().take(6))
+                    .containsExactly("Camera 1", "Camera 6", "Camera 3", "Camera 4", "Camera 5", "Camera 2")
+                    .inOrder()
+                assertThat(grid.childAtPosition(1)!!.hasFocus()).isTrue() // the tile, now showing Camera 6
+                assertThat(
+                    app.graph.arrangementStore
+                        .order(com.itsluminous.hikviewer.ui.grid.GridLayoutMode.AUTO)!!
+                        .map { it.substringAfter('/') }
+                        .take(6),
+                ).containsExactly("1", "6", "3", "4", "5", "2").inOrder()
+            }
+        }
+    }
+
+    @Test
     fun `the menu's Playback entry opens the playback screen for that tile's camera`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->

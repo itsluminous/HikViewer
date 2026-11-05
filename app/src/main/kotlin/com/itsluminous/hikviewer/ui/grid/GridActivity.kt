@@ -49,7 +49,8 @@ import kotlinx.coroutines.launch
  * [PhoneCameraActivity] (live on top, timeline below) so the screen does not rotate.
  *
  * A long press on a tile (held OK, long click, long touch) opens a small menu of [TileAction]s:
- * Move hands the tile to a [TileMoveController], Playback opens the recording screen.
+ * Move hands the tile to a [TileMoveController], Change lists the cameras in a
+ * [CameraPickerDialog], Playback opens the recording screen.
  */
 class GridActivity : AppCompatActivity() {
     private lateinit var binding: ActivityGridBinding
@@ -300,6 +301,21 @@ class GridActivity : AppCompatActivity() {
         }
     }
 
+    /** Change: list the cameras Settings shows; the pick replaces (or swaps with) this tile's camera. */
+    private fun showCameraPicker(position: Int) {
+        val state = viewModel.state.value as? GridUiState.Ready ?: return
+        val current = state.cameras.getOrNull(position) ?: return
+        viewModel.focusedIndex = position
+        CameraPickerDialog.show(
+            this,
+            state.cameras,
+            current.key,
+            onPick = { key -> viewModel.changeTile(position, key) },
+            // The dialog is its own window; once it is gone the tile (now showing the pick) takes focus back.
+            onDismiss = { binding.grid.childAtPosition(position)?.requestFocus() },
+        )
+    }
+
     private fun openPlayback(position: Int) {
         val camera = (viewModel.state.value as? GridUiState.Ready)?.cameras?.getOrNull(position) ?: return
         viewModel.focusedIndex = position
@@ -340,6 +356,7 @@ class GridActivity : AppCompatActivity() {
     ) {
         when (action) {
             TileAction.MOVE -> move.begin(position)
+            TileAction.CHANGE -> showCameraPicker(position)
             TileAction.PLAYBACK -> openPlayback(position)
         }
     }

@@ -36,6 +36,23 @@ object GridArrangement {
         }
     }
 
+    /**
+     * [keys] with [key] put at [position] (the tile menu's Change). A key already in the list
+     * trades places with the one at [position], so both cameras stay on the grid; a key the list
+     * does not know takes the slot and the camera that held it leaves. Unchanged for an index
+     * outside the list or when [key] is already there.
+     */
+    fun replaced(
+        keys: List<String>,
+        position: Int,
+        key: String,
+    ): List<String> {
+        if (position !in keys.indices) return keys
+        val existing = keys.indexOf(key)
+        if (existing >= 0) return swapped(keys, position, existing)
+        return keys.toMutableList().also { it[position] = key }
+    }
+
     /** [keys] with the entry at [index] moved to the front (the hero slot); the rest keep their order. */
     fun movedToFront(
         keys: List<String>,

@@ -18,18 +18,23 @@ import java.util.ArrayDeque
  *
  * Uses the asynchronous callback API: input buffers are filled as the codec frees them, so the
  * stream thread never blocks on `dequeueInputBuffer` and the depth of [pending] is an honest
- * measure of decode lag for [LiveBudget]. A fed picture is copied into a free input buffer on
- * the feeding thread itself; only the codec's callbacks run on the one looper thread every
- * decoder in the process shares. A thread hop per frame and a looper thread per tile were
- * measurable on the 1 GB TV with twelve tiles and bought nothing: the copy is thread-agnostic
- * and the callbacks are a few microseconds each. Pictures are rendered as soon as they are decoded
+ * measure of decode lag for [LiveBudget]. Pictures are rendered as soon as they are decoded
  * (`releaseOutputBuffer(render = true)`), so when a picture is shown is decided by when it is
- * fed: a [paced] decoder (the software tiles) holds each picture in a [FramePacer] until its
- * presentation time and feeds it from the callback looper, so the screen shows the pictures
- * evenly rather than with the relay's jitter; an unpaced one (the hardware hero and fullscreen)
- * feeds at once for the lowest latency. Decoding starts at the first keyframe so a mid-GOP start
- * never shows grey blocks. A watchdog ([checkStall], rules in [StallDetector]) reports a codec
- * that accepts input but produces nothing; the owner then recreates it.
+ * fed. An unpaced decoder (the hero, the single-camera screens) feeds at once for the lowest
+ * latency: the picture is copied into a free input buffer on the stream thread that brought it,
+ * one of the background-priority `stream-N` threads. A [paced] decoder (the grid tiles) holds
+ * each picture in a [FramePacer] until its presentation time, so the screen shows the pictures
+ * evenly rather than with the relay's jitter; a picture that is already due is fed by the stream
+ * thread too, but most are fed by the wake-up booked for their due time, which runs on the
+ * `codec-callbacks` looper every decoder in the process shares, together with the codec's own
+ * callbacks. That looper stays at default priority on purpose: it is what the pacing's precision
+ * rests on, and its work is small (a 570 KB/s copy for eight tiles, callbacks of a few
+ * microseconds), far below what a decoder thread costs; a slow `releaseOutputBuffer` on it would
+ * delay every tile's next picture, which the diagnostics' `shown` gap would show. A thread hop
+ * per frame and a looper per tile were measured on the 1 GB TV with twelve tiles and bought
+ * nothing. Decoding starts at the first keyframe so a mid-GOP start never shows grey blocks. A
+ * watchdog ([checkStall], rules in [StallDetector]) reports a codec that accepts input but
+ * produces nothing; the owner then recreates it.
  */
 open class TileDecoder(
     /** `MediaCodec` name from [CodecNames]. */
@@ -175,7 +180,9 @@ open class TileDecoder(
 
     /**
      * Moves the pacer's due pictures into [pending] and books one wake-up on the callback looper
-     * for the next one that is not due yet. Under [lock].
+     * for the next one that is not due yet: exactly one is ever pending, so an earlier due time
+     * (a catch-up shifted the queue) replaces the wake-up already booked rather than adding a
+     * second drain. Under [lock].
      */
     private fun admitDueLocked(nowMillis: Long) {
         val p = pacer ?: return
@@ -186,6 +193,7 @@ open class TileDecoder(
         }
         val next = p.nextDueMillis() ?: return
         if (wakeUpAt != null && wakeUpAt!! <= next) return
+        if (wakeUpAt != null) handler.removeCallbacksAndMessages(token)
         wakeUpAt = next
         handler.postAtTime(wakeUp, token, uptimeFor(next))
     }

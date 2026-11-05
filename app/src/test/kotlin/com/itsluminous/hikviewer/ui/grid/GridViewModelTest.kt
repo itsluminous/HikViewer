@@ -106,7 +106,10 @@ class GridViewModelTest {
         vm.focusedIndex = 5
         assertThat(vm.playback.heroIndex).isNull()
         // Focus is a view matter: every tile keeps the mode the budget gave it.
-        assertThat(vm.playback.players.value.none { it.mode == TileMode.HW_LIVE }).isTrue()
+        assertThat(
+            vm.playback.players.value
+                .none { it.mode == TileMode.HW_LIVE },
+        ).isTrue()
         assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1) // the 4x3 arrangement is untouched
         vm.setLayout(GridLayoutMode.HERO_1_7)
         assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_7)
@@ -179,11 +182,17 @@ class GridViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         vm.onStart()
         settle()
-        val live = { vm.playback.players.value.count { it.mode.isLive } }
+        val live = {
+            vm.playback.players.value
+                .count { it.mode.isLive }
+        }
         assertThat(live()).isEqualTo(8)
         vm.onMoveStarted()
         assertThat(live()).isEqualTo(1)
-        assertThat(vm.playback.players.value[0].mode).isEqualTo(TileMode.HW_LIVE)
+        assertThat(
+            vm.playback.players.value[0]
+                .mode,
+        ).isEqualTo(TileMode.HW_LIVE)
         // Swaps during the move keep the cap.
         vm.moveTile(3, 4)
         assertThat(live()).isEqualTo(1)

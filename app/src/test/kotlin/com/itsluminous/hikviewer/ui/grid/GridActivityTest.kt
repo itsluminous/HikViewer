@@ -428,8 +428,13 @@ class GridActivityTest {
                 val vm = a.viewModels<GridViewModel>().value
                 val players = vm.playback.players.value
                 val lifted = grid.getChildAt(0) as CameraTileView
+                assertThat(players.count { it.mode.isLive }).isEqualTo(8) // the TV budget: 8 of 12 live
                 a.onTileAction(0, TileAction.MOVE)
+                // Lifted: the remote comes first, so every software tile drops to keyframe stills.
+                assertThat(vm.playback.hardwareOnly).isTrue()
+                assertThat(players.none { it.mode.isLive }).isTrue() // a 4 x 3 grid has no hero
                 a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                assertThat(players.none { it.mode.isLive }).isTrue() // swaps keep the cap
                 assertThat(grid.names().take(3)).containsExactly("Camera 2", "Camera 1", "Camera 3").inOrder()
                 assertThat(grid.childAtPosition(1)).isSameInstanceAs(lifted) // the view moved, not its camera
                 assertThat(lifted.lifted).isTrue()
@@ -440,6 +445,8 @@ class GridActivityTest {
                 a.key(KeyEvent.KEYCODE_DPAD_CENTER)
                 assertThat(a.isMoving).isFalse()
                 assertThat(lifted.lifted).isFalse()
+                assertThat(vm.playback.hardwareOnly).isFalse()
+                assertThat(players.count { it.mode.isLive }).isEqualTo(8) // dropped: the budget is back
                 assertThat(a.findViewById<View>(R.id.move_hint).visibility).isEqualTo(View.GONE)
                 assertThat(shadowOf(a).nextStartedActivity).isNull() // OK dropped, it did not open fullscreen
                 val serial = FakeCloudServices.SERIAL
@@ -469,6 +476,12 @@ class GridActivityTest {
                 a.key(KeyEvent.KEYCODE_BACK)
                 assertThat(a.isFinishing).isFalse()
                 assertThat(a.isMoving).isFalse()
+                // Cancel lifts the move's cap on the live budget too.
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.hardwareOnly,
+                ).isFalse()
                 assertThat(grid.names().take(3)).containsExactly("Camera 1", "Camera 2", "Camera 3").inOrder()
                 assertThat(grid.childAtPosition(2)).isSameInstanceAs(lifted)
                 assertThat(lifted.isFocused).isTrue()

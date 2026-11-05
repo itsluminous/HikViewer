@@ -301,8 +301,7 @@ open class TileDecoder(
                 if (released || !started) return
                 val nowMillis = now()
                 admitDueLocked(nowMillis)
-                if (freeInputs.isEmpty()) return
-                val index = freeInputs.pollFirst()
+                val index = takeInputIndex(freeInputs, csdToSend, pending.size) ?: return
                 // An index the codec handed out before a flush is void; the picture it would have
                 // carried must wait for a valid one, or the keyframe the gate just let through is
                 // lost and every P-frame behind it is decoded against nothing.
@@ -428,4 +427,21 @@ open class TileDecoder(
 
         private fun callbackLooper(): Looper = callbackThread.looper
     }
+}
+
+/**
+ * The input buffer [drain][TileDecoder] fills next, taken off [freeInputs], or null when there is
+ * nothing to put in one ([csdLeft] parameter sets still to send, [pendingPictures] pictures
+ * waiting). An index is only ever taken to be used: the codec hands each input buffer out once,
+ * so one taken while nothing was waiting would be lost for good, and a decoder that loses its
+ * handful of buffers that way stops taking pictures within a second.
+ */
+internal fun takeInputIndex(
+    freeInputs: ArrayDeque<Int>,
+    csdLeft: Int,
+    pendingPictures: Int,
+): Int? {
+    if (freeInputs.isEmpty()) return null
+    if (csdLeft <= 0 && pendingPictures == 0) return null
+    return freeInputs.pollFirst()
 }

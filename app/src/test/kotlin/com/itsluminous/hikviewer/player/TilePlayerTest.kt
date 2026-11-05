@@ -360,15 +360,34 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `a configure failure is a tile error, not a crash`() = runTest(dispatcher) {
-        decoders.startFailures +=
-            "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
-        val p = player()
+    fun `a configure failure is retried at keyframes, then a tile error, never a crash`() = runTest(dispatcher) {
+        // The surface's BufferQueue can stay connected to the codec released a moment ago (MiTV,
+        // nativeWindowConnect -22); the first refusals are retried, a lasting one dims the tile.
+        repeat(TilePlayer.CONFIGURE_RETRIES + 1) {
+            decoders.startFailures += "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
+        }
+        val p = player(stream = SyntheticStream.flow(paced = false).take(FRAMES * 3))
         p.attachSurface(surface)
         p.mode = TileMode.SW_LIVE
         run(p)
+        assertThat(decoders.created).hasSize(TilePlayer.CONFIGURE_RETRIES + 1)
+        assertThat(decoders.created.all { it.released }).isTrue()
         assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
-        assertThat(decoders.created.single().released).isTrue()
+        p.stop()
+    }
+
+    @Test
+    fun `a configure failure that clears up is forgotten`() = runTest(dispatcher) {
+        decoders.startFailures += "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
+        val p = player(stream = SyntheticStream.flow(paced = false).take(FRAMES * 2))
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        // First attempt refused and released, the second (next keyframe) runs.
+        assertThat(decoders.created).hasSize(2)
+        assertThat(decoders.created.first().released).isTrue()
+        assertThat(decoders.created.last().started).isTrue()
+        assertThat(p.state.value).isNotEqualTo(TileState.Error("Decoder error"))
         p.stop()
     }
 

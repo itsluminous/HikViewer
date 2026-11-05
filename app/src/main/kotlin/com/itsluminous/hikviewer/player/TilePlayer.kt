@@ -86,6 +86,7 @@ class TilePlayer(
     private var pictureShown = false
     private var unitsReceived = 0
     private var lastUnitAtMillis = 0L
+    private var configureRefusals = 0
 
     /** For the overlay. */
     val state: StateFlow<TileState> = stateFlow.asStateFlow()
@@ -473,6 +474,7 @@ class TilePlayer(
         val d = decoderFactory(name, config, target, this)
         return try {
             d.start()
+            synchronized(lock) { configureRefusals = 0 }
             Log.i(TAG, "$tag: ${config.codec} via $name (${if (software) "software" else "hardware"})")
             d to software
         } catch (e: MediaCodec.CodecException) {
@@ -493,10 +495,18 @@ class TilePlayer(
             null
         } catch (e: IllegalArgumentException) {
             // `configure` throws this when the surface is unusable: gone, or still held by another
-            // codec. It must not take the process down; the tile shows Retry instead.
+            // codec. On the MiTV the codec released a moment ago can still hold the surface's
+            // BufferQueue for a few hundred milliseconds (nativeWindowConnect -22), so the first
+            // few refusals are retried at the next keyframe; only a surface that stays unusable
+            // is a tile error with Retry. It must never take the process down.
             d.release()
-            Log.w(TAG, "$tag: cannot configure $name", e)
-            failDecoder("Decoder error")
+            val attempt = synchronized(lock) { ++configureRefusals }
+            if (attempt <= CONFIGURE_RETRIES) {
+                Log.w(TAG, "$tag: cannot configure $name (attempt $attempt): ${e.message}; retrying at a keyframe")
+            } else {
+                Log.w(TAG, "$tag: cannot configure $name", e)
+                failDecoder("Decoder error")
+            }
             null
         } catch (e: IllegalStateException) {
             d.release()
@@ -549,6 +559,9 @@ class TilePlayer(
 
         /** A picture younger than this means frames are flowing (the green dot). */
         const val FLOWING_MILLIS: Long = 2_000
+
+        /** `configure` refusals (surface still held by the previous codec) retried before the tile gives up. */
+        const val CONFIGURE_RETRIES: Int = 3
 
         private const val TAG = "TilePlayer"
         private const val NANOS_PER_MILLI = 1_000_000L

@@ -37,10 +37,16 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   (expect `logd` far below the 61 % seen before, `media.codec` lower), `logcat -s KeyframePool TilePlayer`
   (expect one `codec #1` line, no `recreating`, hardware refusals spaced 5 / 10 / 20 … s).
 - **Thumbnail upload cost.** On the emulator (swiftshader) the keyframe stills cost RenderThread ~16 %
-  of a core for 13 tiles because each bitmap is uploaded through software GL. On a TV with a GPU the
-  13 texture uploads per second (about 3.4 MB/s) should be negligible. If the TV disagrees, lower
-  `CameraTileView.STILL_MAX_WIDTH` from 480 to 320, which halves both the YUV → RGB conversion and the
-  upload.
+  of a core for 13 tiles because each bitmap is uploaded through software GL. The MiTV disagrees
+  (round 6, 16 tiles, 8 of them stills): `gfxinfo` reports 68–76 % janky frames at idle, almost all
+  of them `Slow issue draw commands` / `Slow bitmap uploads` (17–30 ms each on the Mali), p50 22 ms
+  (round 5 measured 7.8 % janky with 4 still tiles). Input is unaffected (key → dispatch 3–10 ms),
+  but the UI's own frames pay for the uploads. Lower `CameraTileView.STILL_MAX_WIDTH` from 480 to
+  320, or upload the still as a hardware bitmap off the main thread, and re-measure.
+- **Idle headroom at 12 fps.** With 16 tiles (8 live, 8 stills) the MiTV has 13–19 % idle CPU, below
+  the 25 % the budget asks for before probing above its ceiling, so at the recorder's current 12 fps
+  nothing changes on this TV. Lowering the sub-stream to 6–8 fps (the user's plan) is what makes the
+  probe fire; verify then that it settles at 10–12 live without relapsing.
 - **CPU budget on the 1.7 GB TV.** Before the round-3 fixes the TV sat at `media.codec` 137–157 % and app
   43 % of one core with 8 live software tiles (budget ≤ 150 % / ≤ 40 %). The fixes removed two churn
   sources (surface switching, hardware retries every 5 s) but the TV has not been re-measured.
@@ -85,8 +91,14 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
 
 ## Code and tests
 
-- **`GridActivity.updateLiveCount` recounts every player on each tile state change** (O(n²) over 16
-  tiles). Harmless today; a counter maintained incrementally would be cleaner.
+- **`GridActivity.updateLiveCount` recounts every player on each liveness change** (O(n²) over 16
+  tiles, at most twice a second per tile). Harmless today; a counter maintained incrementally would
+  be cleaner.
+- **`TileDecoder`'s pacing path has no unit test of its own.** `FramePacer` is tested with a fake
+  clock and the TV run shows `paced=6-8 rebuffers=0 catchUps=0`, but the glue (admitting due pictures
+  on the codec-callbacks looper, the one-wake-up-at-a-time rule, `queuedFrames` counting only due
+  pictures) runs only on a device because the class owns a `MediaCodec`. Extracting the input queue
+  into a pure class would let it be tested.
 - **`PlaybackCoordinator.stop()` does not emit a new player list**, so the grid's tile collectors keep
   observing released players until the next bind. They are `StateFlow` collectors and cost nothing,
   but a terminal emission would make the lifecycle easier to reason about.

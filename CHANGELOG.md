@@ -20,6 +20,18 @@ All notable changes to HikViewer are recorded here. The format follows
   if it was already on the grid, remembered per layout like Move) and *Playback*.
 - Live dot in the top-right corner of every tile: green while pictures reach the screen (a decoded frame within
   2 s, or a freshly rendered still on a keyframe-only tile), red while connecting, stalled or failed.
+  The top bar's status comes from the same rule: "14 live" when every tile decodes at stream rate,
+  otherwise "14 cameras · 8 live · 6 at 1 fps".
+- Software-decoded tiles are paced by the stream's own timestamps through a 500 ms jitter buffer, so
+  the picture moves evenly instead of with the relay's arrival jitter (on the test TV the gap between
+  shown pictures went from 83 ± 41 ms to 83 ± 15–27 ms). The hero and fullscreen (hardware) are not
+  delayed.
+- The live budget may try up to four tiles beyond its static ceiling, one at a time, when the device
+  reports at least 25 % idle CPU and 96 MB to spare, and gives them back when either goes; a
+  recorder set to 6–8 fps on a 1.8 GB TV then gets twelve live tiles instead of eight.
+- A per-tile diagnostics line every 10 s in logcat (`HikViewer` tag) with the inter-picture gaps as
+  they arrive and as they are shown (mean ± stddev, max), the jitter buffer's fill and the budget's
+  idle and memory readings.
 - Fullscreen view with LEFT / RIGHT (TV) or swipe (phone) to switch camera and a self-hiding hint.
 - Recorded playback from the cloud: 24 h time bar with recorded spans, speed toggle −10× … +10×
   (speeds other than 1× step between keyframes), date chip, pause. LEFT / RIGHT seek 10 s and a held

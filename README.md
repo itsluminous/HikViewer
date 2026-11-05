@@ -52,7 +52,8 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   the two if it was already on the grid. Both are remembered per layout, like the tile order.
 - **Live dot**: a small dot in each tile's top-right corner is green while pictures reach the screen (a frame
   within the last 2 s, a fresh still for a keyframe-only tile) and red while the tile is connecting,
-  stalled or failed. No text badge.
+  stalled or failed. No text badge. The top bar counts the same way: "14 live", or "14 cameras ·
+  8 live · 6 at 1 fps" when some tiles show one still a second.
 - **Fullscreen**: OK on a tile. LEFT / RIGHT (or a swipe on a phone) switches camera, Back returns to
   the same tile. The hint hides after 5 s.
 - **Recorded playback** from the long-press menu: fullscreen video, a 24 h time bar with the recorded
@@ -75,9 +76,12 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 - **Built for weak TVs**: a hardware decoder for the hero tile and for fullscreen (moving the focus
   never touches a decoder), software decoders for the other live tiles, and a shared keyframe-only
   decoder pool for tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured decode lag, and tiles
-  are promoted back when headroom returns. A decoder that stops producing pictures is caught within
-  about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims and shows a
-  single *Retry* button.
+  are promoted back when headroom returns; with idle CPU and memory to spare it tries a few tiles
+  beyond its static ceiling and hands them back when either runs out. Software tiles are paced by
+  the stream's timestamps (half a second of jitter buffer) so motion is even; the hero and
+  fullscreen are shown as soon as they are decoded. A decoder that stops producing pictures is caught
+  within about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims and
+  shows a single *Retry* button.
 - **Clean lifecycle**: every stream, socket and decoder is released in `onStop`; there are no
   services, jobs or alarms, so the app costs nothing when it is not on screen.
 - **Settings**: layout, visible cameras and their order, hero camera, fullscreen stream quality

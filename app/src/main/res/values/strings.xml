@@ -78,6 +78,16 @@
     <string name="settings_moving">moving</string>
     <string name="settings_handle">⇅</string>
 
+    <!-- Phone single-camera screen -->
+    <string name="phone_live_badge">● LIVE</string>
+    <string name="phone_live_button">Live</string>
+    <string name="phone_day_back">Previous day</string>
+    <string name="phone_day_forward">Next day</string>
+    <string name="phone_arrow_back">◀</string>
+    <string name="phone_arrow_forward">▶</string>
+    <string name="phone_help">Tap the bar to play footage from that time · Live returns to the stream · swipe the picture to switch camera</string>
+
     <!-- Fullscreen -->
     <string name="fullscreen_hint">◀ ▶ switch camera · Back to grid</string>
+    <string name="fullscreen_hint_phone">Swipe to switch camera · Back to grid</string>
 </resources>

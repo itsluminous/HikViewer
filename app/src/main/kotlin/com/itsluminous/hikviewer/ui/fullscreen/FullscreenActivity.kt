@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -13,22 +14,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
+import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ActivityFullscreenBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
+import com.itsluminous.hikviewer.ui.common.SwipeDetector
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * Shows one camera edge to edge. LEFT/RIGHT (or tapping the left/right third of the screen on a
- * phone) switch camera; Back returns the index to the grid so the same tile regains focus. The
- * "switch camera" hint appears on entry and on any key, pointer or touch, and hides after the
- * same idle time as the grid's top bar.
+ * Shows one camera edge to edge. LEFT/RIGHT (or, on a phone, a horizontal swipe or a tap on the
+ * left/right edge) switch camera; Back returns the index to the grid so the same tile regains
+ * focus. The "switch camera" hint appears on entry and on any key, pointer or touch, and hides
+ * after the same idle time as the grid's top bar.
  */
 class FullscreenActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFullscreenBinding
     private lateinit var hint: InactivityTimer
     private var stateJob: Job? = null
+    private lateinit var swipes: GestureDetector
 
     private val viewModel: FullscreenViewModel by viewModels {
         val graph = AppGraph.of(this)
@@ -55,7 +60,9 @@ class FullscreenActivity : AppCompatActivity() {
         binding.tile.isFocusable = false
         binding.tile.isClickable = false
         hint = InactivityTimer(binding.hint, AppGraph.of(this).topBarAutoHideMillis)
+        if (!FormFactor.isTelevision(this)) binding.hint.setText(R.string.fullscreen_hint_phone)
         hint.onUserActivity()
+        swipes = GestureDetector(this, SwipeDetector { direction -> viewModel.step(direction) })
         binding.root.setOnHoverListener { _, _ ->
             hint.onUserActivity()
             false
@@ -88,6 +95,7 @@ class FullscreenActivity : AppCompatActivity() {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) hint.onUserActivity()
+        swipes.onTouchEvent(ev)
         return super.dispatchTouchEvent(ev)
     }
 

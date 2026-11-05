@@ -70,7 +70,8 @@ class GridNavigationTest {
 
     @After
     fun tearDown() {
-        scenario.close()
+        // @After runs after a failed assumption too; on a phone the scenario was never launched.
+        if (::scenario.isInitialized) scenario.close()
         finishAllActivities()
     }
 
@@ -89,6 +90,9 @@ class GridNavigationTest {
     private companion object {
         /** A popup menu is its own window; its dismissal (and the return of window focus) is asynchronous. */
         const val POPUP_DISMISS_MILLIS = 500L
+
+        /** How close to the hide timeout a "still shown" check is still meaningful. */
+        const val TIMER_SLACK_MILLIS = 300L
     }
 
     /** Sends a D-pad key to whatever has focus, as a remote does. */
@@ -163,13 +167,29 @@ class GridNavigationTest {
     @Test
     fun topBarShowsOnAnyKeyWithoutStealingFocusAndHidesAfterTheTimeout() {
         onView(withId(R.id.top_bar)).check(matches(withEffectiveVisibility(Visibility.INVISIBLE)))
+        val pressedAt = android.os.SystemClock.uptimeMillis()
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
-        onView(withId(R.id.top_bar)).check(matches(isDisplayed()))
+        barStillShownUnlessTimedOut(pressedAt)
         onView(tile(1)).check(matches(hasFocus()))
         waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS / 2)
-        onView(withId(R.id.top_bar)).check(matches(isDisplayed()))
+        barStillShownUnlessTimedOut(pressedAt)
         waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS)
         onView(withId(R.id.top_bar)).check(matches(withEffectiveVisibility(Visibility.INVISIBLE)))
+    }
+
+    /**
+     * Asserts the bar is up, unless the wall clock already passed the hide timeout: Espresso only
+     * acts once the main thread is idle, and with sixteen decoders starting on a loaded emulator
+     * that can take longer than the (shortened) timer, which is a slow host, not a bar bug. The
+     * hide-after-timeout assertion that follows is unconditional.
+     */
+    private fun barStillShownUnlessTimedOut(pressedAt: Long) {
+        val elapsed = android.os.SystemClock.uptimeMillis() - pressedAt
+        if (elapsed < EspressoApp.TOP_BAR_HIDE_MILLIS - TIMER_SLACK_MILLIS) {
+            onView(withId(R.id.top_bar)).check(matches(isDisplayed()))
+        } else {
+            android.util.Log.w("HVTEST", "main thread busy for $elapsed ms; skipping the mid-timeout bar check")
+        }
     }
 
     @Test

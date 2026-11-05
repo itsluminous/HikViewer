@@ -57,7 +57,8 @@ class PlaybackNavigationTest {
 
     @After
     fun tearDown() {
-        scenario.close()
+        // @After runs after a failed assumption too; on a phone the scenario was never launched.
+        if (::scenario.isInitialized) scenario.close()
         finishAllActivities()
     }
 

@@ -3,7 +3,7 @@
 #   verify       - every quality gate (`./gradlew ci`): unit tests, ktlint, detekt, Android Lint, Kover.
 #   build        - debug + release APKs (release is signed with the debug key here; real signing
 #                  happens in release.yml on tags).
-#   instrumented - Espresso tests on an Android TV emulator. Slow, so only on pushes to main and
+#   instrumented - Espresso tests on an Android TV emulator and on a phone emulator. Slow, so only on pushes to main and
 #                  manual runs; pull requests rely on verify + build.
 name: CI
 
@@ -111,15 +111,30 @@ jobs:
       - name: Upload release APK (debug-signed)
         uses: actions/upload-artifact@v4
         with:
-          name: apk-release-unsigned-for-distribution
+          name: apk-release-debug-signed
           path: app/build/outputs/apk/release/app-release.apk
 
   instrumented:
-    name: Espresso on Android TV emulator
+    name: Espresso on ${{ matrix.name }}
     needs: verify
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # Google ships the API 34 Android TV image for x86 (32-bit) and arm64 only; x86_64 TV images
+      # start at API 36. We stay on 34 to match the AVDs described in BUILDING.md. The phone job runs
+      # the touch suite (PhoneNavigationTest); the D-pad suites skip themselves there and vice versa.
+      matrix:
+        include:
+          - name: Android TV emulator
+            target: android-tv
+            arch: x86
+            profile: tv_1080p
+          - name: phone emulator
+            target: google_apis
+            arch: x86_64
+            profile: pixel_6
     steps:
       - uses: actions/checkout@v4
 
@@ -140,15 +155,13 @@ jobs:
         with:
           cache-read-only: true
 
-      # Google ships the API 34 Android TV image for x86 (32-bit) and arm64 only; x86_64 TV images
-      # start at API 36. We stay on 34 to match the AVDs described in BUILDING.md.
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: android-tv
-          arch: x86
-          profile: tv_1080p
+          target: ${{ matrix.target }}
+          arch: ${{ matrix.arch }}
+          profile: ${{ matrix.profile }}
           ram-size: 1536M
           disable-animations: true
           emulator-options: -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect -camera-back none
@@ -158,7 +171,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: instrumented-test-reports
+          name: instrumented-test-reports-${{ matrix.target }}
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/

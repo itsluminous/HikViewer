@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.ui
 
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.View
 import androidx.test.core.app.ActivityScenario
@@ -69,6 +70,11 @@ class PhoneNavigationTest {
         runBlocking { app.graph.account.login("911234567890", "secret", Region.INDIA) }
         app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
         scenario = ActivityScenario.launch(GridActivity::class.java)
+        // The suite describes a phone held upright. An emulator left rotation-locked in landscape
+        // (user_rotation=1) would open the landscape fullscreen screen instead; lock this task to
+        // portrait so the device's rotation setting cannot decide the outcome.
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
     @After

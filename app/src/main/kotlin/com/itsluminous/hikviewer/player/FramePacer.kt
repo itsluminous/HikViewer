@@ -20,9 +20,9 @@ import java.util.ArrayDeque
  * arrives after it was due (the buffer ran dry: a late relay, or a camera clock slower than the
  * device's) re-buffers, the picture is due in [latencyMillis] again and the tile freezes for that
  * long once. A buffer whose newest picture would wait [catchUpMillis] beyond the latency (the
- * relay sending faster than real time after a reconnect, or a faster camera clock) drops
- * everything before the newest keyframe it holds, because a decoder can restart there and
- * nowhere else, and plays what is left from now on. Pure Kotlin with the time passed in so both behaviours are tested with a fake clock;
+ * relay re-sending a backlog faster than real time after a hiccup, or a faster camera clock)
+ * drops everything before the newest keyframe it holds, because a decoder can restart there and
+ * nowhere else, and shifts what is left so the newest picture is due in [latencyMillis] again. Pure Kotlin with the time passed in so both behaviours are tested with a fake clock;
  * not thread-safe, the decoder calls it under its own lock.
  */
 class FramePacer(
@@ -154,8 +154,13 @@ class FramePacer(
         /** Half a 1 s GOP: covers the 260 ms the relay was measured to be late by, at half the latency of a full GOP. */
         const val DEFAULT_LATENCY_MILLIS: Long = 500
 
-        /** Two 1 s GOPs behind is a backlog to drop, not latency to keep. */
-        const val DEFAULT_CATCH_UP_MILLIS: Long = 2_000
+        /**
+         * A second beyond the target latency is a backlog to drop, not latency to keep: after a
+         * network hiccup on the TV the relay re-sent 2-3 s of pictures in a burst and, with this at
+         * 2 s, eight tiles then sat 1-2.25 s behind for good (`paced=12-27`). With the drop to the
+         * newest keyframe the tile is at most a GOP and a half behind live after a catch-up.
+         */
+        const val DEFAULT_CATCH_UP_MILLIS: Long = 1_000
 
         /** Enough for two GOPs of a 15 fps camera. */
         const val DEFAULT_CAPACITY: Int = 30

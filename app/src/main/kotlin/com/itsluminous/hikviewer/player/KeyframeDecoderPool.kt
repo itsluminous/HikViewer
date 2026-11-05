@@ -6,6 +6,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Process
 import android.util.Log
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
@@ -139,7 +140,10 @@ open class KeyframeDecoderPool(
 
         /** Started on demand; call with the queue lock held. */
         private fun handlerLocked(): Handler = handler ?: run {
-            val t = HandlerThread(name).also { it.start() }
+            // Background priority: a still may arrive a little late, the remote may not. On the
+            // MiTV this worker converts eight 478x268 stills a second and ran at 30 % of a core
+            // with the same weight as the UI thread's competitors.
+            val t = HandlerThread(name, Process.THREAD_PRIORITY_BACKGROUND).also { it.start() }
             thread = t
             Handler(t.looper).also { handler = it }
         }

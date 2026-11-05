@@ -87,7 +87,11 @@ class GridArrangementStoreTest {
 
     @Test
     fun `the first version's hero camera becomes position 0 of the 1+N layouts without an arrangement`() {
-        prefs.edit().putString("heroCamera", "S/7").putString("arrangement.HERO_1_7", "S/2,S/1").commit()
+        prefs
+            .edit()
+            .putString("heroCamera", "S/7")
+            .putString("arrangement.HERO_1_7", "S/2,S/1")
+            .commit()
         val migrated = GridArrangementStore(prefs)
         assertThat(migrated.order(GridLayoutMode.HERO_1_5)).containsExactly("S/7")
         assertThat(migrated.order(GridLayoutMode.HERO_1_7)).containsExactly("S/2", "S/1").inOrder()

@@ -199,7 +199,13 @@ class SettingsActivityTest {
                     .containsExactly(false, true, true, true, false)
                     .inOrder()
                 assertThat(
-                    (0 until 5).map { list.getChildAt(it).findViewById<TextView>(R.id.name).text.toString() },
+                    (0 until 5).map {
+                        list
+                            .getChildAt(it)
+                            .findViewById<TextView>(R.id.name)
+                            .text
+                            .toString()
+                    },
                 ).containsExactly("Camera 1", "Camera 2", "Camera 3", "Camera 4", "Camera 5").inOrder()
                 assertThat(app.graph.settingsStore.visibleCameraKeys)
                     .containsExactly("$serial/2", "$serial/3", "$serial/4")

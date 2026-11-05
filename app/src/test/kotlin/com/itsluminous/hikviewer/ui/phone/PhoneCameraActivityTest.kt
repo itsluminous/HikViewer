@@ -201,7 +201,11 @@ class PhoneCameraActivityTest {
             ShadowLooper.idleMainLooper(SeekController.DEBOUNCE_MILLIS + 1, java.util.concurrent.TimeUnit.MILLISECONDS)
             awaitUi { account.playbackOpened.size == 1 }
             val noon = LocalDate.now().atTime(12, 0)
-            assertThat(account.playbackOpened.single().second.begin).isEqualTo(noon)
+            assertThat(
+                account.playbackOpened
+                    .single()
+                    .second.begin,
+            ).isEqualTo(noon)
 
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
@@ -221,7 +225,10 @@ class PhoneCameraActivityTest {
                 assertThat(frame.width).isEqualTo(frame.height * 16 / 9)
                 assertThat(a.text(R.id.time_label)).startsWith("12:00")
             }
-            val reopened = account.playbackOpened.last().second.begin
+            val reopened =
+                account.playbackOpened
+                    .last()
+                    .second.begin
             assertThat(reopened).isAtLeast(noon)
             assertThat(reopened).isLessThan(noon.plusMinutes(1))
             assertThat(account.opened).hasSize(1) // live was not reopened: the footage kept the surface
@@ -254,7 +261,11 @@ class PhoneCameraActivityTest {
                 val frame = a.findViewById<View>(R.id.video_frame)
                 a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height / 2f)
                 ShadowLooper.idleMainLooper()
-                assertThat(a.viewModels<PhoneCameraViewModel>().value.index.value).isEqualTo(1)
+                assertThat(
+                    a
+                        .viewModels<PhoneCameraViewModel>()
+                        .value.index.value,
+                ).isEqualTo(1)
                 // The help line hides after the idle time, like the TV's fullscreen hint.
                 ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS)
                 assertThat(a.findViewById<View>(R.id.help).visibility).isNotEqualTo(View.VISIBLE)

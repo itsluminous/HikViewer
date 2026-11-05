@@ -110,7 +110,11 @@ class GridActivityPhoneTest {
                 assertThat(grid.shape.columns).isEqualTo(2)
                 assertThat(grid.shape.capacity).isEqualTo(7)
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7).inOrder()
-                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(7)
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.players.value,
+                ).hasSize(7)
             }
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
@@ -118,7 +122,11 @@ class GridActivityPhoneTest {
                 assertThat(grid.shape.columns).isEqualTo(3) // the 1 + 5 grid
                 assertThat(grid.shape.capacity).isEqualTo(6)
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
-                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(6)
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.players.value,
+                ).hasSize(6)
                 // The arrangement still has every camera; the seventh is only without a cell.
                 a.viewModels<GridViewModel>().value.moveTile(0, 1)
                 assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO_1_6))
@@ -130,15 +138,23 @@ class GridActivityPhoneTest {
             scenario.grid { a, grid ->
                 assertThat(grid.shape.capacity).isEqualTo(7)
                 assertThat(shownChannels(grid)).containsExactly(2, 1, 3, 4, 5, 6, 7).inOrder()
-                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(7)
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.players.value,
+                ).hasSize(7)
             }
         }
     }
 
     /** Channel numbers of the tiles that have a cell, in grid order (the camera name is "Camera N"). */
-    private fun shownChannels(grid: CameraGridLayout): List<Int> =
-        (0 until grid.shape.capacity)
-            .mapNotNull { grid.childAtPosition(it) as? CameraTileView }
-            .filter { it.visibility == View.VISIBLE }
-            .map { it.cameraName.toString().removePrefix("Camera ").toInt() }
+    private fun shownChannels(grid: CameraGridLayout): List<Int> = (0 until grid.shape.capacity)
+        .mapNotNull { grid.childAtPosition(it) as? CameraTileView }
+        .filter { it.visibility == View.VISIBLE }
+        .map {
+            it.cameraName
+                .toString()
+                .removePrefix("Camera ")
+                .toInt()
+        }
 }

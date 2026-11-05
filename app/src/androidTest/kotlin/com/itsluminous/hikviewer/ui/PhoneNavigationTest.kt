@@ -2,6 +2,7 @@ package com.itsluminous.hikviewer.ui
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.ParcelFileDescriptor
 import android.view.View
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -101,9 +102,11 @@ class PhoneNavigationTest {
     }
 
     private fun shell(command: String) {
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { fd ->
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes()
-        }
+        InstrumentationRegistry
+            .getInstrumentation()
+            .uiAutomation
+            .executeShellCommand(command)
+            .use { fd -> ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes() }
     }
 
     @Test

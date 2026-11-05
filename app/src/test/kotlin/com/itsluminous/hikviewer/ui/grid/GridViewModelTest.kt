@@ -171,7 +171,8 @@ class GridViewModelTest {
         }
 
     /** Channels of the tiles that have a stream, in grid order. */
-    private fun streamed(vm: GridViewModel): List<Int> = vm.playback.players.value.map { it.camera.channelNo }
+    private fun streamed(vm: GridViewModel): List<Int> = vm.playback.players.value
+        .map { it.camera.channelNo }
 
     @Test
     fun `moving a tile swaps, persists per layout, follows focus and keeps the players`() = runTest(dispatcher) {

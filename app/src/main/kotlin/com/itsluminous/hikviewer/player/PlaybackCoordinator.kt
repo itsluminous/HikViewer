@@ -91,13 +91,14 @@ class PlaybackCoordinator(
             }
     }
 
-    /** Stops every stream, releases every decoder. Idempotent. */
+    /** Stops every stream, releases every decoder, including the keyframe pool's. Idempotent. */
     fun stop() {
         if (!running) return
         running = false
         ticker?.cancel()
         ticker = null
         playersFlow.value.forEach { it.stop() }
+        pool.closeCodecs()
     }
 
     /** Reopens one failed tile's stream (the Retry overlay); a no-op while playback is stopped. */

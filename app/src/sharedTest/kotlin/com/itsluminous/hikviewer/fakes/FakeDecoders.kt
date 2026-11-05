@@ -107,6 +107,13 @@ class NoopKeyframePool : KeyframeDecoderPool(maxDecoders = 1, pickCodec = { null
     /** Keyframes submitted, by tile. */
     val submitted = CopyOnWriteArrayList<Pair<Any, AccessUnit>>()
 
+    /** Times the coordinator asked the pool to close its codecs (playback stopped). */
+    @Volatile var codecsClosed: Int = 0
+
+    override fun closeCodecs() {
+        codecsClosed++
+    }
+
     override fun submit(
         tile: Any,
         surface: Surface,

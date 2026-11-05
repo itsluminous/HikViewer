@@ -33,13 +33,15 @@ class PlaybackCoordinatorTest {
         },
         capabilities = capabilities,
         scope = this,
-        pool = NoopKeyframePool(),
+        pool = pool,
         pickCodec = decoders::pickCodec,
         decoderFactory = decoders.factory,
         tickMillis = 500,
         clock = { now },
         dispatcher = dispatcher,
     )
+
+    private val pool = NoopKeyframePool()
 
     @Test
     fun `start opens every stream in parallel and stop releases everything`() = runTest(dispatcher) {
@@ -52,6 +54,8 @@ class PlaybackCoordinatorTest {
         assertThat(decoders.created.count { it.started }).isEqualTo(4)
         c.stop()
         assertThat(decoders.created.all { it.released }).isTrue()
+        // The shared keyframe decoders go too: an idle one still holds ~17 MB in media.codec.
+        assertThat(pool.codecsClosed).isEqualTo(1)
         c.release()
     }
 

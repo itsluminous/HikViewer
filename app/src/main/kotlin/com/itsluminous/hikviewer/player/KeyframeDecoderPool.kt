@@ -52,7 +52,14 @@ open class KeyframeDecoderPool(
     /** Drops queued work for [tile]. */
     fun cancel(tile: Any) = workers.forEach { it.cancel(tile) }
 
-    /** Releases every decoder. */
+    /**
+     * Closes the decoders but keeps the workers, so the pool can serve again after a restart.
+     * Called when playback stops: an idle software decoder still holds ~17 MB in `media.codec`
+     * and a looper thread, which a backgrounded app must not keep.
+     */
+    open fun closeCodecs() = workers.forEach { it.closeCodecs() }
+
+    /** Releases every decoder and worker thread. */
     fun release() = workers.forEach { it.release() }
 
     private class Job(
@@ -84,6 +91,11 @@ open class KeyframeDecoderPool(
         }
 
         fun cancel(tile: Any) = synchronized(queue) { queue.remove(tile) }
+
+        fun closeCodecs() {
+            synchronized(queue) { queue.clear() }
+            handler.post { closeCodec() }
+        }
 
         fun release() {
             synchronized(queue) {

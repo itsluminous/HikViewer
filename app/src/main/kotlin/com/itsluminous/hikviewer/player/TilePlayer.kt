@@ -102,7 +102,9 @@ class TilePlayer(
 
     /**
      * Rendered frames per second, sampled on every [tick] from the live decoder's output callbacks
-     * (or the keyframe submissions of a keyframe-only tile). Drives the optional fps counter.
+     * (or the keyframe submissions of a keyframe-only tile) and rounded to whole frames, which is
+     * what the counter shows: a steady 12 fps tile then publishes nothing instead of a new value
+     * every half second (the meter's 2 s window flips between 11.5 and 12.5 at every tick).
      */
     val frameRate: StateFlow<Float> = frameRateFlow.asStateFlow()
 
@@ -189,12 +191,13 @@ class TilePlayer(
             Log.w(TAG, "${camera.key}: decoder stalled, recreating")
             releaseDecoderLocked()
         }
-        frameRateFlow.value =
+        val fps =
             when {
                 !streaming -> 0f
                 mode.isLive -> decoder?.framesPerSecond(nowMillis) ?: 0f
                 else -> keyframeRate.fps(nowMillis)
             }
+        frameRateFlow.value = Math.round(fps).toFloat()
         stalled
     }
 

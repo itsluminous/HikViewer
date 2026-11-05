@@ -120,7 +120,7 @@ class TilePlayerTest {
             assertThat(p.frameRate.value).isEqualTo(0f)
             decoders.created.single().fps = 24.6f
             p.tick(1_000)
-            assertThat(p.frameRate.value).isEqualTo(24.6f)
+            assertThat(p.frameRate.value).isEqualTo(25f) // whole frames, as the counter shows them
             p.stop()
             assertThat(p.frameRate.value).isEqualTo(0f)
 
@@ -131,8 +131,7 @@ class TilePlayerTest {
             val keyframes = pool.submitted.size
             k.tick(now + FrameRateMeter.DEFAULT_WINDOW_MILLIS - 1)
             assertThat(k.frameRate.value)
-                .isWithin(0.01f)
-                .of(keyframes * 1_000f / FrameRateMeter.DEFAULT_WINDOW_MILLIS)
+                .isEqualTo(Math.round(keyframes * 1_000f / FrameRateMeter.DEFAULT_WINDOW_MILLIS).toFloat())
             k.stop()
         }
 

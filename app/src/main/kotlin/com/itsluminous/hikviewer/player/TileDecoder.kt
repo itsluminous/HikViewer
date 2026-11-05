@@ -5,6 +5,7 @@ import android.media.MediaFormat
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.view.Surface
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
@@ -16,7 +17,11 @@ import java.util.ArrayDeque
  *
  * Uses the asynchronous callback API: input buffers are filled as the codec frees them, so the
  * stream thread never blocks on `dequeueInputBuffer` and the depth of [pending] is an honest
- * measure of decode lag for [LiveBudget]. Pictures are rendered as soon as they are decoded
+ * measure of decode lag for [LiveBudget]. A fed picture is copied into a free input buffer on
+ * the feeding thread itself; only the codec's callbacks run on the one looper thread every
+ * decoder in the process shares. A thread hop per frame and a looper thread per tile were
+ * measurable on the 1 GB TV with twelve tiles and bought nothing: the copy is thread-agnostic
+ * and the callbacks are a few microseconds each. Pictures are rendered as soon as they are decoded
  * (`releaseOutputBuffer(render = true)`): the relay already paces the stream at the camera's
  * frame rate and a live view wants the lowest latency. Decoding starts at the first keyframe so
  * a mid-GOP start never shows grey blocks. A watchdog ([checkStall]) reports a codec that accepts
@@ -43,8 +48,7 @@ open class TileDecoder(
         )
     }
 
-    private val thread = HandlerThread("tile-decoder").also { it.start() }
-    private val handler = Handler(thread.looper)
+    private val handler = Handler(callbackLooper())
     private val lock = Any()
     private val pending = ArrayDeque<AccessUnit>()
     private val freeInputs = ArrayDeque<Int>()
@@ -95,7 +99,7 @@ open class TileDecoder(
             if (pending.size >= MAX_PENDING) pending.pollFirst()
             pending.addLast(unit)
         }
-        handler.post { drain() }
+        drain()
     }
 
     /**
@@ -109,7 +113,7 @@ open class TileDecoder(
             nowMillis - lastInputAtMillis < STALL_MILLIS
     }
 
-    /** Stops and releases the codec and its thread. Safe to call twice. */
+    /** Stops and releases the codec. Safe to call twice. */
     open fun release() {
         val c: MediaCodec?
         synchronized(lock) {
@@ -122,7 +126,6 @@ open class TileDecoder(
         }
         runCatching { c?.stop() }
         runCatching { c?.release() }
-        thread.quitSafely()
     }
 
     private fun drain() {
@@ -197,5 +200,16 @@ open class TileDecoder(
 
         private const val NANOS_PER_MILLI = 1_000_000L
         private val DEFAULT_SIZE_HINT = 960 to 480
+
+        /**
+         * One looper for every decoder's callbacks. It lives as long as the process: a decoder
+         * comes and goes with every focus change, and re-creating a thread each time cost more
+         * than the idle thread does.
+         */
+        private val callbackThread: HandlerThread by lazy {
+            HandlerThread("codec-callbacks").also { it.start() }
+        }
+
+        private fun callbackLooper(): Looper = callbackThread.looper
     }
 }

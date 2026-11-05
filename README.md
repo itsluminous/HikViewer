@@ -77,10 +77,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   verification code. It is checked locally against the recorder's `MD5(MD5(code))` before any stream
   is opened, stored in Android-encrypted preferences, and never asked again unless the recorder's
   code changes.
-- **Built for weak TVs**: the TV's two hardware decoders go to the hero tile and the tile after it
-  (in a flat grid, the first two tiles) and to fullscreen; moving the focus never touches a decoder.
-  The other live tiles use software decoders, and a shared keyframe-only decoder pool serves the
-  tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured
+- **Built for weak TVs**: a hardware decoder for the hero tile and for fullscreen (moving the focus
+  never touches a decoder), software decoders for the other live tiles, and a shared keyframe-only
+  decoder pool for tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured
   decode lag, and tiles are promoted back when headroom returns; while the grid has more tiles than
   the static ceiling it also measures idle CPU and spare memory and, with at least 35 % idle and
   96 MB to spare, tries a few tiles beyond the ceiling one at a time, handing them back when either
@@ -114,9 +113,8 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
    only keyframes, parameter sets and long-term-reference P-frames). The H.264 SPS is rewritten to
    declare no frame reordering, so software decoders show each picture as soon as it is decoded.
 5. **Decode with `MediaCodec`**, feeding access units straight to the codec. At most two hardware
-   decoders are used (the hero and the tile after it, or the first two tiles of a flat grid; the
-   fullscreen screen takes one); the rest are software, or keyframe-only stills from a shared pool
-   when the device runs out of CPU.
+   decoders are used (the hero tile; the fullscreen screen takes one); the rest are software, or
+   keyframe-only stills from a shared pool when the device runs out of CPU.
 
 All protocol code lives in the pure-JVM `:core` module and is covered by known-answer tests against
 synthetic ffmpeg-generated fixtures (`scripts/gen-fixtures.sh`); `:app` is the Android UI and decoder

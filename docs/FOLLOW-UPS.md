@@ -54,10 +54,16 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   this API 29 TV, so the shell cannot open the tile menu; the cap to the hero's decoder during a
   move (`hardwareOnly`) is covered by Robolectric and Espresso only. Hands-on: hold OK → *Move* →
   every other tile should drop to stills within a second and come back live on OK or Back.
-- **Hardware slots in flat grids.** Since round 6 the first two tiles of a flat grid use the TV's
-  two hardware decoders (they were idle there). A tile moved into or out of positions 0–1 swaps its
-  decoder at the next keyframe when the move ends; if that swap is ever noticed, pin the slots to
-  cameras rather than positions.
+- **Hardware slots in flat grids: tried and reverted.** Round 6 gave the first two tiles of a flat
+  grid the TV's two idle hardware decoders (8 % of a core each against 22 % for software). Measured
+  twice on the MiTV with the 16-tile grid: the `OMX.MS.AVC.Decoder` fed through the jitter buffer
+  put its pictures out at 83 ± 60 ms (max 205–214 ms) while the paced software tiles beside it
+  showed 83 ± 18–24 ms, and the idle share did not move (6–26 % against 8–23 % before), so the
+  two tiles were visibly jerkier for nothing. Reverted the same day; the hardware decoders stay
+  with the hero and the single-camera screens, unpaced. If the slots are wanted in a grid, first
+  find out why the hardware decoder's output is uneven when fed one picture at a time (output
+  buffer count held by SurfaceFlinger at the 15 Hz slot? an internal pipeline that flushes in
+  pairs?) and measure an unpaced hardware tile in a grid for comparison.
 - **CPU budget on the 1.7 GB TV.** Before the round-3 fixes the TV sat at `media.codec` 137–157 % and app
   43 % of one core with 8 live software tiles (budget ≤ 150 % / ≤ 40 %). The fixes removed two churn
   sources (surface switching, hardware retries every 5 s) but the TV has not been re-measured.

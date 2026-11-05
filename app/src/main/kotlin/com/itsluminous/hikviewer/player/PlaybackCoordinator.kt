@@ -16,8 +16,7 @@ import java.util.concurrent.Future
 
 /**
  * Runs every tile of the grid: one [TilePlayer] per visible camera, the [LiveBudget] that decides
- * how many are live, and the [DecoderPolicy] that hands the hardware decoders to the hero tile
- * and the first tiles of a flat grid.
+ * how many are live, and the [DecoderPolicy] that hands the hardware decoder to the hero tile.
  * Focus is not an input: moving it must never touch a decoder (see [DecoderPolicy]). All streams
  * are opened in parallel (the first frame takes 1.4–3.2 s each; opening them one by one would
  * make a 12-tile grid take half a minute). A ticker samples decoder lag and runs the stall

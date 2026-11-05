@@ -223,22 +223,16 @@ class PlaybackCoordinatorTest {
     }
 
     @Test
-    fun `the hero drives the first hardware decoder and is the one unpaced tile`() {
+    fun `the hero drives the hardware decoder and is the one unpaced tile`() {
         runTest(dispatcher) {
             val c = coordinator()
             c.setCameras(cameras(4))
-            assertThat(c.players.value.map { it.mode })
-                .containsExactly(
-                    TileMode.HW_LIVE,
-                    TileMode.HW_LIVE,
-                    TileMode.SW_LIVE,
-                    TileMode.SW_LIVE,
-                ).inOrder()
+            assertThat(c.players.value.all { it.mode == TileMode.SW_LIVE }).isTrue()
             assertThat(c.players.value.all { it.paced }).isTrue() // a flat grid: even motion everywhere
             c.heroIndex = 2
             assertThat(c.players.value.map { it.mode })
                 .containsExactly(
-                    TileMode.HW_LIVE,
+                    TileMode.SW_LIVE,
                     TileMode.SW_LIVE,
                     TileMode.HW_LIVE,
                     TileMode.SW_LIVE,
@@ -259,16 +253,14 @@ class PlaybackCoordinatorTest {
         c.start()
         dispatcher.scheduler.runCurrent()
         val softwareDecoders = decoders.created.filter { it.codecName.startsWith("fake.sw.") }
-        assertThat(softwareDecoders).hasSize(2) // positions 0 (hero) and 1 hold the hardware slots
-        val heroDecoder = decoders.created.first { it.codecName.startsWith("fake.hw.") }
+        assertThat(softwareDecoders).hasSize(3)
         c.hardwareOnly = true
         assertThat(c.players.value.map { it.mode })
             .containsExactly(TileMode.HW_LIVE, TileMode.KEYFRAME, TileMode.KEYFRAME, TileMode.KEYFRAME)
             .inOrder()
-        // Every other decoder is gone at once (they must free the CPU), the hero's is untouched.
+        // The software decoders are gone at once (they must free the CPU), the hero's is untouched.
         assertThat(softwareDecoders.all { it.released }).isTrue()
-        assertThat(decoders.created.filter { it !== heroDecoder }.all { it.released }).isTrue()
-        assertThat(heroDecoder.released).isFalse()
+        assertThat(decoders.created.single { it.codecName.startsWith("fake.hw.") }.released).isFalse()
         c.hardwareOnly = false
         assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(4)
         c.hardwareOnly = true

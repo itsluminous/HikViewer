@@ -39,9 +39,6 @@ All notable changes to HikViewer are recorded here. The format follows
 - The focused tile's border hides 5 s after the last key or pointer movement, on the top bar's
   timer, and returns at the next one. Focus itself never moves; a tile lifted for *Move* always
   draws its border.
-- In a flat grid (3 × 3, 4 × 3, 4 × 4) the two hardware decoders go to the first two tiles; in a
-  1 + N layout to the hero and the tile after it. They had sat idle in flat grids, which cost about a
-  quarter of a core on the test TV.
 - A per-tile diagnostics line every 10 s in logcat (`HikViewer` tag) with the inter-picture gaps as
   they arrive and as they are shown (mean ± stddev, max), the jitter buffer's fill and the budget's
   idle and memory readings.
@@ -109,9 +106,9 @@ All notable changes to HikViewer are recorded here. The format follows
   dialog window.
 - A seek key held while the focus moved to the date chip or the speed button no longer keeps its
   accelerated step for the next press on the bar.
-- Adaptive decoding for weak TVs: hardware decoders for the hero tile and the tile after it (and
-  for fullscreen), software decoders for the rest, a shared keyframe-only pool for tiles beyond the
-  live budget, which adapts to RAM, cores and measured decode lag. Only the tiles the layout shows
+- Adaptive decoding for weak TVs: a hardware decoder for the hero tile (and for fullscreen),
+  software decoders for the rest, a shared keyframe-only pool for tiles beyond the live budget,
+  which adapts to RAM, cores and measured decode lag. Only the tiles the layout shows
   are streamed. Hardware refusals back off exponentially; a `configure` refused while the previous
   codec still holds the surface is retried at the next keyframes; a failed tile dims and offers the
   retry icon.

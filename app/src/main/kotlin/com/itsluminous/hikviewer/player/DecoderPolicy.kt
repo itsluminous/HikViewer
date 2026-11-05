@@ -20,14 +20,18 @@ enum class TileMode {
  * Assigns a [TileMode] to every tile from the hero and the live budget.
  *
  * Rules, in order: the hero tile (the 2x tile of a 1 + N layout, or the only tile of a
- * single-camera screen) comes first, then the rest in display order; tiles are live until
- * [liveLimit] is reached and keyframe-only after it. The first [maxHardwareDecoders] live tiles
- * get the hardware decoders (the hero, then arrangement positions 0 and 1 of a flat grid): on
- * the target TV a hardware tile costs 8 % of a core against a software tile's 22 %, so leaving
- * the two slots idle in a 4 x 3 grid, as rounds 5 and 6 did, gave away a quarter of a core. With
- * [hardwareOnly] the budget is ignored and only the hero decodes live: the grid asks for that
- * while a tile is being moved, when the remote must answer before the pictures do, and a moving
- * tile crossing positions 0 and 1 must not swap decoders on its way.
+ * single-camera screen) gets a hardware decoder; the remaining tiles are live in display order
+ * until [liveLimit] is reached; everything else is keyframe-only. With [hardwareOnly] the budget
+ * is ignored and only the hero decodes live: the grid asks for that while a tile is being moved,
+ * when the remote must answer before the pictures do.
+ *
+ * A flat grid leaves both hardware slots idle on purpose. Handing them to positions 0 and 1 was
+ * tried in round 6 (8 % of a core per hardware tile against 22 % for software): on the MiTV the
+ * `OMX.MS.AVC.Decoder` fed through the jitter buffer put its pictures out at 83 ± 60 ms (max
+ * 205 ms) while the paced software tiles next to it showed 83 ± 18-24 ms, and the device's idle
+ * share did not move (6-26 %, as before). Two visibly jerkier tiles for no measured headroom is
+ * the wrong trade in a grid whose complaint was jitter, so the hardware decoders stay with the
+ * hero and the single-camera screens, where they run unpaced.
  *
  * Focus is deliberately absent. Until round 5 the focused tile was handed a hardware decoder,
  * which swapped the tile's codec on every D-pad move: the picture went black for about a second
@@ -55,9 +59,9 @@ object DecoderPolicy {
         var hardware = 0
         val priority = listOfNotNull(hero) + (0 until tileCount).filter { it != hero }
         for (index in priority) {
-            if (hardwareOnly && index != hero) continue
+            val wantsHardware = index == hero && hardware < maxHardwareDecoders
+            if (hardwareOnly && !wantsHardware) continue
             if (live >= liveLimit) break
-            val wantsHardware = hardware < maxHardwareDecoders
             modes[index] =
                 if (wantsHardware) {
                     hardware++

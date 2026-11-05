@@ -141,6 +141,13 @@ class PlaybackViewModel(
     @Volatile private var firstPtsUs: Long? = null
 
     @Volatile private var firstPictureAt: Long? = null
+
+    /**
+     * True from the first seek step until the seek is committed: the stream keeps delivering
+     * pictures meanwhile, and letting them move the playhead would throw the seek away (the
+     * reopen would land where the stream was, not where the user pointed).
+     */
+    @Volatile private var seeking = false
     private var hopJob: Job? = null
     private var seekJob: Job? = null
     private var started = false
@@ -204,6 +211,7 @@ class PlaybackViewModel(
         repeatCount: Int = 0,
     ) {
         val seconds = PlaybackTimeline.seekStep(repeatCount) * direction
+        seeking = true
         stateFlow.update { it.copy(position = PlaybackTimeline.shift(it.day, it.position, seconds)) }
         seekJob?.cancel()
         seekJob =
@@ -215,6 +223,7 @@ class PlaybackViewModel(
 
     /** A tap or click on the bar at [fraction] of the day. */
     fun seekToFraction(fraction: Float) {
+        seeking = true
         stateFlow.update { it.copy(position = PlaybackTimeline.timeAt(it.day, fraction)) }
         commitSeek()
     }
@@ -223,6 +232,7 @@ class PlaybackViewModel(
     fun commitSeek() {
         seekJob?.cancel()
         seekJob = null
+        seeking = false
         val s = stateFlow.value
         if (s.phase == PlaybackPhase.PAUSED ||
             s.phase == PlaybackPhase.LOADING ||
@@ -317,6 +327,7 @@ class PlaybackViewModel(
         hopJob = null
         seekJob?.cancel()
         seekJob = null
+        seeking = false
         generation++
         player.stop()
     }
@@ -383,7 +394,7 @@ class PlaybackViewModel(
         w: PlaybackWindow,
         myGeneration: Int,
     ) {
-        if (myGeneration != generation || !stateFlow.value.speed.isRealTime) return
+        if (myGeneration != generation || seeking || !stateFlow.value.speed.isRealTime) return
         val now = clock()
         val pts = unit.presentationTimeUs
         val elapsedMillis =

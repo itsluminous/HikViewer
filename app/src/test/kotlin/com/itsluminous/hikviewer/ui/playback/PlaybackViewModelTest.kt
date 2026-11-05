@@ -9,6 +9,7 @@ import com.itsluminous.hikviewer.core.playback.RecordSegment
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
+import com.itsluminous.hikviewer.fakes.SyntheticStream
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.TileMode
 import com.itsluminous.hikviewer.player.TileState
@@ -171,6 +172,34 @@ class PlaybackViewModelTest {
         run()
         assertThat(account.playbackOpened).hasSize(5)
         assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.ENDED)
+    }
+
+    @Test
+    fun `pictures arriving between a seek step and its commit do not move the playhead back`() {
+        cloud.recordings =
+            { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
+        cloud.playbackPaced = true // pictures keep coming while the key is held
+        cloud.playbackFramesPerWindow = null
+        val vm = started()
+        run(SyntheticStream.FRAME_PERIOD_MILLIS * 6)
+        val playing = vm.state.value.position
+        assertThat(playing).isGreaterThan(today.atTime(11, 55))
+        vm.seekBy(+1) // DOWN: +10 s
+        val sought = vm.state.value.position
+        assertThat(sought).isEqualTo(PlaybackTimeline.shift(today, playing, 10))
+        run(SyntheticStream.FRAME_PERIOD_MILLIS * 3) // the stream delivers three more pictures
+        assertThat(vm.state.value.position).isEqualTo(sought)
+        vm.commitSeek() // UP
+        run()
+        assertThat(
+            account.playbackOpened
+                .last()
+                .second.begin,
+        ).isEqualTo(sought)
+        // After the commit the playhead follows the new window's pictures again.
+        run(SyntheticStream.FRAME_PERIOD_MILLIS * 6)
+        assertThat(vm.state.value.position).isAtLeast(sought)
+        vm.onStop()
     }
 
     @Test

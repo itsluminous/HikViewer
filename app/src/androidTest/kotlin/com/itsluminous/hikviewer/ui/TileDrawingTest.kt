@@ -166,8 +166,20 @@ class TileDrawingTest {
             retry = tile.findViewById(R.id.retry)
             check(retry.drawable != null && retry.background == null) { "retry must be a bare icon" }
             check(retry.contentDescription == activity.getString(R.string.tile_retry))
-            check(retry.requestFocus()) { "retry icon refused focus" }
         }
+        // The D-pad lands on the tile, never on the icon, and the icon grows all the same.
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        scenario.onActivity {
+            check(tile.isFocused) { "RIGHT did not focus the failed tile" }
+            check(!retry.isFocused) { "the D-pad must not land on the icon" }
+            check(retry.scaleX == CameraTileView.RETRY_FOCUS_SCALE) { "icon not scaled with its tile: ${retry.scaleX}" }
+        }
+        dpad(KeyEvent.KEYCODE_DPAD_LEFT)
+        scenario.onActivity {
+            check(!tile.isFocused && retry.scaleX == 1f) { "icon still scaled after focus left: ${retry.scaleX}" }
+        }
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        scenario.onActivity { check(retry.requestFocus()) { "retry icon refused focus" } }
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         scenario.onActivity {
             check(retry.isFocused) { "retry icon lost focus" }

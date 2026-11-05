@@ -84,21 +84,31 @@ class CameraTileViewTest {
 
     @Test
     fun `the retry icon is focusable, grows a tenth with focus and its click is the tile's click`() {
+        val grown = CameraTileView.RETRY_FOCUS_SCALE to CameraTileView.RETRY_FOCUS_SCALE
         tile.bind(TileState.Error("No video"))
         val retry = tile.findViewById<ImageButton>(R.id.retry)
         assertThat(retry.isFocusable).isTrue()
         assertThat(retry.isFocusableInTouchMode).isFalse()
-        // The tile takes focus before its descendants, so the D-pad lands on the tile, not the icon.
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(1f to 1f)
+        // The tile takes focus before its descendants, so the D-pad lands on the tile, not the
+        // icon; the icon grows all the same, which is how a D-pad user sees that OK will retry.
         tile.isFocusableInTouchMode = true
         assertThat(tile.requestFocus()).isTrue()
         assertThat(tile.isFocused).isTrue()
         assertThat(retry.isFocused).isFalse()
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(grown)
         retry.isFocusableInTouchMode = true
         assertThat(retry.requestFocus()).isTrue()
-        assertThat(retry.scaleX to retry.scaleY)
-            .isEqualTo(CameraTileView.RETRY_FOCUS_SCALE to CameraTileView.RETRY_FOCUS_SCALE)
-        tile.requestFocus()
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(grown)
+        tile.clearFocus()
         assertThat(retry.scaleX to retry.scaleY).isEqualTo(1f to 1f)
+        // A focused tile whose stream comes back loses the scale with the overlay, and gets it
+        // back with the next error.
+        tile.requestFocus()
+        tile.bind(TileState.Live)
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(1f to 1f)
+        tile.bind(TileState.Error("No video"))
+        assertThat(retry.scaleX to retry.scaleY).isEqualTo(grown)
         // Clicking the icon is clicking the tile: the grid's one click path reopens the stream.
         var tileClicks = 0
         tile.setOnClickListener { tileClicks++ }

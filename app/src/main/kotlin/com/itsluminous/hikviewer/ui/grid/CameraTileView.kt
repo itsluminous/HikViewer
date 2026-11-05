@@ -107,15 +107,13 @@ class CameraTileView
             // Never false: see the class KDoc on the Android 10 hole punch.
             clipChildren = true
             // The retry icon is the tile's own click (OK on the tile retries as well), so one code
-            // path reopens the stream however the user got there; the icon grows a tenth with focus
-            // since the tile's border cannot say which of the two holds it. The icon is an ordinary
-            // view inside the scrim: scaling it never touches the surface.
+            // path reopens the stream however the user got there. The icon grows a tenth when it
+            // holds focus (a pointer or accessibility can land on it) and when its tile does: the
+            // D-pad never reaches the icon itself, since the tile takes focus before its
+            // descendants, so this is how a D-pad user sees that OK will retry. The icon is an
+            // ordinary view inside the scrim: scaling it never touches the surface.
             binding.retry.setOnClickListener { performClick() }
-            binding.retry.setOnFocusChangeListener { button, focused ->
-                val scale = if (focused) RETRY_FOCUS_SCALE else 1f
-                button.scaleX = scale
-                button.scaleY = scale
-            }
+            binding.retry.setOnFocusChangeListener { _, _ -> updateRetryScale() }
             binding.surface.setZOrderMediaOverlay(true)
             binding.surface.holder.addCallback(
                 object : SurfaceHolder.Callback {
@@ -225,6 +223,15 @@ class CameraTileView
             } else {
                 binding.errorOverlay.visibility = GONE
             }
+            updateRetryScale()
+        }
+
+        /** The icon is scaled while it, or its tile with the icon showing, holds focus. */
+        private fun updateRetryScale() {
+            val grown = binding.retry.isFocused || (isFocused && showsRetry)
+            val scale = if (grown) RETRY_FOCUS_SCALE else 1f
+            binding.retry.scaleX = scale
+            binding.retry.scaleY = scale
         }
 
         override val stillWidth: Int get() = width.coerceAtMost(STILL_MAX_WIDTH)
@@ -258,6 +265,7 @@ class CameraTileView
         ) {
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
             binding.focusFrame.focused = gainFocus
+            updateRetryScale()
         }
 
         /** Sizes. */
@@ -265,7 +273,7 @@ class CameraTileView
             /** Thumbnails are never wider than this: a 480-wide still of a 960x480 stream is plenty for a tile. */
             const val STILL_MAX_WIDTH: Int = 480
 
-            /** The retry icon grows this much while it holds focus. */
+            /** The retry icon grows this much while it, or its tile with the icon up, holds focus. */
             const val RETRY_FOCUS_SCALE: Float = 1.1f
         }
     }

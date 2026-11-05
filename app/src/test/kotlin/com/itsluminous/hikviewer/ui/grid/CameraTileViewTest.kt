@@ -88,14 +88,27 @@ class CameraTileViewTest {
     }
 
     @Test
-    fun `focus shows the frame and scales up`() {
+    fun `focus shows the frame and scales it, while the tile and its surface never move`() {
         val frame = tile.findViewById<View>(R.id.focus_frame)
+        val surface = tile.surfaceView
         assertThat(frame.visibility).isEqualTo(View.INVISIBLE)
         tile.isFocusableInTouchMode = true // Robolectric views start in touch mode
         assertThat(tile.requestFocus()).isTrue()
         assertThat(frame.visibility).isEqualTo(View.VISIBLE)
+        org.robolectric.shadows.ShadowLooper
+            .idleMainLooper(CameraTileView.FOCUS_ANIMATION_MILLIS * 2, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertThat(frame.scaleX).isEqualTo(CameraTileView.FOCUS_SCALE)
+        assertThat(listOf(tile.scaleX, tile.scaleY, surface.scaleX, surface.scaleY)).containsExactly(1f, 1f, 1f, 1f)
+        assertThat(listOf(tile.translationZ, surface.translationZ, surface.translationX)).containsExactly(0f, 0f, 0f)
+        tile.lifted = true
+        org.robolectric.shadows.ShadowLooper
+            .idleMainLooper(CameraTileView.FOCUS_ANIMATION_MILLIS * 2, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertThat(frame.scaleX).isEqualTo(CameraTileView.LIFT_SCALE)
+        assertThat(tile.scaleX).isEqualTo(1f)
+        tile.lifted = false
         tile.clearFocus()
         assertThat(frame.visibility).isEqualTo(View.INVISIBLE)
+        assertThat(tile.clipChildren).isFalse() // the frame may draw past the tile's edge
     }
 
     @Test

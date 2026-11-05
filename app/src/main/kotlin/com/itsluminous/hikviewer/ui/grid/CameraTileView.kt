@@ -23,9 +23,14 @@ import kotlinx.coroutines.launch
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
  * nothing has been drawn yet, and a dim scrim with a centred Retry while the stream is down.
  *
- * Focus is made unmistakable on a TV viewed from the couch: the tile scales up 6 %, draws a 4 dp
- * accent border and rises above its neighbours, animated over 120 ms. A tile picked up for a
- * move ([lifted]) scales 10 % and rises further. A mouse pointer entering the tile requests focus
+ * Focus is made unmistakable on a TV viewed from the couch: a 4 dp accent frame appears and grows
+ * 6 % past the tile's edges with a shadow, animated over 120 ms; a tile picked up for a move
+ * ([lifted]) grows its frame 10 % and lifts it further. Only the frame moves: the `SurfaceView`
+ * underneath keeps its exact position. Animating the tile itself re-positioned the surface on
+ * every animation frame, which on Android 10 races the surface's own creation/destruction
+ * (`SurfaceView.positionChanged → applySurfaceTransforms`, a use-after-free in `libgui`) and
+ * crashed the MiTV at launch while 16 surfaces were being created.
+ * A mouse pointer entering the tile requests focus
  * so hover behaves like D-pad navigation; click/OK/tap are the normal click and a long press
  * (held OK, long click or long touch) is the long click, which the grid turns into a menu. The
  * surface is handed to the owner through [onSurface] whenever it is created or destroyed.
@@ -69,6 +74,8 @@ class CameraTileView
             isClickable = true
             isLongClickable = true
             setBackgroundResource(R.drawable.tile_background)
+            clipChildren = false // the focus frame grows past the tile's edges
+            clipToPadding = false
             binding.surface.setZOrderMediaOverlay(false)
             binding.surface.holder.addCallback(
                 object : SurfaceHolder.Callback {
@@ -202,10 +209,12 @@ class CameraTileView
         ) {
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
             applyTransform(animate = true)
-            binding.focusFrame.visibility = if (gainFocus) VISIBLE else INVISIBLE
         }
 
+        /** Grows the frame, never the tile: see the class KDoc. */
         private fun applyTransform(animate: Boolean) {
+            val frame = binding.focusFrame
+            frame.visibility = if (isFocused || lifted) VISIBLE else INVISIBLE
             val scale =
                 when {
                     lifted -> LIFT_SCALE
@@ -219,22 +228,23 @@ class CameraTileView
                     else -> 0f
                 }
             if (animate) {
-                animate()
+                frame
+                    .animate()
                     .scaleX(scale)
                     .scaleY(scale)
                     .translationZ(z)
                     .setDuration(FOCUS_ANIMATION_MILLIS)
                     .start()
             } else {
-                scaleX = scale
-                scaleY = scale
-                translationZ = z
+                frame.scaleX = scale
+                frame.scaleY = scale
+                frame.translationZ = z
             }
         }
 
         /** Focus visuals. */
         companion object {
-            /** 6 % larger when focused. */
+            /** The frame is 6 % larger than the tile when focused. */
             const val FOCUS_SCALE: Float = 1.06f
 
             /** 10 % larger while being moved. */

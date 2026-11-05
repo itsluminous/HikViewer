@@ -278,11 +278,19 @@ class GridActivity : AppCompatActivity() {
         binding.status.text = resources.getQuantityString(R.plurals.grid_live_count, live, live)
     }
 
+    /**
+     * Focuses the remembered tile when nothing in the grid has focus yet (first render, back from
+     * another screen). A render while a tile already holds focus leaves it alone: focus belongs to
+     * the view, so it follows a moved tile by itself, and the first frames after launch (16
+     * surfaces being created) must not be spent re-requesting focus every state change.
+     */
     private fun restoreFocus() {
         val grid = binding.grid
         if (grid.childCount == 0) return
-        val wanted = (pendingFocus ?: viewModel.focusedIndex).coerceIn(0, grid.childCount - 1)
+        val pending = pendingFocus
         pendingFocus = null
+        if (pending == null && grid.hasFocus()) return
+        val wanted = (pending ?: viewModel.focusedIndex).coerceIn(0, grid.childCount - 1)
         if (!binding.topBar.hasFocus()) grid.childAtPosition(wanted)?.requestFocus()
     }
 

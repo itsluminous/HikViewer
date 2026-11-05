@@ -10,6 +10,7 @@ import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.swipeLeft
 import androidx.test.espresso.action.ViewActions.swipeRight
+import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
@@ -81,6 +82,28 @@ class PhoneNavigationTest {
     fun tearDown() {
         if (::scenario.isInitialized) scenario.close()
         finishAllActivities()
+        if (rotated) rotate(ROTATION_PORTRAIT)
+    }
+
+    private var rotated = false
+
+    /**
+     * Turns the device the way a hand would, through the system's rotation setting (the suite
+     * leaves the accelerometer off), so the resumed Activity goes through a real configuration
+     * change rather than a `requestedOrientation` it chose for itself.
+     */
+    private fun rotate(userRotation: Int) {
+        rotated = userRotation != ROTATION_PORTRAIT
+        shell("settings put system accelerometer_rotation 0")
+        shell("settings put system user_rotation $userRotation")
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        waitFor(ROTATION_MILLIS)
+    }
+
+    private fun shell(command: String) {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).readBytes()
+        }
     }
 
     @Test
@@ -123,6 +146,40 @@ class PhoneNavigationTest {
         onView(withId(R.id.top_bar)).check(matches(isDisplayed()))
     }
 
+    /** Footage opened upright keeps playing sideways on the picture alone, and the bar is back when upright again. */
+    @Test
+    fun turningThePhoneSwapsTheCameraScreenLayoutAndKeepsTheFootage() {
+        onView(tile(1)).perform(click())
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
+        waitFor(SEGMENTS_MILLIS)
+        onView(withId(R.id.time_bar)).perform(click())
+        onView(withId(R.id.live_badge)).check(matches(not(isDisplayed())))
+        onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
+
+        rotate(ROTATION_LANDSCAPE)
+        val sideways = resumedActivity()
+        assert(sideways is PhoneCameraActivity) { "expected the phone camera screen sideways, got $sideways" }
+        assert(sideways.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) { "not landscape" }
+        assert(!(sideways as PhoneCameraActivity).hasTimeline) { "the landscape layout has no time bar" }
+        onView(withId(R.id.time_bar)).check(doesNotExist())
+        onView(withId(R.id.speed_button)).check(doesNotExist())
+        onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
+        onView(withId(R.id.live_badge)).check(matches(not(isDisplayed()))) // still the footage, not live
+        onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
+        val frame = sideways.findViewById<View>(R.id.video_frame)
+        assert(frame.width == frame.height * 16 / 9) { "sideways picture is ${frame.width}x${frame.height}, not 16:9" }
+
+        rotate(ROTATION_PORTRAIT)
+        val upright = resumedActivity()
+        assert((upright as PhoneCameraActivity).hasTimeline) { "the portrait layout has the time bar" }
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
+        onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
+        onView(withId(R.id.live_button)).check(matches(isEnabled()))
+        onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
     private fun resumedActivity(): android.app.Activity {
         lateinit var activity: android.app.Activity
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -153,5 +210,12 @@ class PhoneNavigationTest {
     private companion object {
         /** Time for the fake's recording search and the first live frames. */
         const val SEGMENTS_MILLIS = 1_500L
+
+        /** `user_rotation` values: 0 is natural (portrait on a phone), 1 is turned 90° anticlockwise. */
+        const val ROTATION_PORTRAIT = 0
+        const val ROTATION_LANDSCAPE = 1
+
+        /** The system's rotation animation plus the recreated Activity's first frames. */
+        const val ROTATION_MILLIS = 2_500L
     }
 }

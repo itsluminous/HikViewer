@@ -185,7 +185,23 @@ Reading a TV session: the release build logs one INFO line per tile every 10 s u
 number only; no serial or session id is ever logged. A healthy MiTV (Android 10, 4×A55) shows every
 live tile at the recorder's frame rate with `in − out ≤ 5`, `queued=0`, no `decoder stalled` after the
 first minutes, `media.codec`/OMX around 150–200 % and the app 60–90 % of one core with 7 software tiles,
-and about 85 MB PSS.
+and about 85 MB PSS. Keyframe tiles add `stills=N stillAge=ms` to their line; a healthy one gains a
+still a second (`KeyframePool` logs the first twenty jobs and every hundredth with the still's size).
+
+When the remote feels slow, the question is where the time goes, and the answers are in different
+places. The **main thread**: every key logs `key KEYCODE_… down reached the grid N ms after the
+press` under `HikViewer` (healthy: under 50 ms); the debug build also installs a main-thread
+watchdog (`MainWatchdog`: every message over 100 ms with the main thread's stack, taken while it is
+still running) and a logging `StrictMode` thread policy, both from `DebugInitProvider`, so nothing
+of it is in the release build. The **display**: `dumpsys gfxinfo <pkg>` (janky %, percentiles; reset
+it first, then stream for a minute; `framestats` splits each frame into UI and GPU stages) and
+`dumpsys SurfaceFlinger` (`HWC missed frame count` must not grow; the `Display 0 HWC layers` table
+says which layers the composer takes as overlays and which it sends to the GPU as `CLIENT`). On the
+MiTV the composer takes one overlay and sends the rest to the GPU, which is why `RenderPacer` lines
+the software tiles' pictures up on a 15 Hz cadence. Do not time `input keyevent` itself: starting
+that tool takes 2–3 s on a loaded TV. `scripts/tv-login.sh <apk> <package>` installs a build on the
+real TV through `tv.py` (no stock adb) and types the credentials and the verification code from
+`local.env`, the way `emu-login.sh` does on an emulator.
 
 ## Release signing
 

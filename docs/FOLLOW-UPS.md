@@ -45,13 +45,26 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   43 % of one core with 8 live software tiles (budget ≤ 150 % / ≤ 40 %). The fixes removed two churn
   sources (surface switching, hardware retries every 5 s) but the TV has not been re-measured.
 
-- **Confirm the overlay fix on the MiTV.** Round 5 traced the one-dot / missing-focus-border symptom to the
-  Android ≤ 11 `SurfaceView` hole punch (`drawColor(CLEAR)` over the clip) meeting the tile's
-  `clipChildren = false`; the fix (clipped tiles, media-overlay surfaces, an inset border overlay drawn
-  last) was verified on the API 34 TV emulator (Espresso `TileDrawingTest`, demo screenshot), where the
-  bug never reproduced because API 31+ punches only the view's bounds. The proof is a 4 × 3 grid on the
-  TV with twelve dots top-right and a border that follows every D-pad move; if a dot is still missing,
-  `adb shell dumpsys SurfaceFlinger | grep -i hikviewer` shows whether a surface sits above the window.
+- **Overlay fix confirmed on the MiTV (round 5, 16:40).** The round-5 one-dot / missing-focus-border
+  symptom came from the Android ≤ 11 `SurfaceView` hole punch (`drawColor(CLEAR)` over the clip)
+  meeting the tile's `clipChildren = false`; with the fix (clipped tiles, media-overlay surfaces, an
+  inset border overlay drawn last) a 4 × 4 grid on the TV shows sixteen green dots top-right and the
+  eight keyframe tiles show their stills (a screenshot scan found 140–170 green pixels in every tile's
+  top-right corner and no black tile). The same wipe had hidden the keyframe stills, which the pool had
+  been delivering all along (`KeyframePool` / `TilePlayer … still #N` logs).
+- **Leaving the grid stops eight codecs on the main thread.** `surfaceDestroyed` → `TilePlayer.
+  attachSurface(null)` releases the tile's decoder synchronously (deliberately: the surface is about
+  to be freed and a codec drawing into a freed surface crashed the emulator). On the MiTV the
+  watchdog measured that traversal at 400–520 ms when opening fullscreen or settings from a grid of
+  eight live tiles — a visible hitch on the transition, not during streaming. An alternative that keeps
+  the safety: hand the release to `DecoderReleaser` and have `surfaceDestroyed` wait on the future
+  with a short timeout, or `MediaCodec.setOutputSurface` to a dummy surface first on API 23+.
+- **`RenderPacer` is tuned for one composer.** The 15 Hz shared cadence for software tiles exists
+  because the MiTV's composer takes one overlay and GPU-composites the rest. A TV whose composer takes
+  all 17 layers gains nothing from it and loses 0–67 ms of live latency per picture; a 25 fps camera is
+  shown at 15 fps in a tile. If that matters, derive the slot from the measured frame rate or disable
+  pacing when `dumpsys SurfaceFlinger` would show every layer as `DEVICE` (not readable from an app:
+  the only in-app proxy is the HWUI GPU stage time from `FrameMetrics`).
 - **A 4-minute TV-wide freeze seen once.** During round 4 (12:28, first install of the live-dot build)
   the MiTV stopped logging from every process for four minutes right after launch; `lowmemorykiller`
   had just killed nine cached processes and the load average was 67 afterwards. The app survived and

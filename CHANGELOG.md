@@ -45,6 +45,18 @@ All notable changes to HikViewer are recorded here. The format follows
   children, the surfaces are media overlays, the focus border is a 4 dp stroke drawn inset inside
   the tile by an overlay view that is the tile's last child (no scale, no elevation; a lifted tile
   gets a thicker stroke and an accent wash), and the grid draws the focused tile last.
+- The remote lagged by seconds while a grid streamed on the MiTV. The main thread was not the
+  bottleneck (a D-pad press reaches the grid in 4-16 ms and no main-thread message runs over
+  100 ms while streaming; a debug-only watchdog and `StrictMode` now report both); the display was.
+  The vendor composer gives the grid one hardware overlay and SurfaceFlinger composites the other 16
+  layers on the GPU, and eight tiles at 12 fps with uncorrelated phases made it recompose the whole
+  screen ~60 times a second, so the app's own frames (focus border, top bar) queued behind it.
+  Software tiles now present their pictures on a shared 15 Hz cadence (`RenderPacer`), which lands
+  them in the same vsync: janky frames 51 % → 20 %, frame p90 32 → 21 ms, SurfaceFlinger 32 → 21 %
+  CPU, no composer-missed frames, tile frame rate unchanged. Hero and fullscreen render at once.
+- Tiles beyond the live budget showed black on the MiTV. The keyframe pool and the still sink were
+  fine (they now log their deliveries); the stills were wiped by the same unclipped hole punch as the
+  dots above. A Robolectric test covers the whole path from the first IDR to a non-empty bitmap.
 - Software-decoded tiles froze for a few seconds about once a minute on the MiTV, and in earlier
   builds were then demoted to keyframe stills one after another. The cause was in the decryptor:
   with the "type hint" encryption variant a clear P-slice is mistaken for an encrypted one once in

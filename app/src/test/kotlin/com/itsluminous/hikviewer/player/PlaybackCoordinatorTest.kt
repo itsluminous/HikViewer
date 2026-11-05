@@ -39,6 +39,7 @@ class PlaybackCoordinatorTest {
         tickMillis = 500,
         clock = { now },
         dispatcher = dispatcher,
+        releaser = { it.release() },
     )
 
     private val pool = NoopKeyframePool()

@@ -20,6 +20,8 @@ class PlaybackFactory(
     private val poolFactory: () -> KeyframeDecoderPool = { KeyframeDecoderPool() },
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val tickMillis: Long = PlaybackCoordinator.DEFAULT_TICK_MILLIS,
+    /** How players tear decoders down; the recorder tests pass a synchronous one. */
+    private val releaser: (TileDecoder) -> Unit = DecoderReleaser::release,
 ) {
     /** A coordinator for [opener] on [scope]. */
     fun create(
@@ -37,6 +39,7 @@ class PlaybackFactory(
         decoderFactory = decoderFactory,
         tickMillis = tickMillis,
         dispatcher = dispatcher,
+        releaser = releaser,
     )
 
     /**
@@ -56,6 +59,7 @@ class PlaybackFactory(
         pickCodec = pickCodec,
         decoderFactory = decoderFactory,
         dispatcher = dispatcher,
+        releaser = releaser,
     ).also { it.mode = TileMode.HW_LIVE }
 
     /** Suggested watchdog period for players created here. */

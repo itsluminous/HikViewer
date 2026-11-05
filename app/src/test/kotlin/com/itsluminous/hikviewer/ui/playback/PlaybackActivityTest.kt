@@ -132,9 +132,13 @@ class PlaybackActivityTest {
                 a.findViewById<View>(R.id.speed_button).performClick() // +10x → -10x
                 ShadowLooper.idleMainLooper()
                 assertThat(a.text(R.id.speed_button)).isEqualTo("-10x")
+                val opensToday = account.playbackOpened.size
                 a.findViewById<View>(R.id.date_chip).performClick()
                 awaitUi { account.searched.size == 2 }
                 assertThat(a.text(R.id.date_chip)).contains(LocalDate.now().minusDays(1).toString())
+                // The search answers on an IO thread; the day's first hop opens once the main
+                // thread has taken the segments. Only then is a seek acted on (LOADING ignores it).
+                awaitUi { account.playbackOpened.size > opensToday }
                 val opens = account.playbackOpened.size
                 a.findViewById<TimeBarView>(R.id.time_bar).onSeek!!.invoke(0.75f)
                 awaitUi { account.playbackOpened.size > opens }

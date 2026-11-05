@@ -34,6 +34,8 @@ class PlaybackCoordinator(
     private val tickMillis: Long = DEFAULT_TICK_MILLIS,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** How players tear decoders down; tests pass a synchronous one. */
+    private val releaser: (TileDecoder) -> Unit = DecoderReleaser::release,
 ) {
     private val budget = LiveBudget(capabilities) { Log.i(TAG, it) }
     private val playersFlow = MutableStateFlow<List<TilePlayer>>(emptyList())
@@ -67,14 +69,15 @@ class PlaybackCoordinator(
     fun setCameras(cameras: List<Camera>) {
         val existing = playersFlow.value.associateBy { it.camera.key }
         val next =
-            cameras.map { camera ->
-                existing[camera.key] ?: TilePlayer(camera, opener, pool, quality, pickCodec, decoderFactory, dispatcher)
-            }
+            cameras.map { camera -> existing[camera.key] ?: newPlayer(camera) }
         existing.values.filter { it !in next }.forEach { it.stop() }
         playersFlow.value = next
         if (running) next.forEach { it.start(scope) }
         applyPolicy()
     }
+
+    private fun newPlayer(camera: Camera) =
+        TilePlayer(camera, opener, pool, quality, pickCodec, decoderFactory, dispatcher, releaser = releaser)
 
     /** Opens every stream and starts the watchdog ticker. */
     fun start() {
@@ -82,8 +85,10 @@ class PlaybackCoordinator(
         running = true
         playersFlow.value.forEach { it.start(scope) }
         applyPolicy()
+        // On the players' dispatcher, not the owner's (main-thread) scope: a tick walks every
+        // player's lock and may detach a stalled decoder, none of which belongs on the UI thread.
         ticker =
-            scope.launch {
+            scope.launch(dispatcher) {
                 while (isActive) {
                     delay(tickMillis)
                     tick()

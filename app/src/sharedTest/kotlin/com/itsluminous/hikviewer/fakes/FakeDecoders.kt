@@ -5,6 +5,7 @@ import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.player.KeyframeDecoderPool
 import com.itsluminous.hikviewer.player.PlaybackFactory
+import com.itsluminous.hikviewer.player.StillSink
 import com.itsluminous.hikviewer.player.TileDecoder
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,10 @@ class RecordingDecoder(
     var released = false
         private set
 
+    /** The thread [release] ran on. */
+    var releasedOn: Thread? = null
+        private set
+
     /** What [checkStall] answers. */
     var stalled = false
 
@@ -57,6 +62,7 @@ class RecordingDecoder(
     override fun checkStall(nowMillis: Long): Boolean = stalled
 
     override fun release() {
+        releasedOn = Thread.currentThread()
         released = true
     }
 
@@ -99,6 +105,8 @@ class RecordingDecoderFactory {
         poolFactory = { NoopKeyframePool().also(pools::add) },
         dispatcher = dispatcher,
         tickMillis = 50,
+        // Synchronous: a test asserts `released` right after the stop that caused it.
+        releaser = { it.release() },
     )
 }
 
@@ -116,7 +124,7 @@ class NoopKeyframePool : KeyframeDecoderPool(maxDecoders = 1, pickCodec = { null
 
     override fun submit(
         tile: Any,
-        surface: Surface,
+        sink: StillSink,
         unit: AccessUnit,
     ) {
         submitted += tile to unit

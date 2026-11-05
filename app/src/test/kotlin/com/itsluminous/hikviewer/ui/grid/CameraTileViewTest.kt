@@ -51,6 +51,35 @@ class CameraTileViewTest {
     }
 
     @Test
+    fun `keyframe thumbnails are sized to the tile, shown in keyframe mode and hidden when live`() {
+        val still = tile.findViewById<android.widget.ImageView>(R.id.still)
+        assertThat(tile.stillWidth).isEqualTo(0) // not laid out: the pool decodes nothing
+        tile.measure(
+            View.MeasureSpec.makeMeasureSpec(1_920, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1_080, View.MeasureSpec.EXACTLY),
+        )
+        tile.layout(0, 0, 1_920, 1_080)
+        assertThat(tile.stillWidth).isEqualTo(CameraTileView.STILL_MAX_WIDTH) // capped, aspect kept
+        assertThat(tile.stillHeight).isEqualTo(CameraTileView.STILL_MAX_WIDTH * 1_080 / 1_920)
+        tile.bind(TileState.Keyframe)
+        assertThat(still.visibility).isEqualTo(View.GONE) // nothing decoded yet
+        tile.onStill(IntArray(4 * 2) { 0xFF112233.toInt() }, 4, 2)
+        org.robolectric.shadows.ShadowLooper
+            .idleMainLooper()
+        assertThat(still.visibility).isEqualTo(View.VISIBLE)
+        val shown = (still.drawable as android.graphics.drawable.BitmapDrawable).bitmap
+        assertThat(shown.width).isEqualTo(4)
+        assertThat(shown.height).isEqualTo(2)
+        // The next picture goes into the other bitmap, so the one on screen is never painted over.
+        tile.onStill(IntArray(4 * 2), 4, 2)
+        org.robolectric.shadows.ShadowLooper
+            .idleMainLooper()
+        assertThat((still.drawable as android.graphics.drawable.BitmapDrawable).bitmap).isNotSameInstanceAs(shown)
+        tile.bind(TileState.Live)
+        assertThat(still.visibility).isEqualTo(View.GONE)
+    }
+
+    @Test
     fun `binding states never replaces child views`() {
         val children = (0 until tile.childCount).map { tile.getChildAt(it) }
         listOf(TileState.Connecting, TileState.Live, TileState.Error("x"), TileState.Keyframe, TileState.Live)

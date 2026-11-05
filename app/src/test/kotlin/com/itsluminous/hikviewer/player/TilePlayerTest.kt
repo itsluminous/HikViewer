@@ -31,12 +31,29 @@ class TilePlayerTest {
     private val dispatcher = StandardTestDispatcher()
     private var now = 0L
 
+    /** A sink with a size, so keyframe mode has somewhere to send thumbnails. */
+    private val sink =
+        object : StillSink {
+            override val stillWidth = 320
+            override val stillHeight = 180
+
+            override fun onStill(
+                pixels: IntArray,
+                width: Int,
+                height: Int,
+            ) = Unit
+        }
+
+    /** Synchronous teardown, so a test can assert `released` right after the call that caused it. */
+    private val releaseNow: (TileDecoder) -> Unit = { it.release() }
+
     private fun player(
         stream: Flow<AccessUnit> = SyntheticStream.flow(paced = false).take(FRAMES),
         statusHook: ((StreamStatus) -> Unit) -> Unit = {
             it(StreamStatus.Connecting(1))
             it(StreamStatus.Streaming)
         },
+        releaser: (TileDecoder) -> Unit = releaseNow,
     ) = TilePlayer(
         camera,
         opener = { _, _, onStatus ->
@@ -49,7 +66,8 @@ class TilePlayerTest {
         decoderFactory = decoders.factory,
         dispatcher = dispatcher,
         clock = { now },
-    )
+        releaser = releaser,
+    ).also { it.attachStillSink(sink) }
 
     private fun TestScope.run(player: TilePlayer) {
         player.start(this)
@@ -57,8 +75,9 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `without a surface nothing is decoded`() = runTest(dispatcher) {
+    fun `without a surface no live decoder is built`() = runTest(dispatcher) {
         val p = player()
+        p.mode = TileMode.SW_LIVE
         run(p)
         assertThat(decoders.created).isEmpty()
         assertThat(p.state.value).isEqualTo(TileState.Connecting)
@@ -136,14 +155,89 @@ class TilePlayerTest {
         }
 
     @Test
-    fun `keyframe mode hands keyframes to the pool`() = runTest(dispatcher) {
+    fun `keyframe mode hands keyframes to the pool for the tile's still sink, never a surface`() = runTest(dispatcher) {
         val p = player()
-        p.attachSurface(surface)
-        run(p)
+        run(p) // no surface attached: thumbnails need none
         assertThat(decoders.created).isEmpty()
         assertThat(pool.submitted).isNotEmpty()
         assertThat(pool.submitted.all { it.second.isKeyframe }).isTrue()
         assertThat(p.state.value).isEqualTo(TileState.Keyframe)
+        p.stop()
+        pool.submitted.clear()
+        val noSink = player()
+        noSink.attachStillSink(null)
+        noSink.attachSurface(surface)
+        run(noSink)
+        assertThat(pool.submitted).isEmpty()
+        noSink.stop()
+    }
+
+    @Test
+    fun `the default releaser tears decoders down on the release thread, never the caller's`() = runTest(dispatcher) {
+        val p = player(releaser = DecoderReleaser::release)
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        val d = decoders.created.single()
+        p.mode = TileMode.KEYFRAME // the call a focus change makes on the main thread
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!d.released && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        assertThat(d.released).isTrue()
+        assertThat(d.releasedOn!!.name).isEqualTo(DecoderReleaser.THREAD_NAME)
+        assertThat(d.releasedOn).isNotSameInstanceAs(Thread.currentThread())
+        p.stop()
+    }
+
+    @Test
+    fun `a rebuild on the stream thread releases the old decoder before starting the new one`() = runTest(dispatcher) {
+        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        p.start(this)
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+        dispatcher.scheduler.runCurrent()
+        val first = decoders.created.single()
+        first.stalled = true
+        p.tick(10_000) // detaches; the old decoder is torn down (synchronously here)
+        assertThat(first.released).isTrue()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(decoders.created).hasSize(2)
+        assertThat(decoders.created.last().started).isTrue()
+        assertThat(p.decodersCreated).isEqualTo(2)
+        p.stop()
+    }
+
+    @Test
+    fun `hardware refusals back off exponentially and a user retry resets the backoff`() = runTest(dispatcher) {
+        repeat(4) { decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false) }
+        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 40))
+        p.attachSurface(surface)
+        p.mode = TileMode.HW_LIVE
+        p.start(this)
+
+        fun hardwareAttempts() = decoders.created.count { it.codecName.startsWith("fake.hw") }
+
+        fun advanceTo(millis: Long) {
+            now = millis
+            dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * (FRAMES + 1))
+            dispatcher.scheduler.runCurrent()
+        }
+        advanceTo(0)
+        assertThat(hardwareAttempts()).isEqualTo(1) // refused at once, software took over
+        advanceTo(TilePlayer.HW_RETRY_MILLIS - 1)
+        assertThat(hardwareAttempts()).isEqualTo(1)
+        advanceTo(TilePlayer.HW_RETRY_MILLIS)
+        assertThat(hardwareAttempts()).isEqualTo(2) // 5 s later: tried again, refused again
+        advanceTo(TilePlayer.HW_RETRY_MILLIS + TilePlayer.HW_RETRY_MILLIS * 2 - 1)
+        assertThat(hardwareAttempts()).isEqualTo(2) // the second wait is 10 s, not 5
+        advanceTo(TilePlayer.HW_RETRY_MILLIS + TilePlayer.HW_RETRY_MILLIS * 2)
+        assertThat(hardwareAttempts()).isEqualTo(3)
+        advanceTo(now + TilePlayer.HW_RETRY_MILLIS * 4 - 1)
+        assertThat(hardwareAttempts()).isEqualTo(3) // 20 s
+        p.retry(this) // the user's Retry starts over at 5 s
+        advanceTo(now)
+        assertThat(hardwareAttempts()).isEqualTo(4)
+        assertThat(decoders.created.last().codecName).isEqualTo("fake.sw.video/avc")
         p.stop()
     }
 
@@ -211,6 +305,7 @@ class TilePlayerTest {
                 pickCodec = decoders::pickCodec,
                 decoderFactory = decoders.factory,
                 dispatcher = dispatcher,
+                releaser = releaseNow,
             )
         decoders.startFailures += "fake.sw.video/avc" to codecException(7, transient = false)
         p.attachSurface(surface)

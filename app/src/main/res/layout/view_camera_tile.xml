@@ -9,6 +9,16 @@
         android:layout_height="match_parent"
         android:importantForAccessibility="no" />
 
+    <!-- Keyframe thumbnails of a tile that is not live, drawn over the (idle) surface; stretched like
+         the decoder stretches a live picture onto the surface. -->
+    <ImageView
+        android:id="@+id/still"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/name"
         android:layout_width="wrap_content"

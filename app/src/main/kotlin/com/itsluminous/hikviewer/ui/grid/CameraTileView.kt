@@ -1,6 +1,9 @@
 package com.itsluminous.hikviewer.ui.grid
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -9,6 +12,7 @@ import android.view.View
 import android.widget.FrameLayout
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
+import com.itsluminous.hikviewer.player.StillSink
 import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
 import kotlinx.coroutines.CoroutineScope
@@ -31,8 +35,15 @@ class CameraTileView
     constructor(
         context: Context,
         attrs: AttributeSet? = null,
-    ) : FrameLayout(context, attrs) {
+    ) : FrameLayout(context, attrs),
+        StillSink {
         private val binding = ViewCameraTileBinding.inflate(LayoutInflater.from(context), this)
+
+        private val mainThread = Handler(Looper.getMainLooper())
+
+        /** Two thumbnail bitmaps: the pool writes the back one while the front one is on screen. */
+        private var frontStill: Bitmap? = null
+        private var backStill: Bitmap? = null
 
         /** Receives the live surface, or null when it is gone. */
         var onSurface: ((android.view.Surface?) -> Unit)? = null
@@ -123,6 +134,7 @@ class CameraTileView
             onState: (TileState) -> Unit = {},
         ): Job {
             onSurface = player::attachSurface
+            player.attachStillSink(this)
             // The holder's surface is invalid before creation and after destruction; only a live one is handed over.
             binding.surface.holder.surface
                 ?.takeIf { it.isValid }
@@ -143,14 +155,43 @@ class CameraTileView
             onSurface = null
         }
 
-        /** Shows the spinner, the Retry overlay or neither for [state]. Idempotent: no view is recreated. */
+        /**
+         * Shows the spinner, the Retry overlay or neither for [state]. Idempotent: no view is
+         * recreated. A thumbnail stays up only while the tile is in keyframe mode; a live picture or
+         * a spinner must not be hidden behind the last still.
+         */
         fun bind(state: TileState) {
             binding.spinner.visibility = if (state == TileState.Connecting) VISIBLE else GONE
+            if (state != TileState.Keyframe) binding.still.visibility = GONE
             if (state is TileState.Error) {
                 binding.errorMessage.text = state.message
                 binding.errorOverlay.visibility = VISIBLE
             } else {
                 binding.errorOverlay.visibility = GONE
+            }
+        }
+
+        override val stillWidth: Int get() = width.coerceAtMost(STILL_MAX_WIDTH)
+
+        override val stillHeight: Int get() = if (width == 0) 0 else height * stillWidth / width
+
+        /** On the pool's thread: paints the back bitmap, then swaps it in on the main thread. */
+        override fun onStill(
+            pixels: IntArray,
+            width: Int,
+            height: Int,
+        ) {
+            val target =
+                backStill?.takeIf { it.width == width && it.height == height }
+                    ?: Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            target.setPixels(pixels, 0, width, 0, 0, width, height)
+            // Not View.post: that waits for the view to be attached to a window, and a decoded
+            // picture that arrives a moment before attachment must still be shown.
+            mainThread.post {
+                backStill = frontStill
+                frontStill = target
+                binding.still.setImageBitmap(target)
+                binding.still.visibility = VISIBLE
             }
         }
 
@@ -201,5 +242,8 @@ class CameraTileView
 
             /** Focus animation length. */
             const val FOCUS_ANIMATION_MILLIS: Long = 120
+
+            /** Thumbnails are never wider than this: a 480-wide still of a 960x480 stream is plenty for a tile. */
+            const val STILL_MAX_WIDTH: Int = 480
         }
     }

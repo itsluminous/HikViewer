@@ -51,6 +51,18 @@ class CameraTileViewTest {
     }
 
     @Test
+    fun `the corner dot is red until frames flow and green while they do`() {
+        val dot = tile.findViewById<View>(R.id.live_dot)
+        assertThat(dot.visibility).isEqualTo(View.VISIBLE)
+        assertThat(tile.framesFlowing).isFalse()
+        assertThat(dot.backgroundTintList!!.defaultColor).isEqualTo(context.getColor(R.color.live_dot_stalled))
+        tile.framesFlowing = true
+        assertThat(dot.backgroundTintList!!.defaultColor).isEqualTo(context.getColor(R.color.live_dot_flowing))
+        tile.framesFlowing = false
+        assertThat(dot.backgroundTintList!!.defaultColor).isEqualTo(context.getColor(R.color.live_dot_stalled))
+    }
+
+    @Test
     fun `keyframe thumbnails are sized to the tile, shown in keyframe mode and hidden when live`() {
         val still = tile.findViewById<android.widget.ImageView>(R.id.still)
         assertThat(tile.stillWidth).isEqualTo(0) // not laid out: the pool decodes nothing

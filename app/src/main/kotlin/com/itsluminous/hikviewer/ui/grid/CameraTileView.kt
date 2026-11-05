@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.ui.grid
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +11,7 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.widget.FrameLayout
+import androidx.core.content.ContextCompat
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
 import com.itsluminous.hikviewer.player.StillSink
@@ -21,7 +23,9 @@ import kotlinx.coroutines.launch
 
 /**
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
- * nothing has been drawn yet, and a dim scrim with a centred Retry while the stream is down.
+ * nothing has been drawn yet, a dim scrim with a centred Retry while the stream is down, and a
+ * dot in the top-left corner that is green while pictures reach the screen and red otherwise
+ * ([framesFlowing]; the player samples it twice a second, so the dot never redraws per frame).
  *
  * Focus is made unmistakable on a TV viewed from the couch: a 4 dp accent frame appears and grows
  * 6 % past the tile's edges with a shadow, animated over 120 ms; a tile picked up for a move
@@ -122,6 +126,14 @@ class CameraTileView
                 binding.fps.visibility = if (value) VISIBLE else GONE
             }
 
+        /** Green dot while true (pictures within the last ~2 s), red while false. */
+        var framesFlowing: Boolean = false
+            set(value) {
+                field = value
+                val color = if (value) R.color.live_dot_flowing else R.color.live_dot_stalled
+                binding.liveDot.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, color))
+            }
+
         /** Rendered frames per second for the counter; whole numbers read better from a couch. */
         var frameRate: Float = 0f
             set(value) {
@@ -154,6 +166,7 @@ class CameraTileView
                     }
                 }
                 launch { player.frameRate.collect { frameRate = it } }
+                launch { player.framesFlowing.collect { framesFlowing = it } }
             }
         }
 

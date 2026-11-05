@@ -34,6 +34,17 @@
         android:textSize="14sp"
         tools:text="Gate" />
 
+    <!-- Live dot: green while pictures reach the screen, red while none has for ~2 s. -->
+    <View
+        android:id="@+id/live_dot"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="start|top"
+        android:layout_margin="6dp"
+        android:background="@drawable/live_dot"
+        android:backgroundTint="@color/live_dot_stalled"
+        android:importantForAccessibility="no" />
+
     <!-- Optional rendered-fps counter (Settings → Show frame rate). -->
     <TextView
         android:id="@+id/fps"

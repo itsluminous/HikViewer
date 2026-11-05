@@ -8,9 +8,9 @@ class AccessUnitAssemblerTest {
     private val start = byteArrayOf(0, 0, 0, 1)
 
     @Test
-    fun `real capture assembles into 31 pictures with 3 keyframes and csd`() {
+    fun `synthetic clip assembles into 31 pictures with 3 keyframes and csd`() {
         val demuxer = TsDemuxer()
-        val nals = demuxer.feed(Fixtures.bytes("ch1_sub_2s5.ts")) + demuxer.flush()
+        val nals = demuxer.feed(Fixtures.bytes("synthetic_sub_2s5.ts")) + demuxer.flush()
         val assembler = AccessUnitAssembler(VideoCodec.H264)
 
         val units = nals.mapNotNull { assembler.feed(it) } + listOfNotNull(assembler.flush())

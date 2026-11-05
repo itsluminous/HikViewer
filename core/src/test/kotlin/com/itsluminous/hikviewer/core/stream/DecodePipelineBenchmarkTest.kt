@@ -8,7 +8,7 @@ import java.lang.management.ManagementFactory
 import java.nio.ByteBuffer
 
 /**
- * Hot-path cost of [DecodePipeline] on the JVM: one encrypted GOP of the real sub-stream, packed
+ * Hot-path cost of [DecodePipeline] on the JVM: one encrypted GOP of the synthetic sub-stream, packed
  * into RTP (FU-A for slices over the MTU, single-NAL otherwise) and replayed many times. Reports
  * microseconds and heap bytes allocated per picture so a change to the demux/decrypt/assemble
  * path can be judged by numbers; the assertions are loose (the point is the printed table, which

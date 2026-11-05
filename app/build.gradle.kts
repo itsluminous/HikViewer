@@ -84,7 +84,7 @@ android {
     }
 
     // Fakes shared by the Robolectric and the Espresso tests (FakeCloudServices, SyntheticStream).
-    // The TS fixture is :core's own capture; referencing its directory avoids a 190 KB duplicate.
+    // The TS fixture is :core's own synthetic clip; referencing its directory avoids a 280 KB duplicate.
     sourceSets {
         getByName("test") {
             kotlin.srcDir("src/sharedTest/kotlin")

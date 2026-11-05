@@ -92,8 +92,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
    decoders are used (the focused and hero tiles); the rest are software, or keyframe-only stills
    from a shared pool when the device runs out of CPU.
 
-All protocol code lives in the pure-JVM `:core` module and is covered by known-answer tests built
-from real captures; `:app` is the Android UI and decoder plumbing.
+All protocol code lives in the pure-JVM `:core` module and is covered by known-answer tests against
+synthetic ffmpeg-generated fixtures (`scripts/gen-fixtures.sh`); `:app` is the Android UI and decoder
+plumbing.
 
 ## Install
 

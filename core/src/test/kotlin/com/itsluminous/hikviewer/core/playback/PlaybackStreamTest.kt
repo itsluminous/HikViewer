@@ -41,7 +41,7 @@ class PlaybackStreamTest {
     private val window =
         PlaybackWindow(LocalDateTime.of(2026, 11, 4, 17, 13, 51), LocalDateTime.of(2026, 11, 4, 17, 14, 51))
 
-    /** Clear HEVC 720p Annex-B from the playback spike (a 10 s window; 11 GOPs). */
+    /** Clear HEVC 720p Annex-B shaped like a 10 s playback window (11 GOPs), see [PlaybackFixture]. */
     private val nals: List<ByteArray> = PlaybackFixture.nals()
 
     @Volatile private var now = 0L
@@ -233,13 +233,13 @@ class PlaybackStreamTest {
     private fun b64(s: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(s.toByteArray())
 }
 
-/** The decrypted HEVC capture of the spike, split into NAL units and re-packed as MPEG-PS. */
+/** The synthetic HEVC window (`scripts/gen-fixtures.sh`), split into NAL units and re-packed as MPEG-PS. */
 object PlaybackFixture {
     private val START = byteArrayOf(0, 0, 0, 1)
 
-    /** NAL units (without start codes) of `pb_ch1_winend.h265`. */
+    /** NAL units (without start codes) of `synthetic_pb_winend.h265`. */
     fun nals(): List<ByteArray> {
-        val data = Fixtures.bytes("pb_ch1_winend.h265")
+        val data = Fixtures.bytes("synthetic_pb_winend.h265")
         val starts = ArrayList<Int>()
         var i = 0
         while (i + 3 < data.size) {
@@ -257,7 +257,7 @@ object PlaybackFixture {
         }
     }
 
-    /** True for an HEVC VPS (NAL type 32), which opens every GOP in the capture. */
+    /** True for an HEVC VPS (NAL type 32), which opens every GOP in the fixture. */
     fun isVps(nal: ByteArray): Boolean = (nal[0].toInt() ushr 1) and 0x3F == 32
 
     /** One MPEG-PS pack with a single bounded video PES carrying [nal] in Annex-B form. */

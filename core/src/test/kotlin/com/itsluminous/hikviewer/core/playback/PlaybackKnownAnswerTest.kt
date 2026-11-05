@@ -7,14 +7,16 @@ import com.itsluminous.hikviewer.core.stream.VideoCodec
 import org.junit.jupiter.api.Test
 
 /**
- * Known answer from the playback spike: `pb_ch1_winend.h265` is the decrypted output of a 10 s
- * playback window (HEVC Main 1280x720 @ 25 fps). `ffprobe -count_frames` reads 274 frames in 11
- * GOPs. Re-packed as MPEG-PS and run through the live pipeline it must assemble into the same
- * pictures; this pins the HEVC access-unit path playback depends on.
+ * Known answer for the HEVC path: `synthetic_pb_winend.h265` is ffmpeg's `testsrc` encoded by x265 to
+ * the shape of a decrypted playback window (HEVC Main 1280x720 @ 25 fps, closed GOPs of 25 with a
+ * VPS/SPS/PPS before every IDR, no AUDs), see `scripts/gen-fixtures.sh`. `ffprobe -count_frames` reads
+ * 274 frames in 11 GOPs, the last one truncated to 24 as a window end cuts a recording mid-GOP.
+ * Re-packed as MPEG-PS and run through the live pipeline it must assemble into the same pictures;
+ * this pins the HEVC access-unit path playback depends on.
  */
 class PlaybackKnownAnswerTest {
     @Test
-    fun `the spike capture assembles into 274 hevc pictures in 11 gops`() {
+    fun `the synthetic window assembles into 274 hevc pictures in 11 gops`() {
         val pipeline = DecodePipeline(null)
         val units = PlaybackFixture.nals().flatMap { pipeline.process(PlaybackFixture.ps(it)) }
 

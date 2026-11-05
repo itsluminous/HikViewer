@@ -152,8 +152,8 @@ HIKVIEWER_LOCAL_ENV=$PWD/local.env ./gradlew :core:test --tests '*RealAccountInt
 ### Instrumented tests
 
 Instrumented (Espresso) tests run against every connected device, so pin the device. They use the
-fake cloud from `app/src/sharedTest` and real `MediaCodec` decoders fed from the committed H.264
-capture, so no account is needed:
+fake cloud from `app/src/sharedTest` and real `MediaCodec` decoders fed from the committed synthetic
+H.264 clip, so no account is needed:
 
 ```sh
 ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest   # TV: D-pad suites, 13 tests
@@ -235,9 +235,9 @@ app/                 Android application (:app)
   src/test/          Robolectric unit tests; src/testDebug/ for the demo mode
   src/sharedTest/    fakes shared by Robolectric and Espresso (FakeCloudServices, SyntheticStream)
   src/androidTest/   Espresso suites (TV D-pad, phone touch)
-core/                pure-JVM protocol module (:core) with fixtures from real captures
+core/                pure-JVM protocol module (:core) with synthetic fixtures (scripts/gen-fixtures.sh)
 config/              detekt and Lint configuration
 docs/                screenshots, FOLLOW-UPS.md
-scripts/             emulator helpers (login, verification code, demo screenshots)
+scripts/             emulator helpers (login, verification code, demo screenshots), gen-fixtures.sh
 .github/workflows/   ci.yml, release.yml
 ```

@@ -8,10 +8,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * Pictures from the committed 2.5 s MPEG-TS capture (`ch1_sub_2s5.ts`, clear H.264 960x480), run
- * through `:core`'s own demux → assemble pipeline so UI tests exercise real access units without a
- * network. The capture is replayed in a loop at [FRAME_PERIOD_MILLIS]; presentation times keep
- * increasing so a decoder never sees time go backwards.
+ * Pictures from `:core`'s 2.5 s synthetic MPEG-TS fixture (`synthetic_sub_2s5.ts`, clear H.264
+ * 960x480 from ffmpeg's `testsrc2`), run through `:core`'s own demux → assemble pipeline so UI tests
+ * exercise real access units without a network. The clip is replayed in a loop at
+ * [FRAME_PERIOD_MILLIS]; presentation times keep increasing so a decoder never sees time go backwards.
  */
 object SyntheticStream {
     /** 12 fps, like the recorder's sub-stream. */
@@ -20,7 +20,7 @@ object SyntheticStream {
     private const val TS_PACKET = 188
     private const val PACKETS_PER_CHUNK = 7
 
-    /** The decoded capture, parsed once. */
+    /** The decoded clip, parsed once. */
     val pictures: List<AccessUnit> by lazy { parse(fixtureBytes()) }
 
     /** Endless paced replay; [onStatus] sees Connecting then Streaming. */
@@ -55,7 +55,7 @@ object SyntheticStream {
     }
 
     private fun fixtureBytes(): ByteArray =
-        checkNotNull(SyntheticStream::class.java.getResourceAsStream("/fixtures/ch1_sub_2s5.ts")) {
-            "fixture ch1_sub_2s5.ts missing from the test resources"
+        checkNotNull(SyntheticStream::class.java.getResourceAsStream("/fixtures/synthetic_sub_2s5.ts")) {
+            "fixture synthetic_sub_2s5.ts missing from the test resources"
         }.use { it.readBytes() }
 }

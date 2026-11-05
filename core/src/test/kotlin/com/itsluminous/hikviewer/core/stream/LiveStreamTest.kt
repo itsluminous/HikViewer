@@ -29,7 +29,7 @@ class LiveStreamTest {
     private val http = MockWebServer()
     private lateinit var tokens: VtduTokenProvider
     private val camera = Camera("FAKE0000001", 1, "cam", hasSignal = true, isOnline = true)
-    private val ts = Fixtures.bytes("ch1_sub_2s5.ts")
+    private val ts = Fixtures.bytes("synthetic_sub_2s5.ts")
 
     @Volatile private var now = 0L
     private val clock = Clock { now }
@@ -243,8 +243,9 @@ class LiveStreamTest {
             connections++
             handshake()
             if (connections <= 2) {
-                // Two complete pictures (the first GOP's IDR is 31 KB), then the relay drops us: ten
-                // pictures need the third connection whatever the socket buffering delivers.
+                // 30 chunks (39 KB) hold the 13 KB IDR and three 8 KB P pictures, so a few pictures come
+                // out before the relay drops us: ten need the third connection whatever the socket
+                // buffering delivers.
                 sendTs(packets = 30)
                 close()
             } else {

@@ -8,17 +8,18 @@ import org.junit.jupiter.api.assertThrows
 
 class DemuxerTest {
     /**
-     * Known-answer test against `ch1_sub_2s5.ts`, the first 2.5 s of the decrypted sub-stream capture
-     * (`ffmpeg -i ch1_sub.ts -t 2.5 -c copy -f mpegts`). Expected values from ffprobe:
+     * Known-answer test against `synthetic_sub_2s5.ts`: 31 pictures of ffmpeg's `testsrc2` encoded by x264
+     * to the sub-stream's shape (H.264 High 960x480 @ 12 fps, an IDR every 12 pictures, MPEG-TS), see
+     * `scripts/gen-fixtures.sh`. Expected values from ffprobe:
      * `-show_packets` → 31 packets, 3 with the K flag, first pts 126000;
      * `-show_frames` → 3 I + 28 P; NAL histogram of `-c copy -f h264` → AUD 31, SPS 3, PPS 3, IDR 3, non-IDR 28.
      */
     @Nested
     inner class TransportStream {
-        private val ts = Fixtures.bytes("ch1_sub_2s5.ts")
+        private val ts = Fixtures.bytes("synthetic_sub_2s5.ts")
 
         @Test
-        fun `known answer from the real capture, fed in relay-sized chunks`() {
+        fun `known answer from the synthetic clip, fed in relay-sized chunks`() {
             val demuxer = AutoDemuxer()
             val nals = ArrayList<NalUnit>()
             var offset = 0
@@ -62,7 +63,8 @@ class DemuxerTest {
         @Test
         fun `a lost packet mid picture drops that picture`() {
             val demuxer = TsDemuxer()
-            // Remove one packet from the middle of the IDR (packets 10..11 are inside the first big PES).
+            // Remove one packet from the middle of the IDR (packets 10..11 are inside the first big PES: the
+            // 13 KB IDR spans about 70 packets after the SDT, PAT and PMT).
             val cut = ts.copyOfRange(0, 188 * 10) + ts.copyOfRange(188 * 11, ts.size)
             val nals = demuxer.feed(cut) + demuxer.flush()
             assertThat(demuxer.droppedPackets).isEqualTo(1)

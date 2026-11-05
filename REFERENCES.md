@@ -74,9 +74,13 @@ the protocol was re-implemented in Kotlin in the `:core` module.
 
 ## Test footage
 
-- The committed protocol fixtures under `core/src/test/resources/fixtures/` are short captures
-  (seconds of a sub-stream, a few NAL units per encryption variant) taken from the recorder the app was
-  developed against, with serials and session data redacted from the JSON. They are what the
-  known-answer tests check the demuxers and the decryption against.
+- Every binary fixture under `core/src/test/resources/fixtures/` is synthetic and reproducible with
+  `scripts/gen-fixtures.sh`: ffmpeg's `testsrc2` / `testsrc` generators encoded by x264 and x265 to
+  the shape the cloud sends (an H.264 High 960x480 @ 12 fps MPEG-TS sub-stream with an IDR every
+  12 pictures; an HEVC Main 1280x720 @ 25 fps playback window with closed GOPs of 25), and the first
+  GOP of the H.264 clip encrypted with cloud-cam-viewer's algorithm under a dummy verification code
+  in each of the encryption variants. The JSON fixtures are hand-written with fake serials. Nothing
+  in the repository or its history comes from a real recorder; the known-answer tests pin the
+  numbers ffprobe reports for the generated clips.
 - The demo clips under `app/src/debug/assets/demo/` are ffmpeg's `testsrc2`, `smptebars` and `testsrc`
   generators encoded with x264. The README screenshots show those clips, never a real camera.

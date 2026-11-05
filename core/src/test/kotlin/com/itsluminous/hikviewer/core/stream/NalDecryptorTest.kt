@@ -14,18 +14,19 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Known-answer tests for [NalDecryptor].
  *
- * Fixtures `h264_nals_*.bin` were produced from the first GOP of the decrypted sub-stream capture
- * (`/tmp/cloudcam/out/ch1_sub.ts` → `ffmpeg -c copy -f h264`) with cloud-cam-viewer's algorithm
- * (`codec/nal.py`): AES-128-ECB, key = `"ABCDEF1234".encode().ljust(16, b"\0")`, encrypting the first
+ * Fixtures `h264_nals_*.bin` are the first GOP of the synthetic clip `synthetic_sub_2s5.ts` (ffmpeg's
+ * `testsrc2`, x264 High 960x480 @ 12 fps; `ffmpeg -c copy -f h264`), encrypted by `scripts/gen-fixtures.sh`
+ * with cloud-cam-viewer's algorithm (`src/cloudcam/codec/nal.py`): AES-128-ECB, key =
+ * `"ABCDEF1234".encode().ljust(16, b"\0")` (a dummy verification code), encrypting the first
  * `(min(len, 4096) // 16) * 16` bytes of a NAL body. Each file is a sequence of u32-BE length-prefixed
  * NAL units (no start codes, so ciphertext containing `00 00 01` cannot split a NAL):
- *  * `clear`: AUD, SPS, PPS, IDR, then 9 × (AUD, P-slice) as captured;
+ *  * `clear`: AUD, SPS, PPS, IDR, then 9 × (AUD, P-slice), the first ten pictures as encoded;
  *  * `header_clear_selective`: IDR/SPS/PPS bodies encrypted, P-slices clear (variant A, selective);
  *  * `header_clear_all`: every slice body encrypted too (variant A, full);
  *  * `whole`: the entire NAL including its header (variant B-whole);
  *  * `type_hint`: a clear header byte copy followed by the whole encrypted NAL (variant B-hint).
- * The generator script is reproduced in `.research` notes; the Kotlin [encryptBody] helper below is the
- * same algorithm and is used for synthetic HEVC cases.
+ * Bodies shorter than one AES block (the AUDs, the PPS) stay clear in every variant, as on a recorder.
+ * The Kotlin [encryptBody] helper below is the same algorithm and is used for the HEVC cases.
  */
 class NalDecryptorTest {
     private val clear = readUnits("h264_nals_clear.bin")

@@ -46,8 +46,9 @@ class PlaybackFactory(
 
     /**
      * One player on the hardware decoder, for a screen that shows a single stream without a
-     * budget (recorded playback is 720p HEVC, which only hardware can decode). The caller owns
-     * start/stop and the watchdog [TilePlayer.tick]; [tickMillis] is the suggested period.
+     * budget (recorded playback is 720p HEVC, which only hardware can decode). Unpaced: a seek
+     * must land when the picture is decoded, not half a second later. The caller owns start/stop
+     * and the watchdog [TilePlayer.tick]; [tickMillis] is the suggested period.
      */
     fun createSinglePlayer(
         camera: Camera,
@@ -62,7 +63,10 @@ class PlaybackFactory(
         decoderFactory = decoderFactory,
         dispatcher = dispatcher,
         releaser = releaser,
-    ).also { it.mode = TileMode.HW_LIVE }
+    ).also {
+        it.paced = false
+        it.mode = TileMode.HW_LIVE
+    }
 
     /** Suggested watchdog period for players created here. */
     val watchdogMillis: Long get() = tickMillis

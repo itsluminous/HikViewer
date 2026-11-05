@@ -8,9 +8,11 @@ import org.junit.Test
 
 class DecoderPolicyTest {
     @Test
-    fun `hero gets hardware, the rest software in display order up to the limit`() {
+    fun `hero gets hardware, the next tile the second slot, the rest software in display order up to the limit`() {
         val modes = DecoderPolicy.assign(tileCount = 6, heroIndex = 0, liveLimit = 4)
-        assertThat(modes).containsExactly(HW_LIVE, SW_LIVE, SW_LIVE, SW_LIVE, KEYFRAME, KEYFRAME).inOrder()
+        assertThat(modes).containsExactly(HW_LIVE, HW_LIVE, SW_LIVE, SW_LIVE, KEYFRAME, KEYFRAME).inOrder()
+        val heroLast = DecoderPolicy.assign(tileCount = 4, heroIndex = 3, liveLimit = 4)
+        assertThat(heroLast).containsExactly(HW_LIVE, SW_LIVE, SW_LIVE, HW_LIVE).inOrder()
     }
 
     @Test
@@ -28,17 +30,25 @@ class DecoderPolicyTest {
     }
 
     @Test
-    fun `no hero means display order`() {
+    fun `a flat grid gives the hardware slots to positions 0 and 1, then software in display order`() {
         val modes = DecoderPolicy.assign(tileCount = 5, heroIndex = null, liveLimit = 3)
-        assertThat(modes).containsExactly(SW_LIVE, SW_LIVE, SW_LIVE, KEYFRAME, KEYFRAME).inOrder()
+        assertThat(modes).containsExactly(HW_LIVE, HW_LIVE, SW_LIVE, KEYFRAME, KEYFRAME).inOrder()
+        assertThat(DecoderPolicy.assign(tileCount = 12, heroIndex = null, liveLimit = 8).count { it == HW_LIVE })
+            .isEqualTo(DecoderPolicy.DEFAULT_MAX_HARDWARE_DECODERS)
+    }
+
+    @Test
+    fun `a budget of one hands out one hardware decoder, not two`() {
+        val modes = DecoderPolicy.assign(tileCount = 3, heroIndex = null, liveLimit = 1)
+        assertThat(modes).containsExactly(HW_LIVE, KEYFRAME, KEYFRAME).inOrder()
     }
 
     @Test
     fun `out of range hero and empty grids are harmless`() {
         assertThat(DecoderPolicy.assign(0, 0, 8)).isEmpty()
         val modes = DecoderPolicy.assign(2, heroIndex = -1, liveLimit = 8)
-        assertThat(modes).containsExactly(SW_LIVE, SW_LIVE).inOrder()
-        assertThat(DecoderPolicy.assign(2, heroIndex = 9, liveLimit = 8)).containsExactly(SW_LIVE, SW_LIVE).inOrder()
+        assertThat(modes).containsExactly(HW_LIVE, HW_LIVE).inOrder()
+        assertThat(DecoderPolicy.assign(2, heroIndex = 9, liveLimit = 8)).containsExactly(HW_LIVE, HW_LIVE).inOrder()
     }
 
     @Test
@@ -47,9 +57,11 @@ class DecoderPolicyTest {
     }
 
     @Test
-    fun `hardware only keeps the hero live and nothing else, whatever the budget`() {
+    fun `hardware only keeps the hero live and nothing else, whatever the budget or the free slots`() {
         val modes = DecoderPolicy.assign(tileCount = 6, heroIndex = 2, liveLimit = 6, hardwareOnly = true)
         assertThat(modes).containsExactly(KEYFRAME, KEYFRAME, HW_LIVE, KEYFRAME, KEYFRAME, KEYFRAME).inOrder()
+        // A flat grid has no hero: nothing decodes during a move, so a tile dragged across
+        // positions 0 and 1 does not swap decoders on its way.
         val noHero = DecoderPolicy.assign(tileCount = 4, heroIndex = null, liveLimit = 4, hardwareOnly = true)
         assertThat(noHero.none { it.isLive }).isTrue()
     }

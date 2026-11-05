@@ -115,15 +115,18 @@ class TilePlayerTest {
         decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false)
         val p = player()
         p.attachSurface(surface)
+        p.paced = false // a single-camera screen
         p.mode = TileMode.HW_LIVE
         run(p)
         assertThat(
             decoders.created.map { it.codecName },
         ).containsExactly("fake.hw.video/avc", "fake.sw.video/avc").inOrder()
         assertThat(decoders.created[0].released).isTrue()
-        assertThat(decoders.created[0].renderSlotNanos).isEqualTo(0L) // hardware renders at once
+        assertThat(decoders.created[0].renderSlotNanos).isEqualTo(0L)
         assertThat(decoders.created[1].started).isTrue()
-        assertThat(decoders.created[1].renderSlotNanos).isEqualTo(RenderPacer.DEFAULT_SLOT_NANOS)
+        // The fallback keeps the screen's role: no jitter buffer, no 15 Hz slot, on software too.
+        assertThat(decoders.created[1].renderSlotNanos).isEqualTo(0L)
+        assertThat(decoders.created[1].pacedRequested).isFalse()
         p.stop()
     }
 
@@ -219,20 +222,43 @@ class TilePlayerTest {
         }
 
     @Test
-    fun `software decoders get a jitter buffer, the hardware one does not`() = runTest(dispatcher) {
-        val sw = player()
-        sw.attachSurface(surface)
-        sw.mode = TileMode.SW_LIVE
-        run(sw)
+    fun `pacing follows the tile's role, not its codec, on a hardware tile too`() = runTest(dispatcher) {
+        val gridTile = player()
+        gridTile.attachSurface(surface)
+        gridTile.mode = TileMode.HW_LIVE // position 0 of a flat grid
+        run(gridTile)
+        assertThat(decoders.created.single().codecName).startsWith("fake.hw")
         assertThat(decoders.created.single().pacedRequested).isTrue()
-        sw.stop()
-        val hw = player()
-        hw.attachSurface(surface)
-        hw.mode = TileMode.HW_LIVE
-        run(hw)
-        assertThat(decoders.created.last().codecName).startsWith("fake.hw")
+        assertThat(decoders.created.single().renderSlotNanos).isEqualTo(RenderPacer.DEFAULT_SLOT_NANOS)
+        gridTile.stop()
+        val hero = player()
+        hero.attachSurface(surface)
+        hero.paced = false
+        hero.mode = TileMode.HW_LIVE
+        run(hero)
         assertThat(decoders.created.last().pacedRequested).isFalse()
-        hw.stop()
+        assertThat(decoders.created.last().renderSlotNanos).isEqualTo(0L)
+        hero.stop()
+    }
+
+    @Test
+    fun `changing the pacing of a live tile swaps its decoder at the next keyframe`() = runTest(dispatcher) {
+        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        p.start(this)
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+        dispatcher.scheduler.runCurrent()
+        assertThat(decoders.created).hasSize(1)
+        p.paced = false
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 2)
+        dispatcher.scheduler.runCurrent()
+        assertThat(decoders.created).hasSize(1) // not before the keyframe
+        dispatcher.scheduler.advanceUntilIdle()
+        assertThat(decoders.created).hasSize(2)
+        assertThat(decoders.created[0].released).isTrue()
+        assertThat(decoders.created[1].pacedRequested).isFalse()
+        p.stop()
     }
 
     @Test

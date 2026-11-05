@@ -143,6 +143,26 @@ class TilePlayer(
             stale?.let(::releaseLater)
         }
 
+    /**
+     * Whether the live decoder evens the pictures out (a [FramePacer] holding each one half a
+     * second so the relay's bunched delivery does not reach the screen, and the shared 15 Hz
+     * [RenderPacer] cadence) or shows each one the moment it is decoded. A grid tile is paced
+     * whatever decodes it; the hero and the single-camera screens (fullscreen, phone camera,
+     * recorded playback) are not, because there the half second and the capped rate would be
+     * noticed, and a hardware decoder refused for a while (software until the backoff passes)
+     * must not change that. Changing it on a live decoder swaps at the next keyframe, like a mode
+     * change between the two live modes.
+     */
+    var paced: Boolean = true
+        set(value) {
+            synchronized(lock) {
+                if (field == value) return
+                field = value
+                generation++
+                if (decoder != null) swapAtNextKeyframe = true
+            }
+        }
+
     /** Decoder input backlog, for [LiveBudget]. */
     val queuedFrames: Int get() = synchronized(lock) { decoder?.queuedFrames ?: 0 }
 
@@ -445,6 +465,7 @@ class TilePlayer(
             val config: CodecConfig,
             val target: Surface,
             val software: Boolean,
+            val paced: Boolean,
             val stale: TileDecoder?,
             val generation: Int,
         ) : Plan()
@@ -483,7 +504,7 @@ class TilePlayer(
         if (!needsNewDecoder(config)) return decoder?.let(Plan::Feed) ?: Plan.Skip
         if (!unit.isKeyframe || config == null) return Plan.Skip
         val software = mode != TileMode.HW_LIVE || clock() < hardwareRetryAt
-        return Plan.Rebuild(config, target, software, detachDecoderLocked(), generation)
+        return Plan.Rebuild(config, target, software, paced, detachDecoderLocked(), generation)
     }
 
     /** True when the next keyframe must build a (different) decoder. */
@@ -502,7 +523,7 @@ class TilePlayer(
         unit: AccessUnit,
     ) {
         plan.stale?.release() // synchronously: the hardware slot must be free before the next start
-        val (d, software) = createDecoder(plan.config, plan.target, plan.software) ?: return
+        val (d, software) = createDecoder(plan.config, plan.target, plan.software, plan.paced) ?: return
         val installed =
             synchronized(lock) {
                 val wanted = generation == plan.generation && decoder == null && mode.isLive
@@ -522,20 +543,20 @@ class TilePlayer(
         config: CodecConfig,
         target: Surface,
         software: Boolean,
+        paced: Boolean,
     ): Pair<TileDecoder, Boolean>? {
         val name = pickCodec(config.codec.mimeType, software)
         if (name == null) {
             failDecoder("No ${config.codec} decoder")
             return null
         }
-        // The many software tiles are paced (FramePacer) and share a display cadence (RenderPacer);
-        // the hardware decoder (hero, fullscreen) shows every picture as soon as it is decoded.
-        val d = decoderFactory.create(name, config, target, this, paced = software)
-        d.renderSlotNanos = if (software) RenderPacer.DEFAULT_SLOT_NANOS else 0L
+        val d = decoderFactory.create(name, config, target, this, paced = paced)
+        d.renderSlotNanos = if (paced) RenderPacer.DEFAULT_SLOT_NANOS else 0L
         return try {
             d.start()
             synchronized(lock) { configureRefusals = 0 }
-            Log.i(TAG, "$tag: ${config.codec} via $name (${if (software) "software" else "hardware"})")
+            val kind = if (software) "software" else "hardware"
+            Log.i(TAG, "$tag: ${config.codec} via $name ($kind, ${if (paced) "paced" else "unpaced"})")
             d to software
         } catch (e: MediaCodec.CodecException) {
             d.release()
@@ -543,7 +564,7 @@ class TilePlayer(
                 val wait = synchronized(lock) { deferHardwareLocked() }
                 val seconds = wait / MILLIS_PER_SECOND
                 Log.w(TAG, "$tag: hardware decoder unavailable (${e.errorCode}), software for $seconds s")
-                createDecoder(config, target, software = true)
+                createDecoder(config, target, software = true, paced = paced)
             } else {
                 failDecoder("Decoder error")
                 null

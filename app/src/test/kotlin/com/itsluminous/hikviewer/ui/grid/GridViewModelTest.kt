@@ -105,11 +105,18 @@ class GridViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         vm.focusedIndex = 5
         assertThat(vm.playback.heroIndex).isNull()
-        // Focus is a view matter: every tile keeps the mode the budget gave it.
+        // Focus is a view matter: every tile keeps the mode the budget gave it (the flat grid's
+        // hardware slots sit at positions 0 and 1, wherever the focus is).
         assertThat(
             vm.playback.players.value
-                .none { it.mode == TileMode.HW_LIVE },
-        ).isTrue()
+                .map { it.mode == TileMode.HW_LIVE }
+                .take(3),
+        ).containsExactly(true, true, false)
+            .inOrder()
+        assertThat(
+            vm.playback.players.value[5]
+                .mode,
+        ).isEqualTo(TileMode.SW_LIVE)
         assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1) // the 4x3 arrangement is untouched
         vm.setLayout(GridLayoutMode.HERO_1_7)
         assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_7)

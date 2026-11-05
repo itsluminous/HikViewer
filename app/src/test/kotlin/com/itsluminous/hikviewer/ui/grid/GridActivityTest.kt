@@ -319,6 +319,28 @@ class GridActivityTest {
     }
 
     @Test
+    fun `an open camera picker is dismissed with the activity it belongs to`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { _, grid ->
+                (grid.childAtPosition(1) as CameraTileView).performLongClick()
+                val popup =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                popup.menu.performIdentifierAction(TileAction.entries.indexOf(TileAction.CHANGE), 0)
+                ShadowLooper.idleMainLooper()
+            }
+            val dialog =
+                org.robolectric.shadows.ShadowDialog
+                    .getLatestDialog() as AlertDialog
+            assertThat(dialog.isShowing).isTrue()
+            scenario.recreate() // a phone rotation: the old window must not outlive its activity
+            ShadowLooper.idleMainLooper()
+            assertThat(dialog.isShowing).isFalse()
+            scenario.grid { _, grid -> assertThat(grid.childCount).isGreaterThan(0) }
+        }
+    }
+
+    @Test
     fun `the menu's Change entry lists the cameras and the pick takes the tile`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->

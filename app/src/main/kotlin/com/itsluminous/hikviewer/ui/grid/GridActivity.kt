@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -62,6 +63,7 @@ class GridActivity : AppCompatActivity() {
     private val tileJobs = mutableListOf<Job>()
     private val tilesByKey = LinkedHashMap<String, CameraTileView>()
     private var pendingFocus: Int? = null
+    private var picker: AlertDialog? = null
 
     /** Lift-and-swap of a tile (long press → Move); see [TileMoveController]. */
     private lateinit var move: TileMoveController
@@ -128,6 +130,14 @@ class GridActivity : AppCompatActivity() {
         viewModel.onStop()
         topBar?.hideNow()
         super.onStop()
+    }
+
+    /** Dialogs are windows of this activity; on a phone rotation it is recreated and the new one shows its own. */
+    override fun onDestroy() {
+        picker?.dismiss()
+        picker = null
+        VerificationCodeDialog.dismiss()
+        super.onDestroy()
     }
 
     /**
@@ -301,19 +311,24 @@ class GridActivity : AppCompatActivity() {
         }
     }
 
-    /** Change: list the cameras Settings shows; the pick replaces (or swaps with) this tile's camera. */
+    /** Change: list the cameras on the grid; the pick replaces (or swaps with) this tile's camera. */
     private fun showCameraPicker(position: Int) {
         val state = viewModel.state.value as? GridUiState.Ready ?: return
         val current = state.cameras.getOrNull(position) ?: return
         viewModel.focusedIndex = position
-        CameraPickerDialog.show(
-            this,
-            state.cameras,
-            current.key,
-            onPick = { key -> viewModel.changeTile(position, key) },
-            // The dialog is its own window; once it is gone the tile (now showing the pick) takes focus back.
-            onDismiss = { binding.grid.childAtPosition(position)?.requestFocus() },
-        )
+        picker =
+            CameraPickerDialog.show(
+                this,
+                state.cameras,
+                current.key,
+                onPick = { key -> viewModel.changeTile(position, key) },
+                // The dialog is its own window; once it is gone the tile (now showing the pick) takes
+                // focus back. Not after onDestroy, when the grid is detached.
+                onDismiss = {
+                    picker = null
+                    if (!isDestroyed) binding.grid.childAtPosition(position)?.requestFocus()
+                },
+            )
     }
 
     private fun openPlayback(position: Int) {

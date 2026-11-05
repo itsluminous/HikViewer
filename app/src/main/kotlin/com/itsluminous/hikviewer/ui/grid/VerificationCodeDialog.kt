@@ -70,4 +70,14 @@ object VerificationCodeDialog {
         open = dialog
         dialog.show()
     }
+
+    /**
+     * Closes the dialog if it is open. The activity calls this from `onDestroy`: a dialog is a
+     * window of the activity that showed it, and a phone rotation recreates the grid activity, so
+     * an open dialog would be reported as leaked and the new activity shows its own.
+     */
+    fun dismiss() {
+        open?.dismiss()
+        open = null
+    }
 }

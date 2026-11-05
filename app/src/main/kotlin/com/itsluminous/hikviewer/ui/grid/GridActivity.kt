@@ -106,6 +106,7 @@ class GridActivity : AppCompatActivity() {
         television = FormFactor.isTelevision(this)
         portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         binding.grid.portrait = portrait
+        viewModel.portrait = portrait
         move = TileMoveController(binding.grid, binding.moveHint, viewModel)
         placeBar()
         // The focus border follows the top bar's idle policy (see CameraGridLayout).
@@ -358,11 +359,14 @@ class GridActivity : AppCompatActivity() {
         startActivity(PlaybackActivity.intent(this, camera.key))
     }
 
-    /** Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is always there. */
+    /**
+     * Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is
+     * always there, and a phone held upright gets the even 1 + N layouts that fill its two columns.
+     */
     private fun showLayoutMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         val cameras = (viewModel.state.value as? GridUiState.Ready)?.cameras?.size ?: 0
-        GridLayoutMode.available(cameras).forEach { mode ->
+        GridLayoutMode.available(cameras, portraitPhone = !television && portrait).forEach { mode ->
             menu.menu.add(0, mode.ordinal, mode.ordinal, mode.labelRes)
         }
         menu.setOnMenuItemClickListener {

@@ -60,10 +60,16 @@
     <string name="layout_4x3">4 × 3</string>
     <string name="layout_4x4">4 × 4</string>
     <string name="layout_1_5">1 + 5</string>
+    <string name="layout_1_6">1 + 6</string>
     <string name="layout_1_7">1 + 7</string>
+    <string name="layout_1_8">1 + 8</string>
     <string name="layout_1_9">1 + 9</string>
+    <string name="layout_1_10">1 + 10</string>
     <string name="layout_1_11">1 + 11</string>
+    <string name="layout_1_12">1 + 12</string>
+    <string name="layout_1_14">1 + 14</string>
     <string name="layout_1_15">1 + 15</string>
+    <string name="layout_1_16">1 + 16</string>
 
     <!-- Verification code -->
     <string name="code_title">Video encryption password</string>

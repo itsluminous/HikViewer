@@ -141,6 +141,36 @@ class GridViewModelTest {
     }
 
     @Test
+    fun `an even 1+N layout shows every tile upright and evicts the last one turned, keeping the arrangement`() =
+        runTest(dispatcher) {
+            graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+            val serial = FakeCloudServices.SERIAL
+            graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_6
+            graph.arrangementStore.setOrder(GridLayoutMode.HERO_1_6, listOf("$serial/3", "$serial/1", "$serial/2"))
+            val vm = viewModel()
+            vm.portrait = true
+            vm.load()
+            dispatcher.scheduler.advanceUntilIdle()
+            // Upright: the hero and three rows of two, seven streams.
+            assertThat(vm.playback.players.value.map { it.camera.channelNo }).containsExactly(3, 1, 2, 4, 5, 6, 7).inOrder()
+            assertThat(vm.playback.heroIndex).isEqualTo(0)
+            // Turned: the square 1 + 5 grid has no cell for the seventh tile; its stream closes.
+            vm.portrait = false
+            vm.applySettings()
+            assertThat(vm.playback.players.value.map { it.camera.channelNo }).containsExactly(3, 1, 2, 4, 5, 6).inOrder()
+            // A move while turned edits the same list: position 6 (channel 7) is still there, unseen.
+            vm.moveTile(0, 1)
+            assertThat(graph.arrangementStore.order(GridLayoutMode.HERO_1_6)!!.take(7))
+                .containsExactly("$serial/1", "$serial/3", "$serial/2", "$serial/4", "$serial/5", "$serial/6", "$serial/7")
+                .inOrder()
+            // Upright again: the seventh tile is back where it was.
+            vm.portrait = true
+            vm.applySettings()
+            assertThat(vm.playback.players.value.map { it.camera.channelNo }).containsExactly(1, 3, 2, 4, 5, 6, 7).inOrder()
+            vm.playback.release()
+        }
+
+    @Test
     fun `moving a tile swaps, persists per layout, follows focus and keeps the players`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
         val vm = viewModel()

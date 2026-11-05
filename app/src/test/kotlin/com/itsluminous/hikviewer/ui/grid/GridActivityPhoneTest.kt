@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import androidx.activity.viewModels
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +20,7 @@ import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
@@ -94,4 +96,47 @@ class GridActivityPhoneTest {
             }
         }
     }
+
+    /** 1 + 6 holds seven tiles upright; turned it is drawn as 1 + 5 and the seventh tile waits, unseen, in the arrangement. */
+    @Test
+    fun `turning the phone evicts the last tile of an even hero layout and turning back restores it`() {
+        val serial = FakeCloudServices.SERIAL
+        app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_6
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.columns).isEqualTo(2)
+                assertThat(grid.shape.capacity).isEqualTo(7)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7).inOrder()
+                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(7)
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.columns).isEqualTo(3) // the 1 + 5 grid
+                assertThat(grid.shape.capacity).isEqualTo(6)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(6)
+                // The arrangement still has every camera; the seventh is only without a cell.
+                a.viewModels<GridViewModel>().value.moveTile(0, 1)
+                assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO_1_6))
+                    .containsExactly("$serial/2", "$serial/1", "$serial/3", "$serial/4", "$serial/5", "$serial/6", "$serial/7", "$serial/8")
+                    .inOrder()
+            }
+            RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
+            scenario.recreate()
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.capacity).isEqualTo(7)
+                assertThat(shownChannels(grid)).containsExactly(2, 1, 3, 4, 5, 6, 7).inOrder()
+                assertThat(a.viewModels<GridViewModel>().value.playback.players.value).hasSize(7)
+            }
+        }
+    }
+
+    /** Channel numbers of the tiles that have a cell, in grid order (the camera name is "Camera N"). */
+    private fun shownChannels(grid: CameraGridLayout): List<Int> =
+        (0 until grid.shape.capacity)
+            .mapNotNull { grid.childAtPosition(it) as? CameraTileView }
+            .filter { it.visibility == View.VISIBLE }
+            .map { it.cameraName.toString().removePrefix("Camera ").toInt() }
 }

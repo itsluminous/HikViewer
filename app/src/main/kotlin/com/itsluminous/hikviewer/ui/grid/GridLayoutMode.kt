@@ -14,9 +14,18 @@ import com.itsluminous.hikviewer.R
  * uniform grid can only give 5, 8, 11, 12, 14 or 16 small tiles, which is why "1 + 7" and
  * "1 + 9" are not 2x heroes. Column counts: 1 + 5 → 3, 1 + 7 → 4, 1 + 9 → 5, 1 + 11 → 6, 1 + 15 → 8.
  *
+ * The even entries (1 + 6, 1 + 8, …, 1 + 16) exist for phones held upright: there the grid is
+ * two columns wide with a full-width hero and the small tiles two per row, so an odd N leaves
+ * one cell empty and an even N fills every row. Turned to landscape, an even layout takes the
+ * square grid of the odd layout one tile smaller (1 + 6 shows as 1 + 5, 1 + 14 on the 7 x 7
+ * grid of a 1 + 13) and its last tile is hidden until the phone is upright again; the
+ * arrangement is one list for both orientations, so nothing is lost (see
+ * [com.itsluminous.hikviewer.ui.grid.GridGeometry]).
+ *
  * [available] lists the entries worth offering for a camera count: a 1 + N layout only when all
- * of its `N + 1` tiles would show a camera, a fixed grid when it is not bigger than the smallest
- * one that holds every camera, and AUTO always.
+ * of its `N + 1` tiles would show a camera and its parity suits the screen (even for a phone held
+ * upright, odd otherwise), a fixed grid when it is not bigger than the smallest one that holds
+ * every camera, and AUTO always.
  */
 enum class GridLayoutMode(
     /** Columns of the fixed shape; 0 for AUTO and the 1 + N layouts (computed). */
@@ -43,17 +52,35 @@ enum class GridLayoutMode(
     /** Hero 2x2 on a 3x3 grid: 2 tiles right, 3 below. */
     HERO_1_5(0, 0, 5, R.string.layout_1_5),
 
+    /** Phone portrait: hero and three rows of two; landscape shows it as 1 + 5. */
+    HERO_1_6(0, 0, 6, R.string.layout_1_6),
+
     /** Hero 3x3 on a 4x4 grid: 3 tiles right, 4 below. */
     HERO_1_7(0, 0, 7, R.string.layout_1_7),
+
+    /** Phone portrait: hero and four rows of two; landscape shows it as 1 + 7. */
+    HERO_1_8(0, 0, 8, R.string.layout_1_8),
 
     /** Hero 4x4 on a 5x5 grid: 4 tiles right, 5 below. */
     HERO_1_9(0, 0, 9, R.string.layout_1_9),
 
+    /** Phone portrait: hero and five rows of two; landscape shows it as 1 + 9. */
+    HERO_1_10(0, 0, 10, R.string.layout_1_10),
+
     /** Hero 5x5 on a 6x6 grid: 5 tiles right, 6 below. */
     HERO_1_11(0, 0, 11, R.string.layout_1_11),
 
+    /** Phone portrait: hero and six rows of two; landscape shows it as 1 + 11. */
+    HERO_1_12(0, 0, 12, R.string.layout_1_12),
+
+    /** Phone portrait: hero and seven rows of two; landscape shows 1 + 13 (hero 6x6 on a 7x7 grid). */
+    HERO_1_14(0, 0, 14, R.string.layout_1_14),
+
     /** Hero 7x7 on an 8x8 grid: 7 tiles right, 8 below. */
     HERO_1_15(0, 0, 15, R.string.layout_1_15),
+
+    /** Phone portrait: hero and eight rows of two; landscape shows it as 1 + 15. */
+    HERO_1_16(0, 0, 16, R.string.layout_1_16),
     ;
 
     /** True for the shapes whose tile capacity is `columns * rows`. */
@@ -65,8 +92,17 @@ enum class GridLayoutMode(
     /** Tiles a fixed or 1 + N shape can hold; 0 for AUTO. */
     val capacity: Int get() = if (isHero) heroCompanions + 1 else columns * rows
 
-    /** Cells the hero spans per side in a 1 + N layout (`k`), 0 otherwise. */
+    /** True for the even 1 + N layouts, which fill a phone's two-column portrait grid. */
+    val isPortraitHero: Boolean get() = isHero && heroCompanions % 2 == 0
+
+    /**
+     * Cells the hero spans per side on the square landscape grid (`k`), 0 otherwise. An even
+     * layout uses the grid of the odd layout one tile smaller, so 1 + 6 and 1 + 5 both give 2.
+     */
     val heroSpan: Int get() = if (isHero) (heroCompanions - 1) / 2 else 0
+
+    /** Tiles the square landscape grid holds: all of an odd layout, all but one of an even layout. */
+    val landscapeCapacity: Int get() = if (isHero) 2 * heroSpan + 2 else capacity
 
     /** Resolves AUTO to a fixed shape for [tileCount]; other modes return themselves. */
     fun resolve(tileCount: Int): GridLayoutMode = when {
@@ -81,13 +117,20 @@ enum class GridLayoutMode(
         /** The 1 + N layouts in ascending size. */
         val heroModes: List<GridLayoutMode> get() = entries.filter { it.isHero }
 
-        /** The entries worth offering when [cameraCount] cameras are visible, in declaration order. */
-        fun available(cameraCount: Int): List<GridLayoutMode> {
+        /**
+         * The entries worth offering when [cameraCount] cameras are visible, in declaration
+         * order. [portraitPhone] picks the even 1 + N layouts (which fill the two-column portrait
+         * grid) over the odd ones (which fill the square landscape grid of a TV or a turned phone).
+         */
+        fun available(
+            cameraCount: Int,
+            portraitPhone: Boolean = false,
+        ): List<GridLayoutMode> {
             val smallestFit = entries.filter { it.isFixed }.firstOrNull { it.capacity >= cameraCount }
             return entries.filter { mode ->
                 when {
                     mode == AUTO -> true
-                    mode.isHero -> mode.capacity <= cameraCount
+                    mode.isHero -> mode.capacity <= cameraCount && mode.isPortraitHero == portraitPhone
                     else -> mode.capacity < cameraCount || mode == smallestFit
                 }
             }

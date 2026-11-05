@@ -39,9 +39,15 @@ data class GridShape(
  * row left to right (row-major order, like the fixed grids). In portrait (phones) the grid is two
  * columns wide and as tall as needed, with the hero spanning the full width (2 x 2 cells) and
  * the small tiles two per row beneath it.
+ *
+ * The two shapes of a 1 + N layout hold different counts, and the shape decides what is shown:
+ * an odd N fills the square grid and leaves one portrait cell empty; an even N fills the portrait
+ * rows and, in landscape, gets the square grid of the odd layout one tile smaller, so its last
+ * tile (the last position of the arrangement) has no cell and is hidden until the phone is
+ * upright again. Both orientations read the same arrangement, so the hidden tile keeps its place.
  */
 object GridGeometry {
-    /** Cells for [tileCount] tiles in [mode]. Tiles beyond the capacity are not placed. */
+    /** Cells for [tileCount] tiles in [mode]. Tiles beyond the shape's capacity are not placed. */
     fun shape(
         mode: GridLayoutMode,
         tileCount: Int,
@@ -79,7 +85,7 @@ object GridGeometry {
         rows: Int,
     ): GridShape = GridShape(columns, rows, (0 until columns * rows).map { Cell(it % columns, it / columns) })
 
-    /** Two columns, full-width hero, companions two per row; an odd N leaves the last cell empty. */
+    /** Two columns, full-width hero, companions two per row; an odd N leaves the last cell empty, an even N none. */
     private fun portraitHero(mode: GridLayoutMode): GridShape {
         val rows = PORTRAIT_HERO_SPAN + ceilDiv(mode.heroCompanions, PORTRAIT_COLUMNS)
         val shape = heroShape(PORTRAIT_COLUMNS, rows, PORTRAIT_HERO_SPAN)

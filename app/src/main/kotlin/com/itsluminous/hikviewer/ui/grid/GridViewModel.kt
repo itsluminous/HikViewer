@@ -81,6 +81,13 @@ class GridViewModel(
      */
     var focusedIndex: Int = 0
 
+    /**
+     * True while the screen is a phone held upright, where the grid is two columns. Decides how
+     * many tiles the layout shows (an even 1 + N layout holds one more upright than turned, see
+     * [GridGeometry]) and so how many streams are opened; set by the Activity before [load].
+     */
+    var portrait: Boolean = false
+
     /** Loads (or reloads) cameras from the cloud and applies the settings. */
     fun load(refresh: Boolean = false) {
         viewModelScope.launch {
@@ -114,7 +121,8 @@ class GridViewModel(
             )
         // Only the tiles the layout has room for get a stream: a 1 + 5 layout of a 16-camera account
         // used to open 16 relay connections and run 16 decrypt pipelines for 6 pictures on screen.
-        val shown = cameras.take(layout.resolve(cameras.size).capacity)
+        // The shape, not the layout, knows the count: a turned phone shows one tile less of 1 + 6.
+        val shown = cameras.take(GridGeometry.shape(layout, cameras.size, portrait).capacity)
         playback.setCameras(shown)
         playback.heroIndex = if (layout.isHero) hero else null
         if (visible && !needsCode) playback.start()

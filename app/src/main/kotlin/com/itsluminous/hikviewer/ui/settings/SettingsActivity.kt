@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.ui.settings
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -20,6 +21,7 @@ import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.VerificationCodeDialog
 import com.itsluminous.hikviewer.ui.login.LoginActivity
@@ -66,7 +68,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindLayout() {
         val visibleCount = editor.items.count { it.visible }
         val current = arrangement.lastLayout
-        val modes = (GridLayoutMode.available(visibleCount) + current).distinct().sortedBy { it.ordinal }
+        val portraitPhone =
+            !FormFactor.isTelevision(this) &&
+                resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val modes =
+            (GridLayoutMode.available(visibleCount, portraitPhone) + current).distinct().sortedBy { it.ordinal }
         binding.layoutSpinner.adapter = spinnerAdapter(modes.map { getString(it.labelRes) })
         binding.layoutSpinner.setSelection(modes.indexOf(current))
         binding.layoutSpinner.onItemSelected { arrangement.lastLayout = modes[it] }

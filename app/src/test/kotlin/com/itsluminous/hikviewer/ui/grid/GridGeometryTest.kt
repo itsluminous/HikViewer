@@ -38,7 +38,7 @@ class GridGeometryTest {
                 GridLayoutMode.HERO_1_11 to Triple(6, 5, 12),
                 GridLayoutMode.HERO_1_15 to Triple(8, 7, 16),
             )
-        assertThat(GridLayoutMode.heroModes).containsExactlyElementsIn(expected.keys).inOrder()
+        assertThat(GridLayoutMode.heroModes.filter { !it.isPortraitHero }).containsExactlyElementsIn(expected.keys).inOrder()
         expected.forEach { (mode, spec) ->
             val (columns, heroSpan, capacity) = spec
             val shape = GridGeometry.shape(mode, tileCount = 40)
@@ -52,7 +52,43 @@ class GridGeometryTest {
             val right = (0 until heroSpan).map { Cell(heroSpan, it) }
             val below = (0..heroSpan).map { Cell(it, heroSpan) }
             assertThat(shape.cells.drop(1)).containsExactlyElementsIn(right + below).inOrder()
+            assertThat(mode.landscapeCapacity).isEqualTo(capacity)
         }
+    }
+
+    @Test
+    fun `each even 1+N layout fills the portrait rows and takes the next smaller square grid turned`() {
+        val even =
+            listOf(
+                GridLayoutMode.HERO_1_6,
+                GridLayoutMode.HERO_1_8,
+                GridLayoutMode.HERO_1_10,
+                GridLayoutMode.HERO_1_12,
+                GridLayoutMode.HERO_1_14,
+                GridLayoutMode.HERO_1_16,
+            )
+        assertThat(GridLayoutMode.heroModes.filter { it.isPortraitHero }).containsExactlyElementsIn(even).inOrder()
+        even.forEach { mode ->
+            val n = mode.heroCompanions
+            val upright = GridGeometry.shape(mode, tileCount = 40, portrait = true)
+            assertThat(upright.columns).isEqualTo(2)
+            assertThat(upright.rows).isEqualTo(2 + n / 2)
+            assertThat(upright.capacity).isEqualTo(n + 1)
+            assertThat(upright.capacity).isEqualTo(upright.columns * upright.rows - 3) // every cell but the hero's extra 3 is a tile
+            assertThat(upright.cells.last()).isEqualTo(Cell(1, upright.rows - 1)) // no empty cell
+            val turned = GridGeometry.shape(mode, tileCount = 40, portrait = false)
+            val k = n / 2 - 1
+            assertThat(mode.heroSpan).isEqualTo(k)
+            assertThat(turned.columns).isEqualTo(k + 1)
+            assertThat(turned.rows).isEqualTo(k + 1)
+            assertThat(turned.capacity).isEqualTo(n) // one tile fewer: the last one is evicted
+            assertThat(mode.landscapeCapacity).isEqualTo(n)
+            assertThat(turned.cells.first()).isEqualTo(Cell(0, 0, k, k))
+        }
+        // An odd layout upright leaves the last cell empty, which is why phones get the even ones.
+        val oddUpright = GridGeometry.shape(GridLayoutMode.HERO_1_5, 6, portrait = true)
+        assertThat(oddUpright.capacity).isEqualTo(6)
+        assertThat(oddUpright.rows * oddUpright.columns - 3).isEqualTo(7)
     }
 
     @Test
@@ -114,6 +150,15 @@ class GridGeometryTest {
                 GridLayoutMode.GRID_3X3,
                 GridLayoutMode.HERO_1_5,
             ).inOrder()
+        assertThat(GridLayoutMode.available(7, portraitPhone = true))
+            .containsExactly(
+                GridLayoutMode.AUTO,
+                GridLayoutMode.GRID_3X3,
+                GridLayoutMode.HERO_1_6,
+            ).inOrder()
+        assertThat(GridLayoutMode.available(40, portraitPhone = true).filter { it.isHero })
+            .containsExactlyElementsIn(GridLayoutMode.heroModes.filter { it.isPortraitHero })
+            .inOrder()
         assertThat(GridLayoutMode.available(5)).containsExactly(GridLayoutMode.AUTO, GridLayoutMode.GRID_3X3)
         assertThat(GridLayoutMode.available(14))
             .containsExactly(
@@ -126,7 +171,8 @@ class GridGeometryTest {
                 GridLayoutMode.HERO_1_9,
                 GridLayoutMode.HERO_1_11,
             ).inOrder()
-        assertThat(GridLayoutMode.available(16)).containsExactlyElementsIn(GridLayoutMode.entries)
+        assertThat(GridLayoutMode.available(16))
+            .containsExactlyElementsIn(GridLayoutMode.entries.filter { !it.isPortraitHero })
     }
 
     @Test
@@ -135,7 +181,8 @@ class GridGeometryTest {
         assertThat(GridLayoutMode.available(13)).contains(GridLayoutMode.GRID_4X4)
         assertThat(GridLayoutMode.available(10)).containsAtLeast(GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3)
         assertThat(GridLayoutMode.available(0)).containsExactly(GridLayoutMode.AUTO, GridLayoutMode.GRID_3X3)
-        assertThat(GridLayoutMode.available(40)).containsExactlyElementsIn(GridLayoutMode.entries)
+        assertThat(GridLayoutMode.available(40))
+            .containsExactlyElementsIn(GridLayoutMode.entries.filter { !it.isPortraitHero })
     }
 
     @Test

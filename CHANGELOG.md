@@ -57,6 +57,20 @@ All notable changes to HikViewer are recorded here. The format follows
 - Tiles beyond the live budget showed black on the MiTV. The keyframe pool and the still sink were
   fine (they now log their deliveries); the stills were wiped by the same unclipped hole punch as the
   dots above. A Robolectric test covers the whole path from the first IDR to a non-empty bitmap.
+- The tile that took focus went black for about a second: focus handed it a hardware decoder (and
+  took one away from the tile losing focus), and each swap released a codec, created another and
+  waited for the next keyframe. Focus no longer touches any decoder; the hardware decoder goes to
+  the hero tile and to the fullscreen and phone camera screens.
+- While a tile is lifted for *Move*, every software tile drops to keyframe stills and comes back
+  live on drop, cancel or leaving the screen: on the MiTV the eight software decoder threads run at
+  the UI thread's own scheduler priority, so a move is answered before the pictures are.
+- The stream pipelines (relay reads, demux, decryption, feeding the decoders), the keyframe pool
+  and the codec release thread run at background priority; the UI thread no longer shares its CPU
+  with twenty default-priority workers. The connecting spinner is an 8 fps frame animation instead
+  of the platform's 60 fps vector drawable, which also cost 1.2 s of main thread to inflate for 16
+  tiles at launch. On the MiTV with the user's 4 × 3 grid (8 live + 4 keyframe tiles), 60 s idle:
+  janky frames 52 % → 9 %, frame p90 29 → 15 ms, p99 44 → 23 ms, high-input-latency frames 48 → 0;
+  a D-pad press reaches the grid in 4-17 ms and the focus border is drawn on the next frame.
 - Software-decoded tiles froze for a few seconds about once a minute on the MiTV, and in earlier
   builds were then demoted to keyframe stills one after another. The cause was in the decryptor:
   with the "type hint" encryption variant a clear P-slice is mistaken for an encrypted one once in
@@ -70,7 +84,7 @@ All notable changes to HikViewer are recorded here. The format follows
   dialog window.
 - A seek key held while the focus moved to the date chip or the speed button no longer keeps its
   accelerated step for the next press on the bar.
-- Adaptive decoding for weak TVs: at most two hardware decoders (focused and hero tiles), software
+- Adaptive decoding for weak TVs: a hardware decoder for the hero tile (and for fullscreen), software
   decoders for the rest, a shared keyframe-only pool for tiles beyond the live budget, which adapts
   to RAM, cores and measured decode lag. Only the tiles the layout shows are streamed. Hardware
   refusals back off exponentially; a `configure` refused while the previous codec still holds the

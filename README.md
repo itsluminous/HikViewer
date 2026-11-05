@@ -72,9 +72,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   verification code. It is checked locally against the recorder's `MD5(MD5(code))` before any stream
   is opened, stored in Android-encrypted preferences, and never asked again unless the recorder's
   code changes.
-- **Built for weak TVs**: hardware decoders for the two tiles you are looking at (focused or hero),
-  software decoders for the rest, and a shared keyframe-only decoder pool for tiles beyond what the
-  device can decode live. The live budget adapts to RAM, cores and measured decode lag, and tiles
+- **Built for weak TVs**: a hardware decoder for the hero tile and for fullscreen (moving the focus
+  never touches a decoder), software decoders for the other live tiles, and a shared keyframe-only
+  decoder pool for tiles beyond what the device can decode live. The live budget adapts to RAM, cores and measured decode lag, and tiles
   are promoted back when headroom returns. A decoder that stops producing pictures is caught within
   about 1.5 s and rebuilt without costing the tile its live slot. A failed tile dims and shows a
   single *Retry* button.

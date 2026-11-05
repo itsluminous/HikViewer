@@ -24,8 +24,8 @@ import java.util.ArrayDeque
  * and the callbacks are a few microseconds each. Pictures are rendered as soon as they are decoded
  * (`releaseOutputBuffer(render = true)`): the relay already paces the stream at the camera's
  * frame rate and a live view wants the lowest latency. Decoding starts at the first keyframe so
- * a mid-GOP start never shows grey blocks. A watchdog ([checkStall]) reports a codec that accepts
- * input but produces nothing for [STALL_MILLIS]; the owner then recreates it.
+ * a mid-GOP start never shows grey blocks. A watchdog ([checkStall], rules in [StallDetector])
+ * reports a codec that accepts input but produces nothing; the owner then recreates it.
  */
 open class TileDecoder(
     /** `MediaCodec` name from [CodecNames]. */
@@ -55,20 +55,42 @@ open class TileDecoder(
     private var codec: MediaCodec? = null
     private var released = false
     private var started = false
-    private var inputAccepted = false
     private var firstOutputSeen = false
-    private var lastOutputAtMillis = 0L
-    private var lastInputAtMillis = 0L
+    private val stall = StallDetector(0L)
     private val frameRate = FrameRateMeter()
 
     /** Frames queued and not yet handed to the codec; the lag signal. */
     open val queuedFrames: Int get() = synchronized(lock) { pending.size }
 
     /** True once a frame has been rendered. */
-    val hasOutput: Boolean get() = synchronized(lock) { firstOutputSeen }
+    open val hasOutput: Boolean get() = synchronized(lock) { firstOutputSeen }
 
     /** Pictures rendered per second, measured from the codec's output callbacks. */
     open fun framesPerSecond(nowMillis: Long): Float = synchronized(lock) { frameRate.fps(nowMillis) }
+
+    /** Milliseconds since the last picture came out (since `start()` while none has). */
+    open fun outputAgeMillis(nowMillis: Long): Long = synchronized(lock) { stall.outputAgeMillis(nowMillis) }
+
+    /** Milliseconds since the last picture was handed to the codec; `Long.MAX_VALUE` before the first. */
+    open fun inputAgeMillis(nowMillis: Long): Long = synchronized(lock) { stall.inputAgeMillis(nowMillis) }
+
+    /** Pictures handed to the codec so far. */
+    val framesIn: Int get() = synchronized(lock) { framesQueued }
+
+    /** Pictures the codec produced so far. */
+    val framesOut: Int get() = synchronized(lock) { framesRendered }
+
+    private var framesQueued = 0
+    private var framesRendered = 0
+    private val recentIn = ArrayDeque<String>()
+    private val recentOut = ArrayDeque<Long>()
+    private var inputCapacity = -1
+    private var truncated = 0
+
+    /** Diagnostic: the last pictures fed (pts/size/K) and the last output timestamps. */
+    fun recentHistory(): String = synchronized(lock) {
+        "cap=$inputCapacity truncated=$truncated in[${recentIn.joinToString(" ")}] out[${recentOut.joinToString(" ")}]"
+    }
 
     /** Configures and starts the codec. Throws `MediaCodec.CodecException`/`IOException` on failure. */
     open fun start() {
@@ -87,7 +109,7 @@ open class TileDecoder(
         c.start()
         synchronized(lock) {
             started = true
-            lastOutputAtMillis = System.nanoTime() / NANOS_PER_MILLI
+            stall.reset(now())
         }
     }
 
@@ -95,23 +117,15 @@ open class TileDecoder(
     open fun feed(unit: AccessUnit) {
         synchronized(lock) {
             if (released || !started) return
-            if (!inputAccepted && !unit.isKeyframe) return
+            if (!stall.hasInput && !unit.isKeyframe) return
             if (pending.size >= MAX_PENDING) pending.pollFirst()
             pending.addLast(unit)
         }
         drain()
     }
 
-    /**
-     * True when input is being accepted but no picture came out for [STALL_MILLIS]: the codec is
-     * wedged (seen on the MiTV after a resolution change) and must be recreated.
-     */
-    open fun checkStall(nowMillis: Long): Boolean = synchronized(lock) {
-        started &&
-            inputAccepted &&
-            nowMillis - lastOutputAtMillis > STALL_MILLIS &&
-            nowMillis - lastInputAtMillis < STALL_MILLIS
-    }
+    /** True when input is being accepted but nothing comes out ([StallDetector]); the owner recreates the codec. */
+    open fun checkStall(nowMillis: Long): Boolean = synchronized(lock) { started && stall.isStalled(nowMillis) }
 
     /** Stops and releases the codec. Safe to call twice. */
     open fun release() {
@@ -138,13 +152,17 @@ open class TileDecoder(
                 if (released || !started || freeInputs.isEmpty() || pending.isEmpty()) return
                 val index = freeInputs.pollFirst()
                 val unit = pending.pollFirst()
-                inputAccepted = true
-                lastInputAtMillis = System.nanoTime() / NANOS_PER_MILLI
+                framesQueued++
+                stall.onInput(now())
                 val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return
                 buffer.clear()
+                if (inputCapacity < 0) inputCapacity = buffer.remaining()
                 val size = minOf(unit.data.size, buffer.remaining())
+                if (size < unit.data.size) truncated++
                 buffer.put(unit.data, 0, size)
                 val pts = unit.presentationTimeUs ?: 0L
+                if (recentIn.size >= RECENT) recentIn.removeFirst()
+                recentIn.addLast("${pts / 1000}/${unit.data.size}${if (unit.isKeyframe) "K" else ""}")
                 runCatching { c.queueInputBuffer(index, 0, size, pts, 0) }
             }
         }
@@ -168,12 +186,20 @@ open class TileDecoder(
                 val first: Boolean
                 synchronized(lock) {
                     if (released) return
-                    lastOutputAtMillis = System.nanoTime() / NANOS_PER_MILLI
-                    frameRate.onFrame(lastOutputAtMillis)
+                    val now = now()
+                    stall.onOutput(now)
+                    framesRendered++
+                    if (recentOut.size >= RECENT) recentOut.removeFirst()
+                    recentOut.addLast(info.presentationTimeUs / 1000)
+                    frameRate.onFrame(now)
                     first = !firstOutputSeen
                     firstOutputSeen = true
                 }
-                runCatching { codec.releaseOutputBuffer(index, true) }
+                // Rendered "now", not at the stream's presentation time: the relay already paces
+                // the pictures, and a camera clock hours away from the TV's uptime made
+                // SurfaceFlinger log an "implausible timestamp" line for every frame of every tile
+                // (~50 lines/s, measurable in logd on the TV).
+                runCatching { codec.releaseOutputBuffer(index, System.nanoTime()) }
                 if (first) listener.onFirstFrame(this@TileDecoder)
             }
 
@@ -190,15 +216,15 @@ open class TileDecoder(
             ) = Unit
         }
 
+    private fun now(): Long = System.nanoTime() / NANOS_PER_MILLI
+
     /** Tunables. */
     companion object {
-        /** No output for this long while input is accepted → stalled. */
-        const val STALL_MILLIS: Long = 3_000
-
         /** Drop the oldest frame beyond this many queued; keeps latency bounded when the CPU lags. */
         const val MAX_PENDING: Int = 30
 
         private const val NANOS_PER_MILLI = 1_000_000L
+        private const val RECENT = 24
         private val DEFAULT_SIZE_HINT = 960 to 480
 
         /**

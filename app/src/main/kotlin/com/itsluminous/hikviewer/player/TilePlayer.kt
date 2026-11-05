@@ -66,6 +66,8 @@ class TilePlayer(
     private val lock = Any()
     private val stateFlow = MutableStateFlow<TileState>(TileState.Connecting)
     private val frameRateFlow = MutableStateFlow(0f)
+    private val flowingFlow = MutableStateFlow(false)
+    private var lastStillAtMillis = 0L
     private val keyframeRate = FrameRateMeter()
     private val tag = "ch${camera.channelNo}"
     private var surface: Surface? = null
@@ -82,6 +84,8 @@ class TilePlayer(
     private var job: Job? = null
     private var streaming = false
     private var pictureShown = false
+    private var unitsReceived = 0
+    private var lastUnitAtMillis = 0L
 
     /** For the overlay. */
     val state: StateFlow<TileState> = stateFlow.asStateFlow()
@@ -93,6 +97,13 @@ class TilePlayer(
      * every half second (the meter's 2 s window flips between 11.5 and 12.5 at every tick).
      */
     val frameRate: StateFlow<Float> = frameRateFlow.asStateFlow()
+
+    /**
+     * True while pictures reach the screen: a decoded frame (live) or a keyframe still (keyframe
+     * mode) within the last [FLOWING_MILLIS]. Sampled on every [tick], so the overlay changes at
+     * most twice a second and never per frame; this is the tile's green/red dot.
+     */
+    val framesFlowing: StateFlow<Boolean> = flowingFlow.asStateFlow()
 
     /** Decoders this player built so far; the TV logcat shows churn through it. */
     val decodersCreated: Int get() = synchronized(lock) { created }
@@ -157,6 +168,7 @@ class TilePlayer(
             pool.cancel(this)
             keyframeRate.reset()
             frameRateFlow.value = 0f
+            flowingFlow.value = false
         }
         stale?.let(::releaseLater)
     }
@@ -211,14 +223,28 @@ class TilePlayer(
         synchronized(lock) { this.sink = sink }
     }
 
-    /** Periodic watchdog; recreates a wedged decoder and samples the frame rate. Returns true when it had to. */
-    fun tick(nowMillis: Long): Boolean {
+    /**
+     * Periodic watchdog; recreates a wedged decoder and samples the frame rate. Returns the number
+     * of pictures that were waiting at the wedged decoder's input, or null when it was fine: the
+     * budget treats a stall as lag only when the queue says the device could not keep up. The
+     * MiTV's software decoder wedges with an empty queue (a decoder bug, not load), and shedding a
+     * tile for that only turns a hiccup into a slideshow.
+     */
+    fun tick(nowMillis: Long): Int? {
         var stale: TileDecoder? = null
-        val stalled =
+        val queuedAtStall =
             synchronized(lock) {
-                val stalled = decoder?.checkStall(nowMillis) == true
+                val d = decoder
+                val stalled = d != null && d.checkStall(nowMillis)
                 if (stalled) {
-                    Log.w(TAG, "$tag: decoder stalled, recreating (decoder #${created + 1} next)")
+                    Log.w(
+                        TAG,
+                        "$tag: decoder stalled, recreating (decoder #${created + 1} next): " +
+                            "no output for ${d.outputAgeMillis(nowMillis)} ms, last input " +
+                            "${d.inputAgeMillis(nowMillis)} ms ago, queued=${d.queuedFrames} " +
+                            "in=${d.framesIn} out=${d.framesOut}",
+                    )
+                    Log.w(TAG, "$tag: ${d.recentHistory()}")
                     stale = detachDecoderLocked()
                 }
                 val fps =
@@ -228,10 +254,42 @@ class TilePlayer(
                         else -> keyframeRate.fps(nowMillis)
                     }
                 frameRateFlow.value = Math.round(fps).toFloat()
-                stalled
+                val lastPictureAge =
+                    when {
+                        !streaming -> Long.MAX_VALUE
+                        mode.isLive -> decoder?.takeIf { it.hasOutput }?.outputAgeMillis(nowMillis) ?: Long.MAX_VALUE
+                        else -> if (lastStillAtMillis == 0L) Long.MAX_VALUE else nowMillis - lastStillAtMillis
+                    }
+                flowingFlow.value = lastPictureAge < FLOWING_MILLIS
+                if (stalled) d.queuedFrames else null
             }
         stale?.let(::releaseLater)
-        return stalled
+        return queuedAtStall
+    }
+
+    /**
+     * One line of state for the periodic INFO log: mode, overlay state, pictures received from the
+     * stream, decoder input/output counts, queue depth and rendered fps. Cheap enough to log every
+     * few seconds per tile; this is what a TV logcat is read with.
+     */
+    fun diagnostics(nowMillis: Long): String = synchronized(lock) {
+        val d = decoder
+        val state =
+            when (val v = stateFlow.value) {
+                TileState.Connecting -> "Connecting"
+                TileState.Live -> "Live"
+                TileState.Keyframe -> "Keyframe"
+                is TileState.Error -> "Error(${v.message})"
+            }
+        val unitAge = if (lastUnitAtMillis == 0L) -1 else nowMillis - lastUnitAtMillis
+        val dec =
+            if (d == null) {
+                "decoder=none"
+            } else {
+                "in=${d.framesIn} out=${d.framesOut} queued=${d.queuedFrames} " +
+                    "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))}"
+            }
+        "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created"
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
@@ -264,9 +322,20 @@ class TilePlayer(
         var stale: TileDecoder? = null
         synchronized(lock) {
             when (status) {
-                is StreamStatus.Connecting -> if (!streaming) stateFlow.value = TileState.Connecting
-                is StreamStatus.Streaming -> streaming = true
+                is StreamStatus.Connecting -> {
+                    if (status.attempt > 1) Log.i(TAG, "$tag: connecting, attempt ${status.attempt}")
+                    if (!streaming) stateFlow.value = TileState.Connecting
+                }
+                is StreamStatus.Streaming -> {
+                    Log.i(TAG, "$tag: streaming")
+                    streaming = true
+                }
                 is StreamStatus.Reconnecting -> {
+                    Log.w(
+                        TAG,
+                        "$tag: stream lost (${status.cause.javaClass.simpleName}: ${status.cause.message}), " +
+                            "reconnect #${status.attempt} in ${status.delayMillis} ms",
+                    )
                     streaming = false
                     pictureShown = false
                     stale = detachDecoderLocked()
@@ -323,7 +392,13 @@ class TilePlayer(
     }
 
     private fun onAccessUnit(unit: AccessUnit) {
-        when (val plan = synchronized(lock) { plan(unit) }) {
+        val plan =
+            synchronized(lock) {
+                unitsReceived++
+                lastUnitAtMillis = clock()
+                plan(unit)
+            }
+        when (plan) {
             Plan.Skip -> Unit
             is Plan.Feed -> plan.decoder.feed(unit)
             is Plan.Still -> pool.submit(this, plan.sink, unit)
@@ -336,7 +411,8 @@ class TilePlayer(
     private fun planStill(unit: AccessUnit): Plan {
         val target = sink
         if (!unit.isKeyframe || target == null) return Plan.Skip
-        keyframeRate.onFrame(clock())
+        lastStillAtMillis = clock()
+        keyframeRate.onFrame(lastStillAtMillis)
         pictureShown = true
         stateFlow.value = TileState.Keyframe
         return Plan.Still(target)
@@ -470,6 +546,9 @@ class TilePlayer(
 
         /** Longest a surface change waits for an in-flight release before giving up on it. */
         private const val RELEASE_WAIT_MILLIS = 2_000L
+
+        /** A picture younger than this means frames are flowing (the green dot). */
+        const val FLOWING_MILLIS: Long = 2_000
 
         private const val TAG = "TilePlayer"
         private const val NANOS_PER_MILLI = 1_000_000L

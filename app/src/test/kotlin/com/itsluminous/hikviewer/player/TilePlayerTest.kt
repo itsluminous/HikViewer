@@ -160,6 +160,40 @@ class TilePlayerTest {
         }
 
     @Test
+    fun `frames flowing follows the decoder's last output within two seconds, and stills in keyframe mode`() =
+        runTest(dispatcher) {
+            val p = player()
+            p.attachSurface(surface)
+            p.mode = TileMode.SW_LIVE
+            run(p)
+            val d = decoders.created.single()
+            assertThat(p.framesFlowing.value).isFalse() // no picture has come out yet
+            d.outputAge = 100
+            d.emitFirstFrame()
+            p.tick(1_000)
+            assertThat(p.framesFlowing.value).isTrue()
+            d.outputAge = TilePlayer.FLOWING_MILLIS + 1
+            p.tick(4_000)
+            assertThat(p.framesFlowing.value).isFalse()
+            d.outputAge = 500
+            p.tick(4_500)
+            assertThat(p.framesFlowing.value).isTrue()
+            p.stop()
+            assertThat(p.framesFlowing.value).isFalse()
+
+            val k = player()
+            k.attachSurface(surface)
+            now = 10_000
+            run(k) // KEYFRAME mode: stills were submitted at `now`
+            assertThat(pool.submitted).isNotEmpty()
+            k.tick(now + 1_000)
+            assertThat(k.framesFlowing.value).isTrue()
+            k.tick(now + TilePlayer.FLOWING_MILLIS + 1)
+            assertThat(k.framesFlowing.value).isFalse()
+            k.stop()
+        }
+
+    @Test
     fun `keyframe mode hands keyframes to the pool for the tile's still sink, never a surface`() = runTest(dispatcher) {
         val p = player()
         run(p) // no surface attached: thumbnails need none

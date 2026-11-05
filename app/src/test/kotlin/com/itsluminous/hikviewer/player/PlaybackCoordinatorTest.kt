@@ -65,7 +65,7 @@ class PlaybackCoordinatorTest {
     }
 
     @Test
-    fun `a stalled decoder counts as lag and demotes a tile within the demote window`() = runTest(dispatcher) {
+    fun `a stall with a deep queue counts as lag and demotes a tile within the demote window`() = runTest(dispatcher) {
         val c = coordinator()
         c.setCameras(cameras(4))
         c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
@@ -73,8 +73,9 @@ class PlaybackCoordinatorTest {
         c.start()
         dispatcher.scheduler.runCurrent()
         val before = c.liveLimit
-        // One stall event; the queues stay shallow.
+        // One stall event with pictures piled up at that decoder's input.
         decoders.created.last().stalled = true
+        decoders.created.last().queued = LiveBudget.LAG_FRAMES + 1
         now = 500
         dispatcher.scheduler.advanceTimeBy(500)
         dispatcher.scheduler.runCurrent()
@@ -87,6 +88,28 @@ class PlaybackCoordinatorTest {
             dispatcher.scheduler.runCurrent()
         }
         assertThat(c.liveLimit).isEqualTo(before - 1)
+        c.release()
+    }
+
+    @Test
+    fun `a decoder that stalls with an empty queue is recreated but never costs a tile`() = runTest(dispatcher) {
+        val c = coordinator()
+        c.setCameras(cameras(4))
+        c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+        c.focusedIndex = 0
+        c.start()
+        dispatcher.scheduler.runCurrent()
+        val before = c.liveLimit
+        val wedged = decoders.created.last()
+        wedged.stalled = true // queue stays 0: the codec wedged on its own
+        repeat(6) {
+            now += 500
+            dispatcher.scheduler.advanceTimeBy(500)
+            dispatcher.scheduler.runCurrent()
+            wedged.stalled = false
+        }
+        assertThat(wedged.released).isTrue()
+        assertThat(c.liveLimit).isEqualTo(before)
         c.release()
     }
 

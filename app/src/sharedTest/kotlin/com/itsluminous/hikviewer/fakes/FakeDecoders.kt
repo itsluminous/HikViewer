@@ -47,9 +47,14 @@ class RecordingDecoder(
     /** What [framesPerSecond] answers. */
     var fps = 0f
 
+    /** What [outputAgeMillis] answers. */
+    var outputAge = 0L
+
     override val queuedFrames: Int get() = queued
 
     override fun framesPerSecond(nowMillis: Long): Float = fps
+
+    override fun outputAgeMillis(nowMillis: Long): Long = outputAge
 
     override fun start() {
         failOnStart?.let { throw it }
@@ -68,7 +73,14 @@ class RecordingDecoder(
     }
 
     /** Simulates the codec's first rendered picture. */
-    fun emitFirstFrame() = listener.onFirstFrame(this)
+    fun emitFirstFrame() {
+        firstFrameEmitted = true
+        listener.onFirstFrame(this)
+    }
+
+    private var firstFrameEmitted = false
+
+    override val hasOutput: Boolean get() = firstFrameEmitted
 }
 
 /** Builds [RecordingDecoder]s and keeps them for assertions. */

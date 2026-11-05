@@ -43,6 +43,7 @@ class PlaybackCoordinator(
     private var ticker: Job? = null
     private var running = false
     private var lastStallAt: Long? = null
+    private var lastReportAt = 0L
 
     /** One player per visible camera, in grid order. */
     val players: StateFlow<List<TilePlayer>> = playersFlow.asStateFlow()
@@ -123,14 +124,25 @@ class PlaybackCoordinator(
         val now = clock()
         val players = playersFlow.value
         val before = budget.liveLimit
-        // A stalled decoder (input accepted, no picture for 3 s) is the device not keeping up as
-        // much as a deep input queue is; it counts as lag for the whole demote window so the
-        // budget sheds a tile instead of letting the watchdog recreate decoders forever.
-        if (players.map { it.tick(now) }.any { it }) lastStallAt = now
+        // A decoder that stalled with a deep input queue is the device not keeping up, as much as
+        // a deep queue alone is; it counts as lag for the whole demote window so the budget sheds
+        // a tile instead of letting the watchdog recreate decoders forever. A stall with an empty
+        // queue is the codec wedging on its own (the MiTV's software decoder does) and is only
+        // recreated, never demoted for: that would turn a one-second hiccup into a slideshow tile.
+        val stalls = players.mapNotNull { it.tick(now) }
+        if (stalls.any { it > LiveBudget.LAG_FRAMES }) lastStallAt = now
         val recentStall = lastStallAt?.let { now - it <= LiveBudget.LAG_DEMOTE_MILLIS } == true
         val queued = players.filter { it.mode.isLive }.maxOfOrNull { it.queuedFrames } ?: 0
         val lag = if (recentStall) maxOf(queued, LiveBudget.LAG_FRAMES + 1) else queued
         if (budget.sample(now, lag) != before) applyPolicy()
+        if (now - lastReportAt >= REPORT_MILLIS) {
+            lastReportAt = now
+            Log.i(
+                DIAG_TAG,
+                "live limit=${budget.liveLimit}/${budget.ceiling} queued=$queued pool codecs=${pool.codecsCreated}",
+            )
+            players.forEach { Log.i(DIAG_TAG, it.diagnostics(now)) }
+        }
     }
 
     private fun applyPolicy() {
@@ -153,6 +165,10 @@ class PlaybackCoordinator(
     companion object {
         /** Watchdog and budget sampling period. */
         const val DEFAULT_TICK_MILLIS: Long = 500
+
+        /** One diagnostics line per tile this often. */
+        const val REPORT_MILLIS: Long = 10_000
+        private const val DIAG_TAG = "HikViewer"
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val TAG = "LiveBudget"
     }

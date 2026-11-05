@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.ui.settings
 
+import android.content.pm.PackageManager
 import android.view.KeyEvent
 import android.view.View
 import android.widget.CheckBox
@@ -12,6 +13,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
@@ -23,7 +25,9 @@ import com.itsluminous.hikviewer.ui.login.LoginActivity
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowLooper
 
@@ -171,6 +175,67 @@ class SettingsActivityTest {
                 val next = shadowOf(a).nextStartedActivity
                 assertThat(next.component?.className).isEqualTo(LoginActivity::class.java.name)
                 assertThat(a.isFinishing).isTrue()
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `turning the phone keeps the camera selection`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { _, list ->
+                list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick() // untick Camera 1
+                list.getChildAt(3).findViewById<CheckBox>(R.id.check).performClick() // tick Camera 4
+                assertThat(app.graph.settingsStore.visibleCameraKeys)
+                    .containsExactly("$serial/2", "$serial/3", "$serial/4")
+                    .inOrder()
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.rows { _, list ->
+                // The list is as the user left it (rows keep their place until Settings is reopened).
+                assertThat((0 until 5).map { list.getChildAt(it).findViewById<CheckBox>(R.id.check).isChecked })
+                    .containsExactly(false, true, true, true, false)
+                    .inOrder()
+                assertThat(
+                    (0 until 5).map { list.getChildAt(it).findViewById<TextView>(R.id.name).text.toString() },
+                ).containsExactly("Camera 1", "Camera 2", "Camera 3", "Camera 4", "Camera 5").inOrder()
+                assertThat(app.graph.settingsStore.visibleCameraKeys)
+                    .containsExactly("$serial/2", "$serial/3", "$serial/4")
+                    .inOrder()
+            }
+        }
+    }
+
+    /** Every control of a row and every switch ends inside a 360 dp screen, and the signal label is on it. */
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `phone portrait keeps the switches and the signal labels inside the screen`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, list ->
+                val screenWidth = a.resources.displayMetrics.widthPixels
+                assertThat(screenWidth).isEqualTo(720) // 360 dp at xhdpi: the qualifier took
+                val views =
+                    listOf(R.id.show_names, R.id.show_fps, R.id.quality_main, R.id.layout_spinner, R.id.change_code)
+                        .map { a.findViewById<View>(it) } +
+                        (0 until list.childCount).flatMap { i ->
+                            listOf(R.id.check, R.id.name, R.id.signal, R.id.handle).map { list.getChildAt(i).findViewById<View>(it) }
+                        }
+                views.forEach { view ->
+                    val where = IntArray(2).also(view::getLocationOnScreen)
+                    assertWithMessage("${a.resources.getResourceEntryName(view.id)} fits").that(where[0] + view.width)
+                        .isAtMost(screenWidth)
+                    assertWithMessage("${a.resources.getResourceEntryName(view.id)} is visible").that(view.width).isGreaterThan(0)
+                    assertThat(where[0]).isAtLeast(0)
+                }
+                // The switch's thumb is its right end: the whole widget must be on screen, not just its text.
+                val row = list.getChildAt(0)
+                val signal = row.findViewById<TextView>(R.id.signal)
+                assertThat(signal.text.toString()).isEqualTo("signal")
+                assertThat(signal.layout.getEllipsisCount(0)).isEqualTo(0)
+                assertThat(list.getChildAt(3).findViewById<TextView>(R.id.signal).text.toString()).isEqualTo("no signal")
             }
         }
     }

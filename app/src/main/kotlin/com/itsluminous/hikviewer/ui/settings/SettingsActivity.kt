@@ -8,11 +8,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.itsluminous.hikviewer.R
-import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.VerificationCode
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.AccountRepository
@@ -22,6 +22,7 @@ import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.ui.common.FormFactor
+import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.VerificationCodeDialog
 import com.itsluminous.hikviewer.ui.login.LoginActivity
@@ -30,17 +31,22 @@ import kotlinx.coroutines.launch
 /**
  * Settings: layout, visible cameras and order, fullscreen quality, encryption password, about,
  * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
- * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately; the grid
- * re-reads the store when this screen returns. The camera list is a plain `LinearLayout` of rows
- * (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop.
+ * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
+ * the grid re-reads the store when this screen returns. The camera list is a plain `LinearLayout`
+ * of rows (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop;
+ * the rows belong to the [SettingsViewModel] so a rotation keeps them, and they are excluded
+ * from view state saving because their shared ids would otherwise restore into one another.
  */
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var settings: SettingsStore
     private lateinit var arrangement: GridArrangementStore
     private lateinit var account: AccountRepository
-    private lateinit var editor: CameraOrderEditor
-    private var allCameras: List<Camera> = emptyList()
+    private val viewModel: SettingsViewModel by viewModels {
+        val graph = AppGraph.of(this)
+        LambdaViewModelFactory { SettingsViewModel(graph.account, graph.settingsStore) }
+    }
+    private val editor: CameraOrderEditor get() = viewModel.editor
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,11 +56,6 @@ class SettingsActivity : AppCompatActivity() {
         account = graph.account
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        allCameras =
-            account.inventory.value
-                ?.cameras
-                .orEmpty()
-        editor = CameraOrderEditor(allCameras, settings.visibleCameraKeys)
         bindLayout()
         bindCameraList()
         bindQuality()
@@ -89,18 +90,18 @@ class SettingsActivity : AppCompatActivity() {
                 if (choice.camera.hasSignal) R.string.settings_camera_signal else R.string.settings_camera_no_signal,
             )
             row.check.setOnCheckedChangeListener { _, _ ->
-                editor.toggleVisible(index)
-                saveOrder()
+                viewModel.toggleVisible(index)
+                bindLayout()
             }
             row.handle.setOnClickListener {
-                val moving = editor.togglePickUp(index)
+                val moving = viewModel.togglePickUp(index)
                 row.moving.visibility = if (moving) View.VISIBLE else View.GONE
-                if (!moving) {
-                    saveOrder()
-                    rebuildList(focusHandleAt = index)
-                }
+                if (!moving) rebuildList(focusHandleAt = index)
             }
             row.handle.setOnKeyListener { _, keyCode, event -> onHandleKey(keyCode, event) }
+            // Every row shares the same child ids, so a saved hierarchy state would restore the
+            // last row's checkbox into all of them; the ViewModel is the state that survives.
+            row.root.isSaveFromParentEnabled = false
             list.addView(row.root)
         }
     }
@@ -116,7 +117,7 @@ class SettingsActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_DPAD_DOWN -> 1
                 else -> return false
             }
-        val to = editor.moveBy(delta) ?: return true
+        val to = viewModel.moveBy(delta) ?: return true
         rebuildList(focusHandleAt = to, moving = true)
         return true
     }
@@ -130,12 +131,6 @@ class SettingsActivity : AppCompatActivity() {
         val rowBinding = ItemCameraChoiceBinding.bind(row)
         rowBinding.moving.visibility = if (moving) View.VISIBLE else View.GONE
         rowBinding.handle.requestFocus()
-    }
-
-    /** Persists the camera choice; the layout spinner depends on how many cameras are shown. */
-    private fun saveOrder() {
-        settings.visibleCameraKeys = editor.visibleKeys()
-        bindLayout()
     }
 
     private fun bindQuality() {

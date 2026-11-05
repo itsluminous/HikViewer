@@ -7,6 +7,7 @@ import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.Future
 
 /**
  * Builds [PlaybackCoordinator]s (grids) and single [TilePlayer]s (recorded playback) for the
@@ -21,7 +22,7 @@ class PlaybackFactory(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val tickMillis: Long = PlaybackCoordinator.DEFAULT_TICK_MILLIS,
     /** How players tear decoders down; the recorder tests pass a synchronous one. */
-    private val releaser: (TileDecoder) -> Unit = DecoderReleaser::release,
+    private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
 ) {
     /** A coordinator for [opener] on [scope]. */
     fun create(

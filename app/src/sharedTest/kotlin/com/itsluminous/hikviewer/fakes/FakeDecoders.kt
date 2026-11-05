@@ -9,6 +9,7 @@ import com.itsluminous.hikviewer.player.StillSink
 import com.itsluminous.hikviewer.player.TileDecoder
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -106,7 +107,10 @@ class RecordingDecoderFactory {
         dispatcher = dispatcher,
         tickMillis = 50,
         // Synchronous: a test asserts `released` right after the stop that caused it.
-        releaser = { it.release() },
+        releaser = {
+            it.release()
+            CompletableFuture.completedFuture(null)
+        },
     )
 }
 

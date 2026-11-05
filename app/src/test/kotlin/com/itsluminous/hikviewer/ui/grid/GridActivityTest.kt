@@ -229,8 +229,12 @@ class GridActivityTest {
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
             ShadowLooper.idleMainLooper()
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
-            ShadowLooper.idleMainLooper()
-            assertThat(cloud.accounts.single().opened).hasSize(24)
+            // Streams open on worker threads; the reopen is asynchronous to the lifecycle call.
+            awaitUi {
+                cloud.accounts
+                    .single()
+                    .opened.size == 24
+            }
         }
     }
 

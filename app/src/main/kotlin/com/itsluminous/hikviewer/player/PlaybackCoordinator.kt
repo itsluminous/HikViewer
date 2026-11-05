@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.Future
 
 /**
  * Runs every tile of the grid: one [TilePlayer] per visible camera, the [LiveBudget] that decides
@@ -35,7 +36,7 @@ class PlaybackCoordinator(
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     /** How players tear decoders down; tests pass a synchronous one. */
-    private val releaser: (TileDecoder) -> Unit = DecoderReleaser::release,
+    private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
 ) {
     private val budget = LiveBudget(capabilities) { Log.i(TAG, it) }
     private val playersFlow = MutableStateFlow<List<TilePlayer>>(emptyList())

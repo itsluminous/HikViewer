@@ -10,6 +10,7 @@ import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.core.stream.StreamStatus
 import com.itsluminous.hikviewer.fakes.NoopKeyframePool
+import com.itsluminous.hikviewer.fakes.RecordingDecoder
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.SyntheticStream
 import kotlinx.coroutines.flow.Flow
@@ -45,7 +46,11 @@ class TilePlayerTest {
         }
 
     /** Synchronous teardown, so a test can assert `released` right after the call that caused it. */
-    private val releaseNow: (TileDecoder) -> Unit = { it.release() }
+    private val releaseNow: (TileDecoder) -> java.util.concurrent.Future<*> = {
+        it.release()
+        java.util.concurrent.CompletableFuture
+            .completedFuture(null)
+    }
 
     private fun player(
         stream: Flow<AccessUnit> = SyntheticStream.flow(paced = false).take(FRAMES),
@@ -53,7 +58,7 @@ class TilePlayerTest {
             it(StreamStatus.Connecting(1))
             it(StreamStatus.Streaming)
         },
-        releaser: (TileDecoder) -> Unit = releaseNow,
+        releaser: (TileDecoder) -> java.util.concurrent.Future<*> = releaseNow,
     ) = TilePlayer(
         camera,
         opener = { _, _, onStatus ->
@@ -334,13 +339,41 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `surface loss releases the decoder`() = runTest(dispatcher) {
-        val p = player()
+    fun `surface loss releases the decoder on the spot and waits for releases still in flight`() = runTest(dispatcher) {
+        val blocking = java.util.concurrent.CompletableFuture<Unit>()
+        var deferred: RecordingDecoder? = null
+        val p =
+            player(
+                stream = SyntheticStream.flow(paced = true).take(FRAMES * 2),
+                releaser = { d ->
+                    deferred = d as RecordingDecoder
+                    blocking // pretends the release thread has not got to it yet
+                },
+            )
         p.attachSurface(surface)
         p.mode = TileMode.SW_LIVE
-        run(p)
-        p.attachSurface(null)
-        assertThat(decoders.created.single().released).isTrue()
+        p.start(this)
+        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
+        dispatcher.scheduler.runCurrent()
+        val first = decoders.created.single()
+        first.stalled = true
+        p.tick(10_000) // detached, handed to the (stuck) releaser
+        assertThat(deferred).isSameInstanceAs(first)
+        assertThat(first.released).isFalse()
+        dispatcher.scheduler.advanceUntilIdle()
+        val second = decoders.created.last()
+        assertThat(second).isNotSameInstanceAs(first)
+        // surfaceDestroyed: the current decoder goes synchronously and the stuck release is waited for.
+        val waiter = Thread { p.attachSurface(null) }
+        waiter.start()
+        waiter.join(500)
+        assertThat(waiter.isAlive).isTrue() // still waiting on the in-flight release
+        assertThat(second.released).isTrue()
+        assertThat(second.releasedOn).isSameInstanceAs(waiter)
+        first.release()
+        blocking.complete(Unit)
+        waiter.join(5_000)
+        assertThat(waiter.isAlive).isFalse()
         p.stop()
     }
 

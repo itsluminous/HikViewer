@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 
 /**
  * Plays one camera into one surface according to a [TileMode].
@@ -43,9 +45,9 @@ import java.io.IOException
  * creation happens on the stream thread between two short critical sections (a [generation]
  * counter discards a decoder whose tile changed its mind meanwhile), and teardown goes to the
  * [releaser] ([DecoderReleaser] by default) so the main thread and the other stream threads never
- * wait for `MediaCodec.release()`. The one exception is a rebuild on the stream thread itself,
- * which releases the old decoder synchronously because the hardware slot must be free before the
- * new one starts.
+ * wait for `MediaCodec.release()`. Two exceptions release synchronously: a rebuild on the stream
+ * thread (the hardware slot must be free before the new decoder starts) and a surface change
+ * ([attachSurface]: the surface is about to be freed, see there).
  */
 class TilePlayer(
     /** The camera shown. */
@@ -59,7 +61,7 @@ class TilePlayer(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
     /** Tears detached decoders down; tests pass a synchronous one. */
-    private val releaser: (TileDecoder) -> Unit = DecoderReleaser::release,
+    private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
 ) : TileDecoder.Listener {
     private val lock = Any()
     private val stateFlow = MutableStateFlow<TileState>(TileState.Connecting)
@@ -76,6 +78,7 @@ class TilePlayer(
     private var decoderDisabled = false
     private var swapAtNextKeyframe = false
     private var generation = 0
+    private val releasing = ArrayList<Future<*>>()
     private var job: Job? = null
     private var streaming = false
     private var pictureShown = false
@@ -118,7 +121,7 @@ class TilePlayer(
                 }
                 if (value.isLive) pool.cancel(this)
             }
-            stale?.let(releaser)
+            stale?.let(::releaseLater)
         }
 
     /** Decoder input backlog, for [LiveBudget]. */
@@ -155,7 +158,7 @@ class TilePlayer(
             keyframeRate.reset()
             frameRateFlow.value = 0f
         }
-        stale?.let(releaser)
+        stale?.let(::releaseLater)
     }
 
     /** The user pressed Retry on a failed tile: forget the failure and open the stream again. */
@@ -168,9 +171,18 @@ class TilePlayer(
         start(scope)
     }
 
-    /** The tile's surface appeared or vanished; decoding restarts at the next keyframe. */
+    /**
+     * The tile's surface appeared, vanished or was replaced; decoding restarts at the next
+     * keyframe. This is the one teardown that stays on the caller's thread: it runs from
+     * `surfaceDestroyed`, after which the framework frees the surface, and a codec still drawing
+     * into a freed surface tears its own buffers down under the thread feeding it (SIGSEGV in
+     * `TileDecoder.drain` on the emulator's Codec2 decoders). So the detached decoder is released
+     * here and now, and any release of this player's earlier decoders still in flight is waited
+     * for; both are short and only happen when a screen goes away.
+     */
     fun attachSurface(surface: Surface?) {
         val stale: TileDecoder?
+        val inFlight: List<Future<*>>
         synchronized(lock) {
             if (this.surface == surface) return
             this.surface = surface
@@ -178,8 +190,20 @@ class TilePlayer(
             stale = detachDecoderLocked()
             decoderDisabled = false
             resetHardwareBackoffLocked()
+            inFlight = releasing.toList()
+            releasing.clear()
         }
-        stale?.let(releaser)
+        stale?.release()
+        inFlight.forEach { runCatching { it.get(RELEASE_WAIT_MILLIS, TimeUnit.MILLISECONDS) } }
+    }
+
+    /** Hands [decoder] to the releaser and remembers the future until the surface changes. */
+    private fun releaseLater(decoder: TileDecoder) {
+        val future = releaser(decoder)
+        synchronized(lock) {
+            releasing.removeAll { it.isDone }
+            releasing += future
+        }
     }
 
     /** Where this tile's keyframe thumbnails are drawn while it is not live; null while it has no view. */
@@ -206,7 +230,7 @@ class TilePlayer(
                 frameRateFlow.value = Math.round(fps).toFloat()
                 stalled
             }
-        stale?.let(releaser)
+        stale?.let(::releaseLater)
         return stalled
     }
 
@@ -233,7 +257,7 @@ class TilePlayer(
                 failDecoderLocked("Decoder error")
             }
         }
-        stale?.let(releaser)
+        stale?.let(::releaseLater)
     }
 
     private fun onStatus(status: StreamStatus) {
@@ -254,7 +278,7 @@ class TilePlayer(
                 is StreamStatus.Ended -> Unit
             }
         }
-        stale?.let(releaser)
+        stale?.let(::releaseLater)
     }
 
     private fun onStreamFailed(e: Throwable) {
@@ -274,7 +298,7 @@ class TilePlayer(
             stale = detachDecoderLocked()
             stateFlow.value = state
         }
-        stale?.let(releaser)
+        stale?.let(::releaseLater)
     }
 
     /** What to do with one picture; decided under the lock, done outside it. */
@@ -356,7 +380,7 @@ class TilePlayer(
                 }
                 wanted
             }
-        if (installed) d.feed(unit) else releaser(d)
+        if (installed) d.feed(unit) else releaseLater(d)
     }
 
     /** A started decoder and whether it is a software one, or null when the tile is now in error. */
@@ -443,6 +467,9 @@ class TilePlayer(
 
         /** The backoff doubles with every refusal up to this. */
         const val HW_RETRY_MAX_MILLIS: Long = 5 * 60_000
+
+        /** Longest a surface change waits for an in-flight release before giving up on it. */
+        private const val RELEASE_WAIT_MILLIS = 2_000L
 
         private const val TAG = "TilePlayer"
         private const val NANOS_PER_MILLI = 1_000_000L

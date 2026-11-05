@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.player
 
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 /**
  * Tears decoders down off the caller's thread.
@@ -20,8 +21,9 @@ object DecoderReleaser {
     private val executor =
         Executors.newSingleThreadExecutor { r -> Thread(r, THREAD_NAME).also { it.isDaemon = true } }
 
-    /** Releases [decoder] on the release thread. */
-    fun release(decoder: TileDecoder) {
-        executor.execute { decoder.release() }
-    }
+    /**
+     * Releases [decoder] on the release thread. The future completes when it is gone; a player
+     * waits on it only when the surface the decoder drew into is about to be destroyed.
+     */
+    fun release(decoder: TileDecoder): Future<*> = executor.submit { decoder.release() }
 }

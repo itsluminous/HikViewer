@@ -17,6 +17,7 @@ import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ActivityFullscreenBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.SwipeDetector
@@ -41,6 +42,7 @@ class FullscreenActivity : AppCompatActivity() {
             FullscreenViewModel(
                 graph.account,
                 graph.settingsStore,
+                graph.arrangementStore,
                 intent.getIntExtra(EXTRA_INDEX, 0),
             ) { vm ->
                 graph.playbackFactory.create(
@@ -131,21 +133,14 @@ class FullscreenActivity : AppCompatActivity() {
         binding.tile.showFrameRate = settings.showFrameRate
     }
 
-    private fun bind(player: com.itsluminous.hikviewer.player.TilePlayer?) {
+    private fun bind(player: TilePlayer?) {
         stateJob?.cancel()
-        binding.tile.onSurface = player?.let { it::attachSurface }
-        if (player == null) return
-        (binding.tile.surfaceView as? android.view.SurfaceView)
-            ?.holder
-            ?.surface
-            ?.takeIf {
-                it.isValid
-            }?.let(player::attachSurface)
-        stateJob =
-            lifecycleScope.launch {
-                launch { player.state.collect(binding.tile::bind) }
-                launch { player.frameRate.collect { binding.tile.frameRate = it } }
-            }
+        stateJob = null
+        if (player == null) {
+            binding.tile.detachPlayer()
+            return
+        }
+        stateJob = binding.tile.attachPlayer(player, lifecycleScope)
     }
 
     /** Intent plumbing. */

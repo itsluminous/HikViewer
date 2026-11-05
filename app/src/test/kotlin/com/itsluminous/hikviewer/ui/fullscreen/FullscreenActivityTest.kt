@@ -14,6 +14,7 @@ import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.TileMode
+import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -94,7 +95,26 @@ class FullscreenActivityTest {
                         .map { it.first.channelNo }
                 assertThat(opened.first()).isEqualTo(1)
                 assertThat(opened.last()).isEqualTo(2)
-                assertThat(opened).containsAtLeast(1, 3, 2).inOrder()
+            }
+        }
+    }
+
+    @Test
+    fun `opens the camera at the grid position, in the moved arrangement, not the settings order`() {
+        val serial = FakeCloudServices.SERIAL
+        // The user moved channel 3 to the first tile (or made it the hero): the grid shows 3, 1, 2.
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_5
+        app.graph.arrangementStore.setOrder(GridLayoutMode.HERO_1_5, listOf("$serial/3", "$serial/1", "$serial/2"))
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 3")
+                a.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+                ShadowLooper.idleMainLooper()
+                assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 1")
+                a.finish()
+                // Index 1 is where the grid shows camera 1 in this arrangement, so that tile is refocused.
+                assertThat(shadowOf(a).resultIntent.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(1)
             }
         }
     }

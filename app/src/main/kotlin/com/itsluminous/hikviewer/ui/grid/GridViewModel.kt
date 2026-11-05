@@ -101,8 +101,7 @@ class GridViewModel(
     fun applySettings() {
         val inv = inventory ?: return
         val layout = arrangement.lastLayout
-        val visibleCameras = VisibleCameras.resolve(inv.cameras, settings.visibleCameraKeys)
-        val cameras = GridArrangement.apply(visibleCameras, arrangement.order(layout))
+        val cameras = CameraOrder.arranged(inv.cameras, settings, arrangement)
         val hero = if (cameras.isEmpty()) null else 0
         val needsCode = inv.needsVerificationCode && !codeAccepted(inv)
         stateFlow.value =

@@ -265,27 +265,13 @@ class GridActivity : AppCompatActivity() {
         tileJobs.clear()
         players.forEach { player ->
             val tile = tilesByKey[player.camera.key] ?: return@forEach
-            tile.onSurface = player::attachSurface
-            // A surface that already exists (tile re-bound to a new player) is handed over at once;
-            // the holder's surface is null before creation and invalid after destruction.
-            tile.surfaceView
-                .holder()
-                ?.surface
-                ?.takeIf { it.isValid }
-                ?.let(player::attachSurface)
             tileJobs +=
-                lifecycleScope.launch {
-                    player.state.collect { state ->
-                        tile.bind(state)
-                        if (state is TileState.Error && state.wrongVerificationCode) viewModel.onStreamRejectedCode()
-                        updateLiveCount(players)
-                    }
+                tile.attachPlayer(player, lifecycleScope) { state ->
+                    if (state is TileState.Error && state.wrongVerificationCode) viewModel.onStreamRejectedCode()
+                    updateLiveCount(players)
                 }
-            tileJobs += lifecycleScope.launch { player.frameRate.collect { tile.frameRate = it } }
         }
     }
-
-    private fun View.holder() = (this as? android.view.SurfaceView)?.holder
 
     private fun updateLiveCount(players: List<TilePlayer>) {
         val live = players.count { it.state.value == TileState.Live }

@@ -8,7 +8,6 @@ import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
-import android.view.SurfaceView
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -16,7 +15,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
-import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ActivityPhoneCameraBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TilePlayer
@@ -25,9 +23,10 @@ import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.common.SwipeDetector
 import com.itsluminous.hikviewer.ui.common.SystemBarInsets
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
-import com.itsluminous.hikviewer.ui.playback.PlaybackPhase
 import com.itsluminous.hikviewer.ui.playback.PlaybackTimeline
 import com.itsluminous.hikviewer.ui.playback.PlaybackUiState
+import com.itsluminous.hikviewer.ui.playback.aboutTheDay
+import com.itsluminous.hikviewer.ui.playback.statusRes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -54,6 +53,7 @@ class PhoneCameraActivity : AppCompatActivity() {
             PhoneCameraViewModel(
                 graph.account,
                 graph.settingsStore,
+                graph.arrangementStore,
                 intent.getIntExtra(FullscreenActivity.EXTRA_INDEX, 0),
                 graph.playbackFactory,
             ) { vm ->
@@ -167,16 +167,11 @@ class PhoneCameraActivity : AppCompatActivity() {
             binding.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
             binding.timeLabel.text = PlaybackTimeline.label(state.position)
         }
+        // While live, only what concerns the day's listing is worth a line; the transport is the clock.
         val status =
-            when {
-                state.phase == PlaybackPhase.LOADING -> getString(R.string.playback_loading)
-                state.phase == PlaybackPhase.NO_RECORDINGS -> getString(R.string.playback_no_recordings)
-                state.phase == PlaybackPhase.ERROR -> getString(R.string.playback_error)
-                live -> null
-                state.phase == PlaybackPhase.ENDED -> getString(R.string.playback_ended)
-                state.phase == PlaybackPhase.PAUSED -> getString(R.string.playback_paused)
-                else -> null
-            }
+            state.phase.statusRes
+                ?.takeIf { !live || state.phase.aboutTheDay }
+                ?.let(::getString)
         binding.status.text = status
         binding.status.visibility = if (status == null) View.GONE else View.VISIBLE
     }
@@ -187,18 +182,12 @@ class PhoneCameraActivity : AppCompatActivity() {
         boundPlayer?.attachSurface(null)
         boundPlayer = player
         playerJob?.cancel()
-        binding.video.onSurface = player?.let { it::attachSurface }
-        if (player == null) return
-        (binding.video.surfaceView as? SurfaceView)
-            ?.holder
-            ?.surface
-            ?.takeIf { it.isValid }
-            ?.let(player::attachSurface)
-        playerJob =
-            lifecycleScope.launch {
-                launch { player.state.collect(binding.video::bind) }
-                launch { player.frameRate.collect { binding.video.frameRate = it } }
-            }
+        playerJob = null
+        if (player == null) {
+            binding.video.detachPlayer()
+            return
+        }
+        playerJob = binding.video.attachPlayer(player, lifecycleScope)
     }
 
     /** Intent plumbing; shares [FullscreenActivity.EXTRA_INDEX] so the grid refocuses the same way. */

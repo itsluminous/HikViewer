@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.data.AccountRepository
+import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.PlaybackCoordinator
 import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.player.TilePlayer
-import com.itsluminous.hikviewer.ui.grid.VisibleCameras
+import com.itsluminous.hikviewer.ui.common.CameraCarousel
+import com.itsluminous.hikviewer.ui.grid.CameraOrder
 import com.itsluminous.hikviewer.ui.playback.PlaybackViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +42,7 @@ enum class PhoneCameraMode {
 class PhoneCameraViewModel(
     private val account: AccountRepository,
     settings: SettingsStore,
+    arrangement: GridArrangementStore,
     startIndex: Int,
     private val factory: PlaybackFactory,
     private val today: () -> LocalDate = { LocalDate.now() },
@@ -47,23 +50,27 @@ class PhoneCameraViewModel(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     liveFactory: (PhoneCameraViewModel) -> PlaybackCoordinator,
 ) : ViewModel() {
-    /** Cameras in grid order, so the index handed back to the grid is the tile to refocus. */
-    val cameras: List<Camera> =
-        VisibleCameras.resolve(
-            account.inventory.value
-                ?.cameras
-                .orEmpty(),
-            settings.visibleCameraKeys,
+    private val carousel =
+        CameraCarousel(
+            CameraOrder.arranged(
+                account.inventory.value
+                    ?.cameras
+                    .orEmpty(),
+                settings,
+                arrangement,
+            ),
+            startIndex,
         )
-
-    private val indexFlow = MutableStateFlow(startIndex.coerceIn(0, (cameras.size - 1).coerceAtLeast(0)))
     private val modeFlow = MutableStateFlow(PhoneCameraMode.LIVE)
     private val recordedFlow = MutableStateFlow<PlaybackViewModel?>(null)
     private val activePlayerFlow = MutableStateFlow<TilePlayer?>(null)
     private var visible = false
 
+    /** Cameras in grid order ([CameraOrder]), so the index handed back to the grid is the tile to refocus. */
+    val cameras: List<Camera> get() = carousel.cameras
+
     /** Index of the camera on screen. */
-    val index: StateFlow<Int> = indexFlow.asStateFlow()
+    val index: StateFlow<Int> get() = carousel.index
 
     /** Live or recorded. */
     val mode: StateFlow<PhoneCameraMode> = modeFlow.asStateFlow()
@@ -78,7 +85,7 @@ class PhoneCameraViewModel(
     val live: PlaybackCoordinator = liveFactory(this)
 
     /** The camera on screen, or null when the grid is empty. */
-    val camera: Camera? get() = cameras.getOrNull(indexFlow.value)
+    val camera: Camera? get() = carousel.camera
 
     /** Watchdog period for the recorded player's [TilePlayer.tick]. */
     val watchdogMillis: Long = factory.watchdogMillis
@@ -89,8 +96,7 @@ class PhoneCameraViewModel(
 
     /** Swipe: [delta] cameras on, wrapping around; back to live. */
     fun step(delta: Int) {
-        if (cameras.isEmpty()) return
-        indexFlow.value = (indexFlow.value + delta).mod(cameras.size)
+        if (!carousel.step(delta)) return
         modeFlow.value = PhoneCameraMode.LIVE
         rebuildRecorded()
         showLive()

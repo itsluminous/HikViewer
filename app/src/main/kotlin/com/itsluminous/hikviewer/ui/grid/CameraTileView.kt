@@ -9,7 +9,11 @@ import android.view.View
 import android.widget.FrameLayout
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
+import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
@@ -106,6 +110,38 @@ class CameraTileView
                 field = value
                 binding.fps.text = resources.getString(R.string.tile_fps, Math.round(value))
             }
+
+        /**
+         * Makes [player] draw into this tile: its surface is handed over now (if it already exists)
+         * and again whenever it is created or destroyed, and the player's state and frame rate are
+         * mirrored onto the overlays until the returned job is cancelled. [onState] sees every state
+         * too, for the owner's own bookkeeping. One place for what four screens used to repeat.
+         */
+        fun attachPlayer(
+            player: TilePlayer,
+            scope: CoroutineScope,
+            onState: (TileState) -> Unit = {},
+        ): Job {
+            onSurface = player::attachSurface
+            // The holder's surface is invalid before creation and after destruction; only a live one is handed over.
+            binding.surface.holder.surface
+                ?.takeIf { it.isValid }
+                ?.let(player::attachSurface)
+            return scope.launch {
+                launch {
+                    player.state.collect { state ->
+                        bind(state)
+                        onState(state)
+                    }
+                }
+                launch { player.frameRate.collect { frameRate = it } }
+            }
+        }
+
+        /** No player draws here any more: surface events go nowhere. */
+        fun detachPlayer() {
+            onSurface = null
+        }
 
         /** Shows the spinner, the Retry overlay or neither for [state]. Idempotent: no view is recreated. */
         fun bind(state: TileState) {

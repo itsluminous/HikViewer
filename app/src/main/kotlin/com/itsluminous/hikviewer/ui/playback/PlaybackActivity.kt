@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.SurfaceView
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -59,7 +58,7 @@ class PlaybackActivity : AppCompatActivity() {
         binding.video.showFrameRate = AppGraph.of(this).settingsStore.showFrameRate
         controls = InactivityTimer(binding.controls, AppGraph.of(this).topBarAutoHideMillis)
         controls.onUserActivity()
-        bindPlayer()
+        binding.video.attachPlayer(viewModel.player, lifecycleScope)
         binding.timeBar.onSeek = { fraction ->
             controls.onUserActivity()
             viewModel.seekToFraction(fraction)
@@ -73,8 +72,6 @@ class PlaybackActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { viewModel.state.collect(::render) }
-                launch { viewModel.player.state.collect(binding.video::bind) }
-                launch { viewModel.player.frameRate.collect { binding.video.frameRate = it } }
                 launch {
                     while (isActive) {
                         delay(viewModel.watchdogMillis)
@@ -96,16 +93,6 @@ class PlaybackActivity : AppCompatActivity() {
         super.onStop()
     }
 
-    private fun bindPlayer() {
-        val player = viewModel.player
-        binding.video.onSurface = player::attachSurface
-        (binding.video.surfaceView as? SurfaceView)
-            ?.holder
-            ?.surface
-            ?.takeIf { it.isValid }
-            ?.let(player::attachSurface)
-    }
-
     private fun render(state: PlaybackUiState) {
         binding.dateChip.text = getString(R.string.playback_date_chip, state.day.toString())
         binding.dateChip.isActivated = state.control == PlaybackControl.DATE
@@ -115,15 +102,7 @@ class PlaybackActivity : AppCompatActivity() {
         binding.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
         binding.timeBar.highlighted = state.control == PlaybackControl.BAR
         binding.timeLabel.text = PlaybackTimeline.label(state.position)
-        val status =
-            when (state.phase) {
-                PlaybackPhase.LOADING -> getString(R.string.playback_loading)
-                PlaybackPhase.NO_RECORDINGS -> getString(R.string.playback_no_recordings)
-                PlaybackPhase.ENDED -> getString(R.string.playback_ended)
-                PlaybackPhase.ERROR -> getString(R.string.playback_error)
-                PlaybackPhase.PAUSED -> getString(R.string.playback_paused)
-                PlaybackPhase.PLAYING -> null
-            }
+        val status = state.phase.statusRes?.let(::getString)
         binding.status.text = status
         binding.status.visibility = if (status == null) View.GONE else View.VISIBLE
     }

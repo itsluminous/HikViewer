@@ -65,6 +65,7 @@ class PhoneCameraViewModelTest {
     private fun TestScope.viewModel(start: Int = 1) = PhoneCameraViewModel(
         graph.account,
         graph.settingsStore,
+        graph.arrangementStore,
         start,
         graph.playbackFactory,
         { today },
@@ -95,6 +96,23 @@ class PhoneCameraViewModelTest {
             vm.live.players.value
                 .single(),
         )
+        vm.onStop()
+        vm.live.release()
+    }
+
+    @Test
+    fun `cameras follow the grid's arrangement, not the settings order`() = runTest(dispatcher) {
+        val serial = FakeCloudServices.SERIAL
+        val moved = listOf("$serial/2", "$serial/3", "$serial/1")
+        graph.arrangementStore.setOrder(graph.arrangementStore.lastLayout, moved)
+        val vm = viewModel(start = 2)
+        vm.onStart()
+        settle()
+        assertThat(vm.camera!!.channelNo).isEqualTo(1)
+        assertThat(vm.cameras.map { it.channelNo }).containsExactly(2, 3, 1).inOrder()
+        vm.step(+1)
+        assertThat(vm.index.value).isEqualTo(0)
+        assertThat(vm.camera!!.channelNo).isEqualTo(2)
         vm.onStop()
         vm.live.release()
     }

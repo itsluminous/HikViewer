@@ -36,15 +36,17 @@ public sealed class StreamException(
         detail: String? = null,
     ) : StreamException("The verification code does not decrypt this stream" + (detail?.let { " ($it)" } ?: ""))
 
+    // Messages name the channel number only: they end up in logcat, and the recorder's serial must not.
+
     /** The cloud lists no stream for this channel (not in the VTM page list). */
     public class ChannelNotStreamable(
         camera: Camera,
-    ) : StreamException("No cloud stream for ${camera.key}")
+    ) : StreamException("No cloud stream for channel ${camera.channelNo}")
 
     /** The relay answered `result 6106`: the channel exists but produces no video (no camera on the input). */
     public class ChannelOffline(
         camera: Camera,
-    ) : StreamException("Channel ${camera.key} has no video")
+    ) : StreamException("Channel ${camera.channelNo} has no video")
 
     /** The relay rejected the request with a code we do not know. */
     public class RelayRejected(

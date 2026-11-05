@@ -104,7 +104,8 @@ class LiveStreamTest {
                 assertThrows<StreamException.ChannelNotStreamable> {
                     live(server, channel = 2).open(camera, StreamQuality.SUB, null).first()
                 }
-            assertThat(error.message).contains("FAKE0000001/1")
+            assertThat(error.message).contains("channel 1")
+            assertThat(error.message).doesNotContain("FAKE0000001") // the serial stays out of logcat
             assertThat(server.connections).isEmpty()
         }
     }

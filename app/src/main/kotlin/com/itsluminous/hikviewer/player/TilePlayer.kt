@@ -357,9 +357,10 @@ class TilePlayer(
                     streaming = true
                 }
                 is StreamStatus.Reconnecting -> {
+                    // The class name says enough; a cause's message can carry the recorder's serial.
                     Log.w(
                         TAG,
-                        "$tag: stream lost (${status.cause.javaClass.simpleName}: ${status.cause.message}), " +
+                        "$tag: stream lost (${status.cause.javaClass.simpleName}), " +
                             "reconnect #${status.attempt} in ${status.delayMillis} ms",
                     )
                     streaming = false

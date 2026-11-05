@@ -13,6 +13,7 @@ import com.itsluminous.hikviewer.core.stream.VtduTokenProvider
 import com.itsluminous.hikviewer.core.stream.VtmRelayClient
 import com.itsluminous.hikviewer.core.stream.VtmStallException
 import com.itsluminous.hikviewer.core.stream.VtmUrl
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -82,6 +83,8 @@ public class PlaybackStream(
         )
     },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** Where the socket is read and pictures are decrypted; see `LiveStream`. */
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /**
      * Pictures of [camera]'s recording over [window], decrypted with [verificationCode] (null for
@@ -117,7 +120,7 @@ public class PlaybackStream(
                 sleep(config.retryDelayMillis)
             }
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(dispatcher)
 
     private class Progress {
         var pictures = 0

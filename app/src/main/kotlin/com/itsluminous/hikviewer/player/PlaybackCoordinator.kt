@@ -7,7 +7,6 @@ import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +34,7 @@ class PlaybackCoordinator(
     private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
     private val tickMillis: Long = DEFAULT_TICK_MILLIS,
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val dispatcher: CoroutineDispatcher = StreamThreads.dispatcher,
     /** How players tear decoders down; tests pass a synchronous one. */
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
 ) {

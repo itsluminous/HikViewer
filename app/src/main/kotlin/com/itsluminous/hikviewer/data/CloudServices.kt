@@ -17,6 +17,8 @@ import com.itsluminous.hikviewer.core.stream.LiveStream
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.core.stream.StreamStatus
 import com.itsluminous.hikviewer.core.stream.VtduTokenProvider
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -76,6 +78,8 @@ interface CloudAccount {
 /** Production [CloudServices] over `:core`. */
 class HikConnectCloudServices(
     featureCodes: FeatureCodeStore,
+    /** Threads the stream pipelines run on; the app passes its low-priority `StreamThreads` pool. */
+    private val streamDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : CloudServices {
     private val client = HikConnectClient(featureCodes)
 
@@ -88,19 +92,21 @@ class HikConnectCloudServices(
     override fun connect(
         session: Session,
         onSessionChanged: (Session) -> Unit,
-    ): CloudAccount = HikConnectAccount(HikConnectSession(client, session, onSessionChanged))
+    ): CloudAccount = HikConnectAccount(HikConnectSession(client, session, onSessionChanged), streamDispatcher)
 }
 
 private class HikConnectAccount(
     private val session: HikConnectSession,
+    streamDispatcher: CoroutineDispatcher,
 ) : CloudAccount {
     private val devices = DeviceRepository(session)
     private val tokens = VtduTokenProvider(session)
 
     // The VTM page list is fetched once per stream open; LiveStream calls the lambda lazily so a
     // stale relay assignment is picked up on the next reconnect without a restart.
-    private val live = LiveStream(pageList = { devices.vtmPageList() }, tokens = tokens)
-    private val playback = PlaybackStream(pageList = { devices.vtmPageList() }, tokens = tokens)
+    private val live = LiveStream(pageList = { devices.vtmPageList() }, tokens = tokens, dispatcher = streamDispatcher)
+    private val playback =
+        PlaybackStream(pageList = { devices.vtmPageList() }, tokens = tokens, dispatcher = streamDispatcher)
     private val recordings = RecordingSearch(session)
 
     override suspend fun listDevices(): List<Device> = devices.listDevices()

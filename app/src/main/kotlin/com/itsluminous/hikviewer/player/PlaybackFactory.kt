@@ -6,7 +6,6 @@ import com.itsluminous.hikviewer.core.stream.CodecConfig
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.Future
 
 /**
@@ -19,7 +18,8 @@ class PlaybackFactory(
     private val pickCodec: (String, Boolean) -> String? = CodecNames::pick,
     private val decoderFactory: (String, CodecConfig, Surface, TileDecoder.Listener) -> TileDecoder = ::TileDecoder,
     private val poolFactory: () -> KeyframeDecoderPool = { KeyframeDecoderPool() },
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Where players collect their streams and feed decoders: the low-priority [StreamThreads] pool. */
+    private val dispatcher: CoroutineDispatcher = StreamThreads.dispatcher,
     private val tickMillis: Long = PlaybackCoordinator.DEFAULT_TICK_MILLIS,
     /** How players tear decoders down; the recorder tests pass a synchronous one. */
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,

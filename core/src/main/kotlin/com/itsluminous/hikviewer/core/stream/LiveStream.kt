@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.core.stream
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.devices.VtmPageList
 import com.itsluminous.hikviewer.core.devices.VtmRelay
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -109,7 +110,9 @@ public data class LiveStreamConfig(
  * Each collection resolves the channel's relay from the VTM page list, fetches a VTDU token, connects,
  * and runs the demux → decrypt → assemble pipeline, reconnecting with exponential backoff on
  * transport errors and stalls. Terminal problems ([StreamException]) end the flow. All blocking I/O
- * happens on [Dispatchers.IO]; cancelling the collector closes the socket at once.
+ * and the demux/decrypt work happen on [dispatcher] ([Dispatchers.IO] by default; the app passes a
+ * pool of low-priority threads so twelve pipelines never outrank its UI); cancelling the collector
+ * closes the socket at once.
  */
 public class LiveStream(
     private val pageList: suspend () -> VtmPageList,
@@ -124,6 +127,8 @@ public class LiveStream(
         )
     },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** Where the socket is read and pictures are decrypted. */
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /**
      * Pictures of [camera] at [quality], decrypted with [verificationCode] (null for unencrypted
@@ -158,7 +163,7 @@ public class LiveStream(
                 backoff = minOf(backoff * 2, config.maxBackoffMillis)
             }
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(dispatcher)
 
     private class Progress {
         var pictures = 0

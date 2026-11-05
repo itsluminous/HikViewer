@@ -15,6 +15,7 @@ import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.DeviceCapabilities
 import com.itsluminous.hikviewer.player.LiveBudget
 import com.itsluminous.hikviewer.player.PlaybackFactory
+import com.itsluminous.hikviewer.player.StreamThreads
 
 /**
  * Hand-wired dependency graph (no DI framework: four screens and a dozen classes do not justify
@@ -69,7 +70,7 @@ class AppGraph(
             return AppGraph(
                 sessionPrefs = sessionPrefs,
                 settingsPrefs = settingsPrefs,
-                cloud = HikConnectCloudServices { sessionStore.featureCode() },
+                cloud = HikConnectCloudServices({ sessionStore.featureCode() }, StreamThreads.dispatcher),
                 capabilities = DeviceCapabilities.of(context.getSystemService(ActivityManager::class.java)),
             )
         }

@@ -10,6 +10,9 @@ import com.itsluminous.hikviewer.core.devices.VtmRelay
 import com.itsluminous.hikviewer.core.devices.VtmResource
 import com.itsluminous.hikviewer.core.testutil.FakeRelayServer
 import com.itsluminous.hikviewer.core.testutil.Fixtures
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -23,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.assertThrows
 import java.util.Base64
+import java.util.concurrent.Executors
 
 @Timeout(30)
 class LiveStreamTest {
@@ -60,7 +64,15 @@ class LiveStreamTest {
         server: FakeRelayServer,
         config: LiveStreamConfig = LiveStreamConfig(),
         channel: Int = 1,
-    ) = LiveStream({ pageList(server, channel) }, tokens, config, clock, sleep = { sleeps += it })
+        dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    ) = LiveStream(
+        { pageList(server, channel) },
+        tokens,
+        config,
+        clock,
+        sleep = { sleeps += it },
+        dispatcher = dispatcher,
+    )
 
     private fun FakeRelayServer.Connection.sendTs(packets: Int = Int.MAX_VALUE) {
         var offset = 0
@@ -94,6 +106,29 @@ class LiveStreamTest {
             assertThat(request).contains("ssn=TOKEN1")
             assertThat(sleeps).isEmpty()
             server.connections.first().awaitClosed()
+        }
+    }
+
+    @Test
+    fun `the socket is read and pictures decrypted on the given dispatcher`() = runBlocking {
+        val readers = Executors.newSingleThreadExecutor { r -> Thread(r, "relay-reader") }
+        try {
+            FakeRelayServer {
+                handshake()
+                sendTs()
+                closed.await()
+            }.use { server ->
+                val statusThreads = mutableListOf<String>()
+                val stream =
+                    live(server, dispatcher = readers.asCoroutineDispatcher())
+                        .open(camera, StreamQuality.SUB, "ABCDEF1234") { statusThreads += Thread.currentThread().name }
+                assertThat(stream.take(2).toList()).hasSize(2)
+                // Every status callback (and so every read and decrypt) ran on the dispatcher's thread.
+                assertThat(statusThreads).isNotEmpty()
+                assertThat(statusThreads.toSet()).containsExactly("relay-reader")
+            }
+        } finally {
+            readers.shutdownNow()
         }
     }
 

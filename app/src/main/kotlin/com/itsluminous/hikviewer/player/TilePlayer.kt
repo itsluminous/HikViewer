@@ -240,14 +240,19 @@ class TilePlayer(
             width: Int,
             height: Int,
         ) {
-            synchronized(lock) {
-                val at = clock()
-                lastStillAtMillis = at
-                keyframeRate.onFrame(at)
-            }
+            val n =
+                synchronized(lock) {
+                    val at = clock()
+                    lastStillAtMillis = at
+                    keyframeRate.onFrame(at)
+                    ++stillsDelivered
+                }
+            if (n <= FIRST_STILLS_LOGGED) Log.i(TAG, "$tag: still #$n ${width}x$height handed to $target")
             target.onStill(pixels, width, height)
         }
     }
+
+    private var stillsDelivered = 0
 
     /**
      * Periodic watchdog; recreates a wedged decoder and samples the frame rate. Returns the number
@@ -315,7 +320,9 @@ class TilePlayer(
                 "in=${d.framesIn} out=${d.framesOut} queued=${d.queuedFrames} " +
                     "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))}"
             }
-        "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created"
+        val stillAge = if (lastStillAtMillis == 0L) -1 else nowMillis - lastStillAtMillis
+        val stills = if (mode.isLive) "" else " stills=$stillsDelivered stillAge=$stillAge"
+        "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created$stills"
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
@@ -588,6 +595,7 @@ class TilePlayer(
         const val CONFIGURE_RETRIES: Int = 3
 
         private const val TAG = "TilePlayer"
+        private const val FIRST_STILLS_LOGGED = 3
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val MILLIS_PER_SECOND = 1_000L
     }

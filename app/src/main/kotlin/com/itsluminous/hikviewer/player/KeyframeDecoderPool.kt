@@ -91,6 +91,9 @@ open class KeyframeDecoderPool(
         private var released = false
         private var pixels = IntArray(0)
         private var starved = 0
+        private var jobs = 0
+        private var undelivered = 0
+        private var unsized = 0
 
         @Volatile var codecsCreated: Int = 0
             private set
@@ -145,10 +148,24 @@ open class KeyframeDecoderPool(
             val job = synchronized(queue) { queue.keys.firstOrNull()?.let(queue::remove) } ?: return
             val width = job.sink.stillWidth
             val height = job.sink.stillHeight
-            if (width <= 0 || height <= 0) return // the tile has no size yet; the next keyframe will do
+            if (width <= 0 || height <= 0) {
+                // The tile has no size yet; the next keyframe will do. Logged because a tile that
+                // never gets a size is a blank tile forever, which looks like a decoder failure.
+                if (++unsized % UNSIZED_LOG_EVERY == 1) {
+                    Log.i(TAG, "$name: ${job.sink} has no size yet ($unsized skipped)")
+                }
+                return
+            }
             try {
-                decode(job, width, height)
+                val delivered = decode(job, width, height)
                 starved = 0
+                jobs++
+                if (!delivered) {
+                    undelivered++
+                    Log.w(TAG, "$name: job #$jobs for ${job.sink} gave no picture in time ($undelivered so far)")
+                } else if (jobs <= FIRST_JOBS_LOGGED || jobs % JOBS_LOG_EVERY == 0) {
+                    Log.i(TAG, "$name: job #$jobs: ${width}x$height still to ${job.sink} ($undelivered undelivered)")
+                }
             } catch (_: InputStarved) {
                 // A freshly started software decoder can take longer than the input timeout to
                 // offer its first buffer; one slow job is dropped, only a codec that keeps starving
@@ -167,28 +184,32 @@ open class KeyframeDecoderPool(
             }
         }
 
+        /** True when a picture reached the sink. */
         private fun decode(
             job: Job,
             width: Int,
             height: Int,
-        ) {
+        ): Boolean {
             val c = codecFor(job)
             try {
                 val csd = job.config.csd.fold(ByteArray(0)) { acc, b -> acc + b }
                 queueInput(c, csd, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
                 queueInput(c, job.unit.data, 0)
                 queueInput(c, ByteArray(0), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                drainOnePicture(c) { image -> deliver(image, job.sink, width, height) }
+                return drainOnePicture(c) { image -> deliver(image, job.sink, width, height) }
             } finally {
                 c.flush()
             }
         }
 
-        /** Hands the first picture that comes out to [onPicture] and swallows the rest up to end-of-stream. */
+        /**
+         * Hands the first picture that comes out to [onPicture] and swallows the rest up to
+         * end-of-stream. Returns whether [onPicture] accepted one.
+         */
         private fun drainOnePicture(
             c: MediaCodec,
-            onPicture: (Image) -> Unit,
-        ) {
+            onPicture: (Image) -> Boolean,
+        ): Boolean {
             val info = MediaCodec.BufferInfo()
             var delivered = false
             val deadline = System.nanoTime() + JOB_TIMEOUT_NANOS
@@ -196,25 +217,27 @@ open class KeyframeDecoderPool(
                 val index = c.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_US)
                 if (index < 0) continue
                 if (!delivered && info.size > 0) {
-                    c.getOutputImage(index)?.use { image ->
-                        onPicture(image)
-                        delivered = true
-                    }
+                    c.getOutputImage(index)?.use { image -> delivered = onPicture(image) }
                 }
                 c.releaseOutputBuffer(index, false)
                 if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
             }
+            return delivered
         }
 
+        /** False when the decoder's picture is not a usable YUV image (logged: a blank tile has a reason). */
         private fun deliver(
             image: Image,
             sink: StillSink,
             width: Int,
             height: Int,
-        ) {
+        ): Boolean {
             val crop = image.cropRect
             val planes = image.planes
-            if (planes.size < YUV_PLANES || crop.width() <= 0 || crop.height() <= 0) return
+            if (planes.size < YUV_PLANES || crop.width() <= 0 || crop.height() <= 0) {
+                Log.w(TAG, "$name: unusable picture: ${planes.size} planes, crop=$crop, format=${image.format}")
+                return false
+            }
             if (pixels.size < width * height) pixels = IntArray(width * height)
 
             fun plane(i: Int) = YuvPlane(planes[i].buffer, planes[i].rowStride, planes[i].pixelStride)
@@ -224,6 +247,7 @@ open class KeyframeDecoderPool(
             val v = plane(2).let { p -> p.offset((crop.top shr 1) * p.rowStride + (crop.left shr 1) * p.pixelStride) }
             YuvToRgb.convert(y, u, v, crop.width(), crop.height(), width, height, pixels)
             sink.onStill(pixels, width, height)
+            return true
         }
 
         private fun YuvPlane.offset(bytes: Int): YuvPlane {
@@ -286,5 +310,8 @@ open class KeyframeDecoderPool(
         private const val SIZE_HINT_HEIGHT = 480
         private const val YUV_PLANES = 3
         private const val STARVED_JOBS_BEFORE_REBUILD = 3
+        private const val FIRST_JOBS_LOGGED = 20
+        private const val JOBS_LOG_EVERY = 100
+        private const val UNSIZED_LOG_EVERY = 10
     }
 }

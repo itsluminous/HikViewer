@@ -134,9 +134,13 @@ class PlaybackViewModel(
     val watchdogMillis: Long = factory.watchdogMillis
 
     private var window: PlaybackWindow? = null
-    private var generation = 0
-    private var firstPtsUs: Long? = null
-    private var firstPictureAt: Long? = null
+
+    // Written on the main thread when a window opens, read on the stream thread for every picture.
+    @Volatile private var generation = 0
+
+    @Volatile private var firstPtsUs: Long? = null
+
+    @Volatile private var firstPictureAt: Long? = null
     private var hopJob: Job? = null
     private var seekJob: Job? = null
     private var started = false

@@ -117,7 +117,7 @@ class HikConnectClientTest {
             val error = assertThrows<LoginError.InvalidCredentials> { client.login("a", "b") }
 
             assertThat(error.hint).contains("country code")
-            assertThat(error.message).contains("91XXXXXXXXXX")
+            assertThat(error.message).contains("region")
         }
 
         @Test

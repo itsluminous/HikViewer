@@ -59,10 +59,11 @@ public sealed class LoginError(
 ) : Exception(message, cause) {
     /**
      * Server said the account or password is wrong (`meta.code` 1013/1014/1226). The most common
-     * cause for a phone-number account is a missing country code, hence the hint.
+     * cause for a phone-number account is a wrong or missing country code: the server rejects a
+     * bare national number with this very code, hence the hint.
      */
     public class InvalidCredentials(
-        /** Hint for the UI; mentions that the account must include the country code. */
+        /** Hint for the UI; points at the country code (the app's region selector supplies it). */
         public val hint: String = COUNTRY_CODE_HINT,
     ) : LoginError("Wrong account or password. $hint")
 
@@ -101,9 +102,13 @@ public sealed class LoginError(
 
     /** Shared message fragments. */
     public companion object {
-        /** The hint shown next to [InvalidCredentials]. */
+        /**
+         * The hint shown next to [InvalidCredentials]. The account sent to the server is
+         * `<country code><number>`; since round 2 the app's region selector supplies the code, so
+         * the user-facing advice is to check the region, not to type the code.
+         */
         public const val COUNTRY_CODE_HINT: String =
-            "If you log in with a phone number, include the country code (for example 91XXXXXXXXXX)."
+            "If you log in with a phone number, check that the selected region matches its country code."
     }
 }
 

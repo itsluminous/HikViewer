@@ -55,7 +55,7 @@ so a per-ABI APK would only be a smaller-looking copy of the same thing.
 | Formatting | ktlint (`org.jlleitschuh.gradle.ktlint`), `ktlint_official` style from `.editorconfig` | `*/build/reports/ktlint/` |
 | Static analysis | detekt, `config/detekt/detekt.yml` on top of the defaults, `maxIssues: 0`, no baseline | `*/build/reports/detekt/` |
 | Android Lint | `abortOnError`, `warningsAsErrors`, `checkAllWarnings`, `checkDependencies`; tuning in `config/lint/lint.xml`, no baseline | `app/build/reports/lint-results-debug.*` |
-| Coverage | Kover, XML + HTML; line-coverage floor 70 % in `:core`, 50 % in `:app` (debug variant) | `core/build/reports/kover/`, `app/build/reports/kover/` |
+| Coverage | Kover, XML + HTML; line-coverage floor 85 % in `:core`, 75 % in `:app` (debug variant) | `core/build/reports/kover/`, `app/build/reports/kover/` |
 
 Fix the finding rather than suppressing it. If a rule is wrong for this project, tune it in the config
 file with a comment that says why.
@@ -99,6 +99,16 @@ from the committed H.264 capture, so no account is needed:
 ```sh
 ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest
 ```
+
+The touch suite (`PhoneNavigationTest`) needs a phone emulator (for example `Android_16_AOSP_Medium`
+on `-port 5558`); it skips itself on a television and the D-pad suites skip themselves on a phone, so
+the same command is safe on either. It locks its task to portrait, so the emulator's rotation setting
+does not matter.
+
+A real TV runs the **release** APK (`app/build/outputs/apk/release/app-release.apk`, debug-signed
+without a keystore): the debug build carries the `.debug` application-id suffix and would install as a
+second app next to it. Install with `adb install -r`; settings, login and the verification code survive
+an upgrade in place.
 
 Memory check (the brief's budget is 150 MB PSS): with 12 tiles on the 1080p AVD the app process sits
 around 100 MB (`adb shell dumpsys meminfo com.itsluminous.hikviewer.debug | grep "TOTAL PSS"`). On a
@@ -146,7 +156,8 @@ Verify a downloaded APK with `apksigner verify --print-certs HikViewer-<version>
 
 - `verify` runs `./gradlew ci` and uploads test, static-analysis and coverage reports.
 - `build` assembles debug and release APKs and uploads them.
-- `instrumented` runs the Espresso suite on an API 34 Android TV emulator; it only runs on pushes to
-  `main` and manual runs because the emulator takes several minutes to boot.
+- `instrumented` runs the Espresso suite on an API 34 Android TV emulator and on an API 34 phone
+  emulator (the D-pad suites skip themselves on the phone, the touch suite on the TV); it only runs on
+  pushes to `main` and manual runs because the emulators take several minutes to boot.
 
 Dependabot (`.github/dependabot.yml`) opens weekly PRs for the version catalog and the actions.

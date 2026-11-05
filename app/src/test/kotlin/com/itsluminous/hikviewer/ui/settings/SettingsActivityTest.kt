@@ -94,7 +94,7 @@ class SettingsActivityTest {
     }
 
     @Test
-    fun `unticking hides a camera and the hero spinner follows`() {
+    fun `ticking cameras updates the hero and layout spinners on the same screen`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, list ->
                 list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
@@ -102,6 +102,14 @@ class SettingsActivityTest {
                     app.graph.settingsStore.visibleCameraKeys,
                 ).containsExactly("$serial/2", "$serial/3").inOrder()
                 assertThat(a.findViewById<Spinner>(R.id.hero_spinner).adapter.count).isEqualTo(2)
+                // Three cameras offered AUTO and 3x3; with all five ticked the 1 + 5 layout and 4x3 fit too.
+                list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
+                list.getChildAt(3).findViewById<CheckBox>(R.id.check).performClick()
+                list.getChildAt(4).findViewById<CheckBox>(R.id.check).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(a.findViewById<Spinner>(R.id.layout_spinner).adapter.count)
+                    .isEqualTo(GridLayoutMode.available(5).size)
+                assertThat(a.findViewById<Spinner>(R.id.hero_spinner).adapter.count).isEqualTo(5)
             }
         }
     }

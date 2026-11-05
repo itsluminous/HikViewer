@@ -148,8 +148,10 @@ class SettingsActivity : AppCompatActivity() {
         rowBinding.handle.requestFocus()
     }
 
+    /** Persists the camera choice; the layout and hero spinners depend on how many cameras are shown. */
     private fun saveOrder() {
         settings.visibleCameraKeys = editor.visibleKeys()
+        bindLayout()
         bindHero()
     }
 

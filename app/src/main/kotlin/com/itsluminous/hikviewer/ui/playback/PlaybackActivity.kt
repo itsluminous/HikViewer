@@ -34,6 +34,9 @@ class PlaybackActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlaybackBinding
     private lateinit var controls: InactivityTimer
 
+    /** Screen X of the last touch or mouse press; null once a key was used, so OK means "back a day". */
+    private var lastPointerX: Float? = null
+
     private val viewModel: PlaybackViewModel by viewModels {
         val graph = AppGraph.of(this)
         val key = intent.getStringExtra(EXTRA_CAMERA_KEY).orEmpty()
@@ -63,7 +66,11 @@ class PlaybackActivity : AppCompatActivity() {
             controls.onUserActivity()
             viewModel.seekToFraction(fraction)
         }
-        binding.dateChip.setOnClickListener { viewModel.changeDay(-1) }
+        // The chip reads "◀ date ▶": a tap or click on its right half goes forward, anywhere else back.
+        binding.dateChip.setOnClickListener { chip ->
+            val forward = lastPointerX?.let { x -> x > chipMiddleX(chip) } == true
+            viewModel.changeDay(if (forward) +1 else -1)
+        }
         binding.speedButton.setOnClickListener { viewModel.cycleSpeed() }
         binding.root.setOnHoverListener { _, _ ->
             controls.onUserActivity()
@@ -108,13 +115,24 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) controls.onUserActivity()
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            controls.onUserActivity()
+            lastPointerX = null
+        }
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN) controls.onUserActivity()
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            controls.onUserActivity()
+            lastPointerX = ev.rawX
+        }
         return super.dispatchTouchEvent(ev)
+    }
+
+    private fun chipMiddleX(chip: View): Float {
+        val origin = IntArray(2).also(chip::getLocationOnScreen)
+        return origin[0] + chip.width / 2f
     }
 
     override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {

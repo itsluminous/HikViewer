@@ -9,6 +9,7 @@ import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.core.stream.StreamStatus
+import com.itsluminous.hikviewer.fakes.DeliveringKeyframePool
 import com.itsluminous.hikviewer.fakes.NoopKeyframePool
 import com.itsluminous.hikviewer.fakes.RecordingDecoder
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
@@ -59,6 +60,7 @@ class TilePlayerTest {
             it(StreamStatus.Streaming)
         },
         releaser: (TileDecoder) -> java.util.concurrent.Future<*> = releaseNow,
+        pool: KeyframeDecoderPool = this.pool,
     ) = TilePlayer(
         camera,
         opener = { _, _, onStatus ->
@@ -135,7 +137,7 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `frame rate is sampled on tick from the decoder, and from keyframe submissions in keyframe mode`() =
+    fun `frame rate is sampled on tick from the decoder, and from delivered stills in keyframe mode`() =
         runTest(dispatcher) {
             val p = player()
             p.attachSurface(surface)
@@ -148,15 +150,26 @@ class TilePlayerTest {
             p.stop()
             assertThat(p.frameRate.value).isEqualTo(0f)
 
-            val k = player()
+            val delivering = DeliveringKeyframePool()
+            val k = player(pool = delivering)
             k.attachSurface(surface)
             now = 10_000
-            run(k) // KEYFRAME mode: every keyframe submission at `now` counts as one picture
-            val keyframes = pool.submitted.size
+            run(k) // KEYFRAME mode: every still the pool delivers at `now` counts as one picture
+            val stills = delivering.delivered.size
+            assertThat(stills).isGreaterThan(0)
             k.tick(now + FrameRateMeter.DEFAULT_WINDOW_MILLIS - 1)
             assertThat(k.frameRate.value)
-                .isEqualTo(Math.round(keyframes * 1_000f / FrameRateMeter.DEFAULT_WINDOW_MILLIS).toFloat())
+                .isEqualTo(Math.round(stills * 1_000f / FrameRateMeter.DEFAULT_WINDOW_MILLIS).toFloat())
             k.stop()
+
+            // A pool that never delivers (its decoder keeps failing) renders no picture: 0 fps.
+            val starved = player()
+            starved.attachSurface(surface)
+            run(starved)
+            assertThat(pool.submitted).isNotEmpty()
+            starved.tick(now + 500)
+            assertThat(starved.frameRate.value).isEqualTo(0f)
+            starved.stop()
         }
 
     @Test
@@ -181,13 +194,32 @@ class TilePlayerTest {
             p.stop()
             assertThat(p.framesFlowing.value).isFalse()
 
-            val k = player()
+            // KEYFRAME mode: the dot follows the stills the pool delivers, not the keyframes handed to it.
+            val delivering = DeliveringKeyframePool()
+            val k = player(pool = delivering)
             k.attachSurface(surface)
             now = 10_000
-            run(k) // KEYFRAME mode: stills were submitted at `now`
-            assertThat(pool.submitted).isNotEmpty()
+            run(k) // stills delivered at `now`
+            assertThat(delivering.delivered).isNotEmpty()
             k.tick(now + 1_000)
             assertThat(k.framesFlowing.value).isTrue()
+            k.tick(now + TilePlayer.FLOWING_MILLIS + 1)
+            assertThat(k.framesFlowing.value).isFalse()
+            k.stop()
+            assertThat(k.framesFlowing.value).isFalse()
+        }
+
+    @Test
+    fun `a keyframe tile whose pool delivers nothing shows a red dot however many keyframes it submits`() =
+        runTest(dispatcher) {
+            val k = player() // NoopKeyframePool: swallows every job, like a pool whose decoder keeps failing
+            k.attachSurface(surface)
+            now = 10_000
+            run(k)
+            assertThat(pool.submitted).isNotEmpty()
+            assertThat(k.state.value).isEqualTo(TileState.Keyframe)
+            k.tick(now + 500)
+            assertThat(k.framesFlowing.value).isFalse()
             k.tick(now + TilePlayer.FLOWING_MILLIS + 1)
             assertThat(k.framesFlowing.value).isFalse()
             k.stop()

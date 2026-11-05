@@ -146,3 +146,22 @@ class NoopKeyframePool : KeyframeDecoderPool(maxDecoders = 1, pickCodec = { null
         submitted += tile to unit
     }
 }
+
+/**
+ * A pool that "decodes" every submission at once: the sink gets a 1 × 1 still synchronously, the
+ * way the real pool's worker calls it after a successful decode. [NoopKeyframePool] is the other
+ * half of the pair: it swallows every job, like a pool whose decoder is failing.
+ */
+class DeliveringKeyframePool : KeyframeDecoderPool(maxDecoders = 1, pickCodec = { null }) {
+    /** Stills delivered, by tile. */
+    val delivered = CopyOnWriteArrayList<Any>()
+
+    override fun submit(
+        tile: Any,
+        sink: StillSink,
+        unit: AccessUnit,
+    ) {
+        delivered += tile
+        sink.onStill(IntArray(1), 1, 1)
+    }
+}

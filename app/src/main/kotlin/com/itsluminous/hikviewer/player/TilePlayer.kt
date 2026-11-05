@@ -93,7 +93,7 @@ class TilePlayer(
 
     /**
      * Rendered frames per second, sampled on every [tick] from the live decoder's output callbacks
-     * (or the keyframe submissions of a keyframe-only tile) and rounded to whole frames, which is
+     * (or the stills the pool delivered to a keyframe-only tile) and rounded to whole frames, which is
      * what the counter shows: a steady 12 fps tile then publishes nothing instead of a new value
      * every half second (the meter's 2 s window flips between 11.5 and 12.5 at every tick).
      */
@@ -168,6 +168,7 @@ class TilePlayer(
             stale = detachDecoderLocked()
             pool.cancel(this)
             keyframeRate.reset()
+            lastStillAtMillis = 0L
             frameRateFlow.value = 0f
             flowingFlow.value = false
         }
@@ -219,9 +220,33 @@ class TilePlayer(
         }
     }
 
-    /** Where this tile's keyframe thumbnails are drawn while it is not live; null while it has no view. */
+    /**
+     * Where this tile's keyframe thumbnails are drawn while it is not live; null while it has no
+     * view. The sink is wrapped so the player sees every picture the pool actually delivers: the
+     * green dot and the "1 fps" counter of a keyframe tile mean rendered stills, not keyframes
+     * handed to the pool. A pool whose decoder fails or starves ([KeyframeDecoderPool] recreates it
+     * after a few lost jobs) then shows a red dot over the stale still instead of a green one.
+     */
     fun attachStillSink(sink: StillSink?) {
-        synchronized(lock) { this.sink = sink }
+        synchronized(lock) { this.sink = sink?.let(::StampingSink) }
+    }
+
+    /** Delegates to the tile's sink and stamps the time of every delivered still; called on the pool's worker. */
+    private inner class StampingSink(
+        private val target: StillSink,
+    ) : StillSink by target {
+        override fun onStill(
+            pixels: IntArray,
+            width: Int,
+            height: Int,
+        ) {
+            synchronized(lock) {
+                val at = clock()
+                lastStillAtMillis = at
+                keyframeRate.onFrame(at)
+            }
+            target.onStill(pixels, width, height)
+        }
     }
 
     /**
@@ -412,8 +437,6 @@ class TilePlayer(
     private fun planStill(unit: AccessUnit): Plan {
         val target = sink
         if (!unit.isKeyframe || target == null) return Plan.Skip
-        lastStillAtMillis = clock()
-        keyframeRate.onFrame(lastStillAtMillis)
         pictureShown = true
         stateFlow.value = TileState.Keyframe
         return Plan.Still(target)

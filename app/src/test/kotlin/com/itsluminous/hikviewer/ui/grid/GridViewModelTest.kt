@@ -123,6 +123,15 @@ class GridViewModelTest {
             vm.playback.players.value[5]
                 .mode,
         ).isEqualTo(TileMode.HW_LIVE)
+        // 12 cameras have a signal but a 1 + 7 layout shows 8 tiles: only those 8 get a stream.
+        assertThat(ready(vm).cameras).hasSize(12)
+        assertThat(vm.playback.players.value).hasSize(8)
+        val streamed =
+            vm.playback.players.value
+                .map { it.camera.channelNo }
+        assertThat(streamed).containsExactly(3, 1, 2, 4, 5, 6, 7, 8).inOrder()
+        vm.setLayout(GridLayoutMode.AUTO) // 12 cameras resolve to 4 x 3: every camera gets a tile again
+        assertThat(vm.playback.players.value).hasSize(12)
         vm.playback.release()
     }
 

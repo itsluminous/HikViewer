@@ -113,9 +113,12 @@ class GridViewModel(
                 showNames = settings.showCameraNames,
                 showFrameRate = settings.showFrameRate,
             )
-        playback.setCameras(cameras)
+        // Only the tiles the layout has room for get a stream: a 1 + 5 layout of a 16-camera account
+        // used to open 16 relay connections and run 16 decrypt pipelines for 6 pictures on screen.
+        val shown = cameras.take(layout.resolve(cameras.size).capacity)
+        playback.setCameras(shown)
         playback.heroIndex = if (layout.isHero) hero else null
-        playback.focusedIndex = focusedIndex.coerceIn(0, (cameras.size - 1).coerceAtLeast(0))
+        playback.focusedIndex = focusedIndex.coerceIn(0, (shown.size - 1).coerceAtLeast(0))
         if (visible && !needsCode) playback.start()
     }
 

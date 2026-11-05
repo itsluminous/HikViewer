@@ -26,6 +26,7 @@ import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.databinding.ActivityGridBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.player.TileLiveness
 import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
 import com.itsluminous.hikviewer.ui.common.FormFactor
@@ -284,14 +285,15 @@ class GridActivity : AppCompatActivity() {
             tileJobs +=
                 tile.attachPlayer(player, lifecycleScope) { state ->
                     if (state is TileState.Error && state.wrongVerificationCode) viewModel.onStreamRejectedCode()
-                    updateLiveCount(players)
                 }
+            // Liveness moves on the player's tick, not only with its state (a stalled tile keeps
+            // its state and loses its dot), so the count follows the same flow as the dot.
+            tileJobs += lifecycleScope.launch { player.liveness.collect { updateLiveCount(players) } }
         }
     }
 
     private fun updateLiveCount(players: List<TilePlayer>) {
-        val live = players.count { it.state.value == TileState.Live }
-        binding.status.text = resources.getQuantityString(R.plurals.grid_live_count, live, live)
+        binding.status.text = LiveStatusText.format(resources, TileLiveness.count(players.map { it.liveness.value }))
     }
 
     /**

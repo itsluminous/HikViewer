@@ -184,18 +184,22 @@ class TilePlayerTest {
             run(p)
             val d = decoders.created.single()
             assertThat(p.framesFlowing.value).isFalse() // no picture has come out yet
+            assertThat(p.liveness.value).isEqualTo(TileLiveness.NOT_LIVE)
             d.outputAge = 100
             d.emitFirstFrame()
             p.tick(1_000)
             assertThat(p.framesFlowing.value).isTrue()
-            d.outputAge = TilePlayer.FLOWING_MILLIS + 1
+            assertThat(p.liveness.value).isEqualTo(TileLiveness.LIVE)
+            d.outputAge = TileLiveness.FLOWING_MILLIS + 1
             p.tick(4_000)
             assertThat(p.framesFlowing.value).isFalse()
+            assertThat(p.liveness.value).isEqualTo(TileLiveness.NOT_LIVE)
             d.outputAge = 500
             p.tick(4_500)
             assertThat(p.framesFlowing.value).isTrue()
             p.stop()
             assertThat(p.framesFlowing.value).isFalse()
+            assertThat(p.liveness.value).isEqualTo(TileLiveness.NOT_LIVE)
 
             // KEYFRAME mode: the dot follows the stills the pool delivers, not the keyframes handed to it.
             val delivering = DeliveringKeyframePool()
@@ -206,8 +210,10 @@ class TilePlayerTest {
             assertThat(delivering.delivered).isNotEmpty()
             k.tick(now + 1_000)
             assertThat(k.framesFlowing.value).isTrue()
-            k.tick(now + TilePlayer.FLOWING_MILLIS + 1)
+            assertThat(k.liveness.value).isEqualTo(TileLiveness.AT_ONE_FPS)
+            k.tick(now + TileLiveness.FLOWING_MILLIS + 1)
             assertThat(k.framesFlowing.value).isFalse()
+            assertThat(k.liveness.value).isEqualTo(TileLiveness.NOT_LIVE)
             k.stop()
             assertThat(k.framesFlowing.value).isFalse()
         }
@@ -223,7 +229,7 @@ class TilePlayerTest {
             assertThat(k.state.value).isEqualTo(TileState.Keyframe)
             k.tick(now + 500)
             assertThat(k.framesFlowing.value).isFalse()
-            k.tick(now + TilePlayer.FLOWING_MILLIS + 1)
+            k.tick(now + TileLiveness.FLOWING_MILLIS + 1)
             assertThat(k.framesFlowing.value).isFalse()
             k.stop()
         }

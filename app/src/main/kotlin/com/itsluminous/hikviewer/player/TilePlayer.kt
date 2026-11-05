@@ -67,6 +67,7 @@ class TilePlayer(
     private val stateFlow = MutableStateFlow<TileState>(TileState.Connecting)
     private val frameRateFlow = MutableStateFlow(0f)
     private val flowingFlow = MutableStateFlow(false)
+    private val livenessFlow = MutableStateFlow(TileLiveness.NOT_LIVE)
     private var lastStillAtMillis = 0L
     private val keyframeRate = FrameRateMeter()
     private val tag = "ch${camera.channelNo}"
@@ -100,10 +101,14 @@ class TilePlayer(
     val frameRate: StateFlow<Float> = frameRateFlow.asStateFlow()
 
     /**
-     * True while pictures reach the screen: a decoded frame (live) or a keyframe still (keyframe
-     * mode) within the last [FLOWING_MILLIS]. Sampled on every [tick], so the overlay changes at
-     * most twice a second and never per frame; this is the tile's green/red dot.
+     * Whether pictures reach the screen, and at which rate: a decoded frame (live) or a keyframe
+     * still (keyframe mode) within the last [TileLiveness.FLOWING_MILLIS]. Sampled on every [tick],
+     * so the overlays change at most twice a second and never per frame. The dot and the top
+     * bar's count both read this, so they can never disagree.
      */
+    val liveness: StateFlow<TileLiveness> = livenessFlow.asStateFlow()
+
+    /** [liveness] as the dot sees it: true for both picture-showing states. */
     val framesFlowing: StateFlow<Boolean> = flowingFlow.asStateFlow()
 
     /** Decoders this player built so far; the TV logcat shows churn through it. */
@@ -170,6 +175,7 @@ class TilePlayer(
             keyframeRate.reset()
             lastStillAtMillis = 0L
             frameRateFlow.value = 0f
+            livenessFlow.value = TileLiveness.NOT_LIVE
             flowingFlow.value = false
         }
         stale?.let(::releaseLater)
@@ -291,7 +297,9 @@ class TilePlayer(
                         mode.isLive -> decoder?.takeIf { it.hasOutput }?.outputAgeMillis(nowMillis) ?: Long.MAX_VALUE
                         else -> if (lastStillAtMillis == 0L) Long.MAX_VALUE else nowMillis - lastStillAtMillis
                     }
-                flowingFlow.value = lastPictureAge < FLOWING_MILLIS
+                val liveness = TileLiveness.of(mode, lastPictureAge)
+                livenessFlow.value = liveness
+                flowingFlow.value = liveness.isFlowing
                 if (stalled) d.queuedFrames else null
             }
         stale?.let(::releaseLater)
@@ -590,9 +598,6 @@ class TilePlayer(
 
         /** Longest a surface change waits for an in-flight release before giving up on it. */
         private const val RELEASE_WAIT_MILLIS = 2_000L
-
-        /** A picture younger than this means frames are flowing (the green dot). */
-        const val FLOWING_MILLIS: Long = 2_000
 
         /** `configure` refusals (surface still held by the previous codec) retried before the tile gives up. */
         const val CONFIGURE_RETRIES: Int = 3

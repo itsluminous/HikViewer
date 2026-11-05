@@ -19,10 +19,24 @@
     <!-- Grid -->
     <string name="grid_loading">Loading cameras…</string>
     <string name="grid_empty">No cameras with signal. Choose cameras in Settings.</string>
-    <plurals name="grid_live_count">
+    <!-- Top bar status: "14 live" when every tile is at stream rate, else "14 cameras · 8 live · 6 at 1 fps". -->
+    <plurals name="grid_status_all_live">
         <item quantity="one">%1$d live</item>
         <item quantity="other">%1$d live</item>
     </plurals>
+    <plurals name="grid_status_cameras">
+        <item quantity="one">%1$d camera</item>
+        <item quantity="other">%1$d cameras</item>
+    </plurals>
+    <plurals name="grid_status_live">
+        <item quantity="one">%1$d live</item>
+        <item quantity="other">%1$d live</item>
+    </plurals>
+    <plurals name="grid_status_at_one_fps">
+        <item quantity="one">%1$d at 1 fps</item>
+        <item quantity="other">%1$d at 1 fps</item>
+    </plurals>
+    <string name="grid_status_separator" translatable="false">" · "</string>
     <string name="grid_layout_button">Layout</string>
     <string name="tile_retry">Retry</string>
     <string name="tile_fps">%1$d fps</string>

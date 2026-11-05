@@ -42,9 +42,12 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 - **Channel list** from your recorders. Channels with a video signal are shown by default; Settings
   lets you choose which cameras appear and in which order.
 - **Grid layouts**: Auto, 3 × 3, 4 × 3, 4 × 4 and the "1 + N" family (1 + 5, 1 + 7, 1 + 9, 1 + 11,
-  1 + 15: one large hero tile with N small ones to its right and below). The menu only offers
-  layouts every tile of which would show a camera. Tile positions are remembered per layout and the
-  last layout is restored on launch.
+  1 + 15: one large hero tile with N small ones to its right and below). A phone held upright shows
+  two columns with a full-width hero, so there the menu offers the even sizes instead (1 + 6, 1 + 8,
+  … 1 + 16) and no cell stays empty; turned sideways, an even layout is drawn as the odd one a tile
+  smaller (1 + 6 as 1 + 5) and its last tile waits off screen until the phone is upright again. The
+  menu only offers layouts every tile of which would show a camera. Tile positions are remembered
+  per layout (one arrangement for both orientations) and the last layout is restored on launch.
 - **Tile menu**: long-press a tile (hold OK, long click or long touch) for *Move*, *Change* and
   *Playback*. **Move**: push the tile with the D-pad, drag it with the mouse or your finger; OK drops
   it, Back cancels. In a 1 + N layout the first position is the hero. **Change**: pick any of your
@@ -66,13 +69,16 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   position is the time. Times are the recorder's own clock.
 - **Hidden top bar on TV**: any key shows it, it hides 5 s after the last key, and it never steals
   focus. UP from the top row of tiles reaches its layout and settings buttons. On a phone the bar is
-  always on screen (top in portrait, left edge in landscape) because there is no D-pad to summon it.
+  always on screen (top in portrait, left edge in landscape, Layout and Settings as icons) because
+  there is no D-pad to summon it.
 - **Focus border that gets out of the way**: the focused tile's border hides on the same 5 s timer
   and comes back the moment a key is pressed or the pointer moves. Focus itself never moves or gets
   lost; only the border is hidden, so a parked remote leaves a clean wall of pictures.
-- **Phone camera screen**: tapping a tile in portrait does not rotate the phone. Live video fills
-  the top (16:9) and the bottom half holds the same playback engine as the TV screen: scrub the time
-  bar to go back into the recordings, change speed, change date.
+- **Phone camera screen**: tapping a tile opens the camera in the orientation the phone is held.
+  Upright, live video fills the top (16:9) and the bottom half holds the same playback engine as the
+  TV screen: scrub the time bar to go back into the recordings, change speed, change date. Turned
+  sideways, the picture alone fills the screen; turning the phone switches between the two without
+  losing the camera or the playback position.
 - **Encrypted streams**: the first time a stream needs the key you are asked for the recorder's video
   verification code. It is checked locally against the recorder's `MD5(MD5(code))` before any stream
   is opened, stored in Android-encrypted preferences, and never asked again unless the recorder's
@@ -91,9 +97,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   click on the icon, reopens the stream, and the icon grows a little while its tile has focus.
 - **Clean lifecycle**: every stream, socket and decoder is released in `onStop`; there are no
   services, jobs or alarms, so the app costs nothing when it is not on screen.
-- **Settings**: layout, visible cameras and their order, hero camera, fullscreen stream quality
-  (sub-stream by default), *Show camera names*, *Show frame rate*, *Change encryption password*,
-  Logout.
+- **Settings**: layout, visible cameras and their order, fullscreen stream quality (sub-stream by
+  default), *Show camera names*, *Show frame rate*, *Change encryption password*, Logout. The hero
+  camera is chosen on the grid (position 0 of a 1 + N layout), not in Settings.
 - **One universal APK** for every architecture (there is no native code), with phone/tablet
   (touch) and Android TV (D-pad, mouse) launchers in the same build.
 
@@ -153,7 +159,7 @@ Download `HikViewer-<version>-universal.apk` from the
   without the country code (India → 91 is added for you). Type a leading `+` to send exactly what you
   typed, or your e-mail address if the account uses one.
 - **Hero camera**: in a 1 + N layout long-press a tile → *Move* and push it to the top-left, or
-  pick it under *Settings → Hero camera*.
+  long-press the hero tile → *Change* and pick the camera that should be there.
 - **Fullscreen quality**: *Settings → Fullscreen quality* can select the main stream (often HEVC
   720p+); that needs a hardware decoder, so leave it on *Sub* if fullscreen stutters.
 - Memory: on a 1080p Android TV the app sits around 100 MB PSS with 12 live tiles and drops to a

@@ -24,6 +24,7 @@ import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.PlaybackFactory
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridActivity
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
@@ -33,6 +34,7 @@ import org.hamcrest.Matcher
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.TypeSafeMatcher
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +52,7 @@ class GridNavigationTest {
 
     @Before
     fun loggedInGraph() {
+        assumeTrue("D-pad suite, television only", FormFactor.isTelevision(app))
         // A TV has no touch screen, so it is never in touch mode; the instrumentation starts in it.
         InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
         app.graph =

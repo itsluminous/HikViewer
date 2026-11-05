@@ -23,6 +23,7 @@ import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.common.SwipeDetector
+import com.itsluminous.hikviewer.ui.common.SystemBarInsets
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
 import com.itsluminous.hikviewer.ui.playback.PlaybackPhase
 import com.itsluminous.hikviewer.ui.playback.PlaybackTimeline
@@ -74,6 +75,7 @@ class PhoneCameraActivity : AppCompatActivity() {
         if (!FormFactor.isTelevision(this)) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         binding = ActivityPhoneCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        SystemBarInsets.pad(binding.root)
         binding.video.isFocusable = false
         binding.video.isClickable = false
         val settings = AppGraph.of(this).settingsStore

@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
+import com.google.android.material.button.MaterialButton
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.databinding.ActivityGridBinding
@@ -27,6 +28,7 @@ import com.itsluminous.hikviewer.player.TileState
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
+import com.itsluminous.hikviewer.ui.common.SystemBarInsets
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
 import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import com.itsluminous.hikviewer.ui.playback.PlaybackActivity
@@ -143,6 +145,7 @@ class GridActivity : AppCompatActivity() {
             return
         }
         bar.visibility = View.VISIBLE
+        SystemBarInsets.pad(binding.root)
         val gridParams = binding.grid.layoutParams as FrameLayout.LayoutParams
         if (portrait) {
             gridParams.topMargin = resources.getDimensionPixelSize(R.dimen.top_bar_height)
@@ -160,8 +163,11 @@ class GridActivity : AppCompatActivity() {
             listOf(binding.layoutButton, binding.settingsButton).forEach { button ->
                 button.contentDescription = button.text
                 button.text = ""
+                button.iconPadding = 0
+                button.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
                 button.minWidth = 0
                 button.minimumWidth = 0
+                button.setPadding(0, button.paddingTop, 0, button.paddingBottom)
                 button.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
             gridParams.marginStart = width

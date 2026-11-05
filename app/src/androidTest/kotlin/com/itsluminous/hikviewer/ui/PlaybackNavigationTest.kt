@@ -23,10 +23,12 @@ import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.PlaybackFactory
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.grid.GridActivity
 import com.itsluminous.hikviewer.ui.grid.TileAction
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +47,7 @@ class PlaybackNavigationTest {
 
     @Before
     fun loggedInGraph() {
+        assumeTrue("D-pad suite, television only", FormFactor.isTelevision(app))
         InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
         app.graph = TestGraph.create(app, cloud, EspressoApp.TOP_BAR_HIDE_MILLIS, playbackFactory = PlaybackFactory())
         runBlocking { app.graph.account.login("911234567890", "secret", Region.INDIA) }

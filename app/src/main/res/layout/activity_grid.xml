@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
     android:layout_width="match_parent"
@@ -65,17 +66,21 @@
             android:textColor="@color/on_background"
             tools:text="12 live" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/layout_button"
             style="@style/Widget.HikViewer.BarButton"
-            android:drawableStart="@drawable/ic_grid"
+            app:icon="@drawable/ic_grid"
+            app:iconGravity="textStart"
+            app:iconTint="@color/on_background"
             android:nextFocusDown="@id/grid"
             android:text="@string/grid_layout_button" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/settings_button"
             style="@style/Widget.HikViewer.BarButton"
-            android:drawableStart="@drawable/ic_settings"
+            app:icon="@drawable/ic_settings"
+            app:iconGravity="textStart"
+            app:iconTint="@color/on_background"
             android:nextFocusDown="@id/grid"
             android:text="@string/settings_title" />
     </LinearLayout>

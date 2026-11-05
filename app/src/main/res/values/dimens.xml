@@ -15,4 +15,6 @@
     <!-- Phone bars show Layout and Settings as icons only; this keeps each a 48 dp touch target. -->
     <dimen name="icon_button_padding">12dp</dimen>
     <dimen name="form_width">420dp</dimen>
+    <!-- Settings column: full width on a phone, this plus the 24 dp padding each side on a TV. -->
+    <dimen name="form_column_width">468dp</dimen>
 </resources>

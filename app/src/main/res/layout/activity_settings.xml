@@ -1,105 +1,121 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fillViewport="true"
     tools:context=".ui.settings.SettingsActivity">
 
-    <LinearLayout
+    <!-- One column, as wide as the screen allows up to form_width: on a TV the 420 dp form it
+         always was, on a 360 dp phone the full width, so no switch thumb or "signal" label ends
+         up past the edge. -->
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
-
-        <TextView
-            style="@style/TextAppearance.HikViewer.Title"
-            android:text="@string/settings_title" />
-
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
-            android:labelFor="@id/layout_spinner"
-            android:text="@string/settings_layout" />
-
-        <Spinner
-            android:id="@+id/layout_spinner"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="48dp" />
-
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
-            android:text="@string/settings_cameras" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/settings_cameras_help"
-            android:textColor="#B0F2F4F7"
-            android:textSize="13sp" />
+        android:layout_height="wrap_content">
 
         <LinearLayout
-            android:id="@+id/camera_list"
-            android:layout_width="@dimen/form_width"
+            android:id="@+id/column"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:padding="24dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_max="@dimen/form_column_width">
 
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
-            android:text="@string/settings_quality" />
+            <TextView
+                style="@style/TextAppearance.HikViewer.Title"
+                android:text="@string/settings_title" />
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/quality_main"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:text="@string/settings_quality_main"
-            android:textColor="@color/on_background" />
+            <TextView
+                style="@style/TextAppearance.HikViewer.Label"
+                android:labelFor="@id/layout_spinner"
+                android:text="@string/settings_layout" />
 
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
-            android:text="@string/settings_overlays" />
+            <Spinner
+                android:id="@+id/layout_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="48dp" />
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/show_names"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:text="@string/settings_show_names"
-            android:textColor="@color/on_background" />
+            <TextView
+                style="@style/TextAppearance.HikViewer.Label"
+                android:text="@string/settings_cameras" />
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/show_fps"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:text="@string/settings_show_fps"
-            android:textColor="@color/on_background" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_cameras_help"
+                android:textColor="#B0F2F4F7"
+                android:textSize="13sp" />
 
-        <Button
-            android:id="@+id/change_code"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/settings_change_code" />
+            <LinearLayout
+                android:id="@+id/camera_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
 
-        <TextView
-            style="@style/TextAppearance.HikViewer.Label"
-            android:text="@string/settings_about" />
+            <TextView
+                style="@style/TextAppearance.HikViewer.Label"
+                android:text="@string/settings_quality" />
 
-        <TextView
-            android:id="@+id/about"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/on_background"
-            tools:text="HikViewer 0.1.0" />
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/quality_main"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/settings_quality_main"
+                android:textColor="@color/on_background" />
 
-        <Button
-            android:id="@+id/logout"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="@dimen/form_width"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="@string/settings_logout"
-            android:textColor="@color/error_text" />
-    </LinearLayout>
+            <TextView
+                style="@style/TextAppearance.HikViewer.Label"
+                android:text="@string/settings_overlays" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/show_names"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/settings_show_names"
+                android:textColor="@color/on_background" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/show_fps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/settings_show_fps"
+                android:textColor="@color/on_background" />
+
+            <Button
+                android:id="@+id/change_code"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/settings_change_code" />
+
+            <TextView
+                style="@style/TextAppearance.HikViewer.Label"
+                android:text="@string/settings_about" />
+
+            <TextView
+                android:id="@+id/about"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/on_background"
+                tools:text="HikViewer 0.1.0" />
+
+            <Button
+                android:id="@+id/logout"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="@string/settings_logout"
+                android:textColor="@color/error_text" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </ScrollView>

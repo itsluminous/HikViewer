@@ -82,15 +82,13 @@ open class TileDecoder(
 
     private var framesQueued = 0
     private var framesRendered = 0
-    private val recentIn = ArrayDeque<String>()
-    private val recentOut = ArrayDeque<Long>()
+
+    private val recent = RecentPictures(RECENT)
     private var inputCapacity = -1
     private var truncated = 0
 
-    /** Diagnostic: the last pictures fed (pts/size/K) and the last output timestamps. */
-    fun recentHistory(): String = synchronized(lock) {
-        "cap=$inputCapacity truncated=$truncated in[${recentIn.joinToString(" ")}] out[${recentOut.joinToString(" ")}]"
-    }
+    /** Diagnostic: the last pictures fed (pts/size, `K` for a keyframe) and the last output timestamps. */
+    fun recentHistory(): String = synchronized(lock) { "cap=$inputCapacity truncated=$truncated ${recent.describe()}" }
 
     /** Configures and starts the codec. Throws `MediaCodec.CodecException`/`IOException` on failure. */
     open fun start() {
@@ -161,8 +159,7 @@ open class TileDecoder(
                 if (size < unit.data.size) truncated++
                 buffer.put(unit.data, 0, size)
                 val pts = unit.presentationTimeUs ?: 0L
-                if (recentIn.size >= RECENT) recentIn.removeFirst()
-                recentIn.addLast("${pts / 1000}/${unit.data.size}${if (unit.isKeyframe) "K" else ""}")
+                recent.recordIn(pts, unit.data.size, unit.isKeyframe)
                 runCatching { c.queueInputBuffer(index, 0, size, pts, 0) }
             }
         }
@@ -189,8 +186,7 @@ open class TileDecoder(
                     val now = now()
                     stall.onOutput(now)
                     framesRendered++
-                    if (recentOut.size >= RECENT) recentOut.removeFirst()
-                    recentOut.addLast(info.presentationTimeUs / 1000)
+                    recent.recordOut(info.presentationTimeUs)
                     frameRate.onFrame(now)
                     first = !firstOutputSeen
                     firstOutputSeen = true

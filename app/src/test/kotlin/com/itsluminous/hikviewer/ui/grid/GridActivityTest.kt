@@ -213,10 +213,10 @@ class GridActivityTest {
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
                 val vm = a.viewModels<GridViewModel>().value
-                vm.setLayout(GridLayoutMode.HERO)
+                vm.setLayout(GridLayoutMode.HERO_1_5)
                 ShadowLooper.idleMainLooper()
-                assertThat(grid.mode).isEqualTo(GridLayoutMode.HERO)
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO)
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.HERO_1_5)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_5)
             }
         }
     }
@@ -388,7 +388,7 @@ class GridActivityTest {
     @Test
     fun `Back cancels a move and restores the arrangement, and the arrangement is per layout`() {
         val serial = FakeCloudServices.SERIAL
-        app.graph.arrangementStore.setOrder(GridLayoutMode.HERO, listOf("$serial/4"))
+        app.graph.arrangementStore.setOrder(GridLayoutMode.HERO_1_5, listOf("$serial/4"))
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->
                 val lifted = grid.getChildAt(2) as CameraTileView
@@ -403,7 +403,7 @@ class GridActivityTest {
                 assertThat(grid.childAtPosition(2)).isSameInstanceAs(lifted)
                 assertThat(lifted.isFocused).isTrue()
                 val vm = a.viewModels<GridViewModel>().value
-                vm.setLayout(GridLayoutMode.HERO)
+                vm.setLayout(GridLayoutMode.HERO_1_5)
                 ShadowLooper.idleMainLooper()
                 assertThat(grid.names().take(2)).containsExactly("Camera 4", "Camera 1").inOrder()
                 vm.setLayout(GridLayoutMode.AUTO)

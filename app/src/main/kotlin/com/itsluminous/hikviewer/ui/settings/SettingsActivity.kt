@@ -63,24 +63,34 @@ class SettingsActivity : AppCompatActivity() {
         bindLogout()
     }
 
+    /** Same filtered list as the grid's Layout menu; a stored layout the list hides is still shown as selected. */
     private fun bindLayout() {
-        val modes = GridLayoutMode.entries
+        val visibleCount = editor.items.count { it.visible }
+        val current = arrangement.lastLayout
+        val modes = (GridLayoutMode.available(visibleCount) + current).distinct().sortedBy { it.ordinal }
         binding.layoutSpinner.adapter = spinnerAdapter(modes.map { getString(it.labelRes) })
-        binding.layoutSpinner.setSelection(modes.indexOf(arrangement.lastLayout))
+        binding.layoutSpinner.setSelection(modes.indexOf(current))
         binding.layoutSpinner.onItemSelected { arrangement.lastLayout = modes[it] }
     }
 
-    /** The hero is position 0 of the hero layout's arrangement; picking one here moves it to the front. */
+    /**
+     * The hero is position 0 of a 1 + N layout's arrangement. The spinner shows the hero of the
+     * current 1 + N layout (or of 1 + 5) and a pick moves that camera to the front of every
+     * 1 + N layout, so the choice holds whichever size the user switches to.
+     */
     private fun bindHero() {
         val visible = editor.items.filter { it.visible }.map { it.camera }
-        val arranged = GridArrangement.apply(visible, arrangement.order(GridLayoutMode.HERO))
+        val shown = arrangement.lastLayout.takeIf { it.isHero } ?: GridLayoutMode.HERO_1_5
+        val arranged = GridArrangement.apply(visible, arrangement.order(shown))
         binding.heroSpinner.adapter = spinnerAdapter(visible.map { it.name })
         val current = visible.indexOfFirst { it.key == arranged.firstOrNull()?.key }.coerceAtLeast(0)
         if (visible.isNotEmpty()) binding.heroSpinner.setSelection(current)
         binding.heroSpinner.onItemSelected { picked ->
             val key = visible.getOrNull(picked)?.key ?: return@onItemSelected
-            val keys = arranged.map { it.key }
-            arrangement.setOrder(GridLayoutMode.HERO, GridArrangement.movedToFront(keys, keys.indexOf(key)))
+            GridLayoutMode.heroModes.forEach { mode ->
+                val keys = GridArrangement.apply(visible, arrangement.order(mode)).map { it.key }
+                arrangement.setOrder(mode, GridArrangement.movedToFront(keys, keys.indexOf(key)))
+            }
         }
     }
 

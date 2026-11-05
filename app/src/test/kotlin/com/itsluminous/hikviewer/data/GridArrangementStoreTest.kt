@@ -24,8 +24,8 @@ class GridArrangementStoreTest {
 
     @Test
     fun `last layout round-trips and survives an unknown stored name`() {
-        store.lastLayout = GridLayoutMode.HERO
-        assertThat(GridArrangementStore(prefs).lastLayout).isEqualTo(GridLayoutMode.HERO)
+        store.lastLayout = GridLayoutMode.HERO_1_9
+        assertThat(GridArrangementStore(prefs).lastLayout).isEqualTo(GridLayoutMode.HERO_1_9)
         prefs.edit().putString("gridLayout", "SPIRAL").commit()
         assertThat(store.lastLayout).isEqualTo(GridLayoutMode.AUTO)
     }
@@ -33,10 +33,11 @@ class GridArrangementStoreTest {
     @Test
     fun `each layout keeps its own order`() {
         store.setOrder(GridLayoutMode.GRID_4X3, listOf("S/2", "S/1", "S/3"))
-        store.setOrder(GridLayoutMode.HERO, listOf("S/3", "S/1", "S/2"))
+        store.setOrder(GridLayoutMode.HERO_1_5, listOf("S/3", "S/1", "S/2"))
         val again = GridArrangementStore(prefs)
         assertThat(again.order(GridLayoutMode.GRID_4X3)).containsExactly("S/2", "S/1", "S/3").inOrder()
-        assertThat(again.order(GridLayoutMode.HERO)).containsExactly("S/3", "S/1", "S/2").inOrder()
+        assertThat(again.order(GridLayoutMode.HERO_1_5)).containsExactly("S/3", "S/1", "S/2").inOrder()
+        assertThat(again.order(GridLayoutMode.HERO_1_7)).isNull()
         assertThat(again.order(GridLayoutMode.GRID_4X4)).isNull()
     }
 
@@ -47,5 +48,40 @@ class GridArrangementStoreTest {
         SettingsStore(prefs).clear()
         assertThat(store.order(GridLayoutMode.AUTO)).isNull()
         assertThat(store.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+    }
+
+    @Test
+    fun `legacy single hero layout migrates to 1+5 and seeds every 1+N arrangement`() {
+        prefs
+            .edit()
+            .clear()
+            .putString("gridLayout", "HERO")
+            .putString("arrangement.HERO", "S/4,S/1,S/2")
+            .commit()
+        val migrated = GridArrangementStore(prefs)
+        assertThat(migrated.lastLayout).isEqualTo(GridLayoutMode.HERO_1_5)
+        GridLayoutMode.heroModes.forEach { mode ->
+            assertThat(migrated.order(mode)).containsExactly("S/4", "S/1", "S/2").inOrder()
+        }
+        assertThat(prefs.contains("arrangement.HERO")).isFalse()
+        assertThat(prefs.getString("gridLayout", null)).isEqualTo("HERO_1_5")
+        // A second construction is a no-op: nothing legacy is left.
+        GridArrangementStore(prefs)
+        assertThat(migrated.order(GridLayoutMode.HERO_1_5)).containsExactly("S/4", "S/1", "S/2").inOrder()
+    }
+
+    @Test
+    fun `migration keeps a 1+N arrangement that already exists`() {
+        prefs
+            .edit()
+            .clear()
+            .putString("arrangement.HERO", "S/4,S/1")
+            .putString("arrangement.HERO_1_7", "S/2,S/1")
+            .putString("gridLayout", "GRID_4X3")
+            .commit()
+        val migrated = GridArrangementStore(prefs)
+        assertThat(migrated.order(GridLayoutMode.HERO_1_7)).containsExactly("S/2", "S/1").inOrder()
+        assertThat(migrated.order(GridLayoutMode.HERO_1_5)).containsExactly("S/4", "S/1").inOrder()
+        assertThat(migrated.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
     }
 }

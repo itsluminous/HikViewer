@@ -11,7 +11,10 @@ import com.itsluminous.hikviewer.R
  *
  * A custom `ViewGroup` rather than `GridLayout`/`RecyclerView` because the tiles are a fixed, small
  * set of `SurfaceView`s that must never be recycled (recreating a surface restarts its decoder) and
- * because the hero tile spans cells. Children fill the grid positions in index order unless
+ * because the hero tile spans cells. Shapes (see [GridGeometry]): the fixed grids are 3x3, 4x3
+ * and 4x4; the 1 + N layouts are square grids with the hero top-left — 1 + 5 has 3 columns
+ * (hero 2x2), 1 + 7 has 4 (hero 3x3), 1 + 9 has 5, 1 + 11 has 6 and 1 + 15 has 8 — so every
+ * tile keeps the screen's aspect ratio. Children fill the grid positions in index order unless
  * [order] says otherwise: rearranging tiles changes [order], never the child list, because
  * detaching a `SurfaceView` destroys its surface. Children past the shape's capacity are hidden.
  * [onTopEdgeUp] lets the screen route UP from the top row to its top bar, which the default focus

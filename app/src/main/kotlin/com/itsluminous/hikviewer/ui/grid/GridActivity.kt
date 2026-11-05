@@ -251,9 +251,13 @@ class GridActivity : AppCompatActivity() {
         startActivity(PlaybackActivity.intent(this, camera.key))
     }
 
+    /** Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is always there. */
     private fun showLayoutMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
-        GridLayoutMode.entries.forEachIndexed { i, mode -> menu.menu.add(0, i, i, mode.labelRes) }
+        val cameras = (viewModel.state.value as? GridUiState.Ready)?.cameras?.size ?: 0
+        GridLayoutMode.available(cameras).forEach { mode ->
+            menu.menu.add(0, mode.ordinal, mode.ordinal, mode.labelRes)
+        }
         menu.setOnMenuItemClickListener {
             viewModel.setLayout(GridLayoutMode.entries[it.itemId])
             true

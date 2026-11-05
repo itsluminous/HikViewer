@@ -60,7 +60,7 @@ class CameraGridLayoutTest {
     @Test
     fun `hero tile is twice the size and tileAt resolves spans`() {
         fill(9)
-        grid.mode = GridLayoutMode.HERO
+        grid.mode = GridLayoutMode.HERO_1_5
         layout()
         val hero = grid.getChildAt(0)
         val small = grid.getChildAt(1)
@@ -69,7 +69,7 @@ class CameraGridLayoutTest {
         assertThat(grid.tileAt(0, 0)).isEqualTo(0)
         assertThat(grid.tileAt(1, 1)).isEqualTo(0)
         assertThat(grid.tileAt(2, 0)).isEqualTo(1)
-        assertThat(grid.tileAt(0, 2)).isEqualTo(5)
+        assertThat(grid.tileAt(0, 2)).isEqualTo(3)
         assertThat(grid.tileAt(9, 9)).isEqualTo(-1)
     }
 
@@ -141,7 +141,7 @@ class CameraGridLayoutTest {
         assertThat(grid.neighbour(0, 0, -1)).isEqualTo(-1)
         assertThat(grid.neighbour(11, +1, 0)).isEqualTo(-1)
         assertThat(grid.neighbour(5, -1, 0)).isEqualTo(4)
-        grid.mode = GridLayoutMode.HERO
+        grid.mode = GridLayoutMode.HERO_1_5
         layout()
         // Hero spans 2x2 at top-left: RIGHT from it skips its own span, DOWN from tile 1 lands on it.
         assertThat(grid.neighbour(0, +1, 0)).isEqualTo(1)

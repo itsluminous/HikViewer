@@ -67,10 +67,10 @@ class SettingsActivityTest {
     fun `layout spinner, quality and overlay switches and hero spinner write the store`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                a
-                    .findViewById<Spinner>(
-                        R.id.layout_spinner,
-                    ).setSelection(GridLayoutMode.entries.indexOf(GridLayoutMode.GRID_4X4))
+                // Three visible cameras: the spinner offers AUTO and 3x3 only (same filter as the grid menu).
+                val layoutSpinner = a.findViewById<Spinner>(R.id.layout_spinner)
+                assertThat(layoutSpinner.adapter.count).isEqualTo(2)
+                layoutSpinner.setSelection(1)
                 a.findViewById<SwitchCompat>(R.id.quality_main).isChecked = true
                 a.findViewById<Spinner>(R.id.hero_spinner).setSelection(2)
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isFalse()
@@ -78,14 +78,16 @@ class SettingsActivityTest {
                 a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
                 a.findViewById<SwitchCompat>(R.id.show_fps).isChecked = true
                 ShadowLooper.idleMainLooper()
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X4)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_3X3)
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
                 assertThat(app.graph.settingsStore.showCameraNames).isTrue()
                 assertThat(app.graph.settingsStore.showFrameRate).isTrue()
-                // The hero is position 0 of the hero layout's arrangement; the rest keep their order.
-                assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO))
-                    .containsExactly("$serial/3", "$serial/1", "$serial/2")
-                    .inOrder()
+                // The hero is position 0 of every 1 + N layout's arrangement; the rest keep their order.
+                GridLayoutMode.heroModes.forEach { mode ->
+                    assertThat(app.graph.arrangementStore.order(mode))
+                        .containsExactly("$serial/3", "$serial/1", "$serial/2")
+                        .inOrder()
+                }
                 assertThat(app.graph.arrangementStore.order(GridLayoutMode.AUTO)).isNull()
             }
         }

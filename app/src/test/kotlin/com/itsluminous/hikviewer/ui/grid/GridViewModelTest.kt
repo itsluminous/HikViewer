@@ -98,17 +98,17 @@ class GridViewModelTest {
     fun `layout change persists and hero drives the hardware decoder`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
         val serial = FakeCloudServices.SERIAL
-        // Camera 3 was moved to the front of the hero layout (position 0 = hero).
-        graph.arrangementStore.setOrder(GridLayoutMode.HERO, listOf("$serial/3", "$serial/1", "$serial/2"))
+        // Camera 3 was moved to the front of the 1 + 7 layout (position 0 = hero).
+        graph.arrangementStore.setOrder(GridLayoutMode.HERO_1_7, listOf("$serial/3", "$serial/1", "$serial/2"))
         val vm = viewModel()
         vm.load()
         dispatcher.scheduler.advanceUntilIdle()
         vm.focusedIndex = 5
         assertThat(vm.playback.heroIndex).isNull()
         assertThat(ready(vm).cameras.first().channelNo).isEqualTo(1) // the 4x3 arrangement is untouched
-        vm.setLayout(GridLayoutMode.HERO)
-        assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO)
-        assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.HERO)
+        vm.setLayout(GridLayoutMode.HERO_1_7)
+        assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_7)
+        assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.HERO_1_7)
         assertThat(ready(vm).cameras.map { it.channelNo }.take(4)).containsExactly(3, 1, 2, 4).inOrder()
         assertThat(vm.playback.heroIndex).isEqualTo(0)
         assertThat(
@@ -140,7 +140,7 @@ class GridViewModelTest {
         assertThat(ready(vm).cameras.map { it.channelNo }.take(6)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
         assertThat(vm.focusedIndex).isEqualTo(5)
         assertThat(graph.arrangementStore.order(GridLayoutMode.AUTO)!!.first()).endsWith("/6")
-        assertThat(graph.arrangementStore.order(GridLayoutMode.HERO)).isNull()
+        assertThat(graph.arrangementStore.order(GridLayoutMode.HERO_1_7)).isNull()
         // Same TilePlayer objects, reordered: no stream was reopened.
         assertThat(vm.playback.players.value).containsExactlyElementsIn(before)
         assertThat(cloud.accounts.single().opened).hasSize(12)

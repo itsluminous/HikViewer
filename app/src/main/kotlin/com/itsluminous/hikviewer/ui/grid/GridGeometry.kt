@@ -34,9 +34,11 @@ data class GridShape(
  * Pure layout maths for [CameraGridLayout]: which tile goes in which cell, and where a cell is in
  * pixels. Separated from the `ViewGroup` so every layout can be asserted on the JVM.
  *
- * Hero layouts put one 2x2 tile top-left and fill the remaining cells row by row; the grid grows
- * (3x3 → 4x3 → 4x4 → 5x4) until the hero plus the other tiles fit. In portrait (phones) the
- * grid is two columns wide and as tall as needed, with the hero spanning the full width.
+ * A 1 + N layout ([GridLayoutMode.isHero]) is a square `(k+1) x (k+1)` grid whose hero spans the
+ * top-left `k x k` cells; the small tiles fill the right column top to bottom, then the bottom
+ * row left to right (row-major order, like the fixed grids). In portrait (phones) the grid is two
+ * columns wide and as tall as needed, with the hero spanning the full width (2 x 2 cells) and
+ * the small tiles two per row beneath it.
  */
 object GridGeometry {
     /** Cells for [tileCount] tiles in [mode]. Tiles beyond the capacity are not placed. */
@@ -45,9 +47,9 @@ object GridGeometry {
         tileCount: Int,
         portrait: Boolean = false,
     ): GridShape = when {
-        portrait && mode == GridLayoutMode.HERO -> heroShape(PORTRAIT_COLUMNS, portraitHeroRows(tileCount))
+        portrait && mode.isHero -> portraitHero(mode)
         portrait -> fixedShape(PORTRAIT_COLUMNS, ceilDiv(tileCount, PORTRAIT_COLUMNS).coerceAtLeast(1))
-        mode == GridLayoutMode.HERO -> landscapeHero(tileCount)
+        mode.isHero -> heroShape(mode.heroSpan + 1, mode.heroSpan + 1, mode.heroSpan)
         else -> mode.resolve(tileCount).let { fixedShape(it.columns, it.rows) }
     }
 
@@ -77,37 +79,34 @@ object GridGeometry {
         rows: Int,
     ): GridShape = GridShape(columns, rows, (0 until columns * rows).map { Cell(it % columns, it / columns) })
 
-    private fun landscapeHero(tileCount: Int): GridShape {
-        val (columns, rows) =
-            HERO_LANDSCAPE_SHAPES.firstOrNull { (c, r) -> c * r - HERO_CELLS + 1 >= tileCount }
-                ?: HERO_LANDSCAPE_SHAPES.last()
-        return heroShape(columns, rows)
+    /** Two columns, full-width hero, companions two per row; an odd N leaves the last cell empty. */
+    private fun portraitHero(mode: GridLayoutMode): GridShape {
+        val rows = PORTRAIT_HERO_SPAN + ceilDiv(mode.heroCompanions, PORTRAIT_COLUMNS)
+        val shape = heroShape(PORTRAIT_COLUMNS, rows, PORTRAIT_HERO_SPAN)
+        return shape.copy(cells = shape.cells.take(mode.capacity))
     }
 
+    /** Hero of [heroSpan] x [heroSpan] cells top-left; the other cells row by row. */
     private fun heroShape(
         columns: Int,
         rows: Int,
+        heroSpan: Int,
     ): GridShape {
-        val cells = mutableListOf(Cell(0, 0, HERO_SPAN, HERO_SPAN))
+        val cells = mutableListOf(Cell(0, 0, heroSpan, heroSpan))
         for (row in 0 until rows) {
             for (column in 0 until columns) {
-                if (row < HERO_SPAN && column < HERO_SPAN) continue
+                if (row < heroSpan && column < heroSpan) continue
                 cells += Cell(column, row)
             }
         }
         return GridShape(columns, rows, cells)
     }
 
-    private fun portraitHeroRows(tileCount: Int): Int =
-        HERO_SPAN + ceilDiv((tileCount - 1).coerceAtLeast(0), PORTRAIT_COLUMNS)
-
     private fun ceilDiv(
         a: Int,
         b: Int,
     ): Int = (a + b - 1) / b
 
-    private const val HERO_SPAN = 2
-    private const val HERO_CELLS = HERO_SPAN * HERO_SPAN
     private const val PORTRAIT_COLUMNS = 2
-    private val HERO_LANDSCAPE_SHAPES = listOf(3 to 3, 4 to 3, 4 to 4, 5 to 4)
+    private const val PORTRAIT_HERO_SPAN = 2
 }

@@ -241,11 +241,12 @@ class GridNavigationTest {
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
         dpad(KeyEvent.KEYCODE_DPAD_CENTER)
-        pickPopupEntry(GridLayoutMode.entries.indexOf(GridLayoutMode.HERO))
+        // 12 cameras: the menu lists AUTO, 3x3, 4x3 and 1+5 … 1+11 (1+15 and 4x4 need more cameras).
+        pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.HERO_1_5))
         onView(tile(0)).check(matches(tileNamed("Camera 1")))
         onView(withId(R.id.layout_button)).check(matches(hasFocus())) // the bar keeps focus after the popup
         dpad(KeyEvent.KEYCODE_DPAD_CENTER)
-        pickPopupEntry(GridLayoutMode.entries.indexOf(GridLayoutMode.AUTO))
+        pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.AUTO))
         onView(tile(0)).check(matches(tileNamed("Camera 2")))
         onView(tile(5)).check(matches(tileNamed("Camera 1")))
         assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.AUTO)

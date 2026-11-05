@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.core.stream
 
+import java.io.BufferedInputStream
 import java.io.Closeable
 import java.io.EOFException
 import java.io.InputStream
@@ -85,7 +86,10 @@ public class VtmRelayClient(
         s.soTimeout = readTimeoutMillis
         s.tcpNoDelay = true
         socket = s
-        input = s.getInputStream()
+        // The relay sends a GOP as a burst of ~1.4 KB frames. Reading header and body straight
+        // from the socket costs two syscalls per frame; the buffer turns a burst into a few
+        // large reads. Timeouts and a close() from another thread still surface through it.
+        input = BufferedInputStream(s.getInputStream(), READ_BUFFER_BYTES)
         output = s.getOutputStream()
     }
 
@@ -175,29 +179,35 @@ public class VtmRelayClient(
 
     /** Reads one complete frame. */
     public fun readFrame(): VtmFrame {
-        val header = VtmFrame.decodeHeader(readExactly(VtmFrame.HEADER_SIZE))
+        val header = VtmFrame.decodeHeader(readExactly(VtmFrame.HEADER_SIZE, headerBuffer))
         val body = readExactly(header.length)
         return VtmFrame(header.channel, header.sequence, header.messageCode, body)
     }
 
-    private fun readExactly(length: Int): ByteArray {
+    /** Reused for every frame header; the body array is handed on, so it is fresh each time. */
+    private val headerBuffer = ByteArray(VtmFrame.HEADER_SIZE)
+
+    private fun readExactly(
+        length: Int,
+        into: ByteArray = ByteArray(length),
+    ): ByteArray {
         val input = input ?: throw VtmException("VTM socket is not connected")
-        val buffer = ByteArray(length)
         var filled = 0
         while (filled < length) {
-            val n = readChunk(input, buffer, filled)
+            val n = readChunk(input, into, filled, length - filled)
             if (n < 0) throw VtmException(if (closed) CLOSED_BY_CLIENT else CLOSED_BY_RELAY)
             filled += n
         }
-        return buffer
+        return into
     }
 
     private fun readChunk(
         input: InputStream,
         buffer: ByteArray,
         offset: Int,
+        length: Int,
     ): Int = try {
-        input.read(buffer, offset, buffer.size - offset)
+        input.read(buffer, offset, length)
     } catch (e: SocketTimeoutException) {
         throw VtmStallException("No data from the relay for ${readTimeoutMillis}ms", e)
     } catch (e: EOFException) {
@@ -236,6 +246,9 @@ public class VtmRelayClient(
 
         /** Keepalive interval, matching the reference client. */
         public const val DEFAULT_KEEPALIVE_MILLIS: Long = 5_000
+
+        /** Socket read buffer; a sub-stream GOP burst is ~60 KB. */
+        private const val READ_BUFFER_BYTES = 64 * 1024
         private const val DEFAULT_MAX_REDIRECTS = 3
         private const val DEFAULT_MAX_CONTROL = 20
         private const val SEQUENCE_MASK = 0xFFFF

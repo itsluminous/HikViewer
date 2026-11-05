@@ -26,6 +26,10 @@ import javax.crypto.spec.SecretKeySpec
  * would leave the decoder without references); and whether inter slices are encrypted is decided
  * from a structural test, not guessed (slice headers repeat, ciphertext does not), because a wrong
  * guess corrupts every P-frame. Pure: no I/O, not thread-safe.
+ *
+ * The decryptor owns the bytes it is fed: encrypted bodies are decrypted **in place** (AES-ECB
+ * maps a block onto itself, and `Cipher.doFinal` is copy-safe), so the demuxer's fresh NAL arrays
+ * flow to the assembler without another copy. Callers must not reuse a fed array.
  */
 public class NalDecryptor(
     verificationCode: String?,
@@ -89,7 +93,10 @@ public class NalDecryptor(
         ) : Pending(nal)
     }
 
-    /** Feeds one NAL; returns the decrypted NALs that can be released (possibly buffered ones). */
+    /**
+     * Feeds one NAL; returns the decrypted NALs that can be released (possibly buffered ones).
+     * [nal]'s array may be decrypted in place; it belongs to the decryptor from here on.
+     */
     public fun feed(nal: NalUnit): List<NalUnit> {
         if (keyError || nal.size == 0) return emptyList()
         val out = ArrayList<NalUnit>()
@@ -248,7 +255,10 @@ public class NalDecryptor(
         val n = nal.data
         when (variant) {
             Variant.CLEAR -> if (irapGate(codec, codec.nalType(n[0]))) put(nal, out)
-            Variant.WHOLE -> put(nal.withData(decryptBody(n, 0)), out)
+            Variant.WHOLE -> {
+                decryptInPlace(n, 0)
+                put(nal, out)
+            }
             Variant.TYPE_HINT -> put(nal.withData(stripTypeHint(n, hdr)), out)
             Variant.HEADER_CLEAR -> emitHeaderClear(nal, codec, out)
             null -> Unit
@@ -293,7 +303,8 @@ public class NalDecryptor(
         if (interEncrypted != null && pending != null) flushPending(out)
         if (!irapGate(codec, type)) return
         if (alwaysEncrypted) {
-            put(nal.withData(n.copyOf(hdr) + decryptBody(n, hdr)), out)
+            decryptInPlace(n, hdr)
+            put(nal, out)
         } else {
             putInter(nal, out)
         }
@@ -343,8 +354,8 @@ public class NalDecryptor(
     }
 
     private fun interBytes(nal: NalUnit): NalUnit {
-        val hdr = codec!!.nalHeaderLength
-        return if (interEncrypted == true) nal.withData(nal.data.copyOf(hdr) + decryptBody(nal.data, hdr)) else nal
+        if (interEncrypted == true) decryptInPlace(nal.data, codec!!.nalHeaderLength)
+        return nal
     }
 
     /** Only keyframes arriving (no inter slice at all): stop waiting and assume clear inter slices. */
@@ -393,18 +404,32 @@ public class NalDecryptor(
         at: Int,
     ): ByteArray = cipher.doFinal(n, at, AES_BLOCK)
 
-    /** Decrypts whole 16-byte blocks of the first 4096 bytes after [from]; the rest is clear. */
+    /** Whole 16-byte blocks of the first 4096 bytes after [from] are encrypted; the rest is clear. */
+    private fun encryptedLength(
+        n: ByteArray,
+        from: Int,
+    ): Int = (minOf(n.size - from, ENCRYPTED_PREFIX) / AES_BLOCK) * AES_BLOCK
+
+    /** Decrypts the body after [from] into a new array (the header is dropped). */
     private fun decryptBody(
         n: ByteArray,
         from: Int,
     ): ByteArray {
-        val bodyLength = n.size - from
-        val encryptedLength = (minOf(bodyLength, ENCRYPTED_PREFIX) / AES_BLOCK) * AES_BLOCK
+        val encryptedLength = encryptedLength(n, from)
         if (encryptedLength == 0) return n.copyOfRange(from, n.size)
-        val out = ByteArray(bodyLength)
+        val out = ByteArray(n.size - from)
         cipher.doFinal(n, from, encryptedLength, out, 0)
         n.copyInto(out, encryptedLength, from + encryptedLength, n.size)
         return out
+    }
+
+    /** Decrypts the body after [from] inside [n] itself; no allocation. */
+    private fun decryptInPlace(
+        n: ByteArray,
+        from: Int,
+    ) {
+        val encryptedLength = encryptedLength(n, from)
+        if (encryptedLength > 0) cipher.doFinal(n, from, encryptedLength, n, from)
     }
 
     /** Key derivation and tuning constants. */

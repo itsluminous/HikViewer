@@ -1,11 +1,14 @@
 package com.itsluminous.hikviewer.core.stream
 
-import java.io.ByteArrayOutputStream
-
 /**
  * RTP depacketiser for H.264 (RFC 6184: single NAL, STAP-A, FU-A) and HEVC (RFC 7798: single, AP,
  * FU). Only payload type 96 (video) is used; Hik streams carry metadata (112) and audio (0) in the
  * same SSRC.
+ *
+ * Allocation is kept to the bytes the pipeline must own: a single-NAL packet is copied once (the
+ * NAL), fragments are appended straight from the packet into one reusable buffer and copied out
+ * once when the NAL completes. Nothing else on the per-packet path allocates beyond the small
+ * [NalUnit] wrappers, which keeps the GC quiet with twelve streams at twelve frames per second.
  *
  * Sequence numbers are tracked per (SSRC, payload type) because each payload type has its own
  * counter; a gap in the video sequence drops the fragmented NAL being assembled rather than gluing
@@ -24,7 +27,8 @@ public class RtpDemuxer(
     private val undecided = ArrayList<ByteArray>()
     private val lastSequence = HashMap<Long, Int>()
     private val lateRun = HashMap<Long, Int>()
-    private var fragment: ByteArrayOutputStream? = null
+    private val fragment = ByteBuilder()
+    private var inFragment = false
     private var fragmentTimestamp: Long? = null
 
     override fun feed(packet: ByteArray): List<NalUnit> {
@@ -57,66 +61,69 @@ public class RtpDemuxer(
         packet: ByteArray,
         codec: VideoCodec,
     ): List<NalUnit> {
-        val payload = runCatching { payload(packet) }.getOrNull()
-        if (payload == null) {
+        val bounds = runCatching { payloadBounds(packet) }.getOrNull()
+        if (bounds == null) {
             droppedPackets++
-            fragment = null
+            inFragment = false
             return emptyList()
         }
+        val from = (bounds ushr Int.SIZE_BITS).toInt()
+        val to = bounds.toInt()
         val timestamp = timestamp(packet)
-        if (payload.size < codec.nalHeaderLength) return emptyList()
-        val type = codec.nalType(payload[0])
+        if (to - from < codec.nalHeaderLength) return emptyList()
+        val type = codec.nalType(packet[from])
         return when {
-            type == fuType(codec) -> fragmentUnit(payload, codec, timestamp)
-            type == aggregationType(codec) -> aggregation(payload, codec, timestamp)
-            else -> listOf(NalUnit(payload, timestamp))
+            type == fuType(codec) -> fragmentUnit(packet, from, to, codec, timestamp)
+            type == aggregationType(codec) -> aggregation(packet, from, to, codec, timestamp)
+            else -> listOf(NalUnit(packet.copyOfRange(from, to), timestamp))
         }
     }
 
     private fun fragmentUnit(
-        payload: ByteArray,
+        packet: ByteArray,
+        from: Int,
+        to: Int,
         codec: VideoCodec,
         timestamp: Long,
     ): List<NalUnit> {
         val hdr = codec.nalHeaderLength
-        if (payload.size < hdr + 1) return emptyList()
-        val fu = payload[hdr].toInt() and BYTE_MASK
+        if (to - from < hdr + 1) return emptyList()
+        val fu = packet[from + hdr].toInt() and BYTE_MASK
         val start = fu and FU_START != 0
         val end = fu and FU_END != 0
         if (start) {
-            val reconstructed = ByteArrayOutputStream()
+            fragment.reset()
             if (codec == VideoCodec.H264) {
-                reconstructed.write((payload[0].toInt() and H264_NRI_MASK) or (fu and H264_TYPE_MASK))
+                fragment.append(((packet[from].toInt() and H264_NRI_MASK) or (fu and H264_TYPE_MASK)).toByte())
             } else {
-                reconstructed.write((payload[0].toInt() and HEVC_HEADER_KEEP_MASK) or ((fu and HEVC_TYPE_MASK) shl 1))
-                reconstructed.write(payload[1].toInt())
+                val first = (packet[from].toInt() and HEVC_HEADER_KEEP_MASK) or ((fu and HEVC_TYPE_MASK) shl 1)
+                fragment.append(first.toByte())
+                fragment.append(packet[from + 1])
             }
-            reconstructed.write(payload, hdr + 1, payload.size - hdr - 1)
-            fragment = reconstructed
+            inFragment = true
             fragmentTimestamp = timestamp
-        } else {
-            fragment?.write(payload, hdr + 1, payload.size - hdr - 1)
         }
-        val current = fragment
-        if (end && current != null) {
-            fragment = null
-            return listOf(NalUnit(current.toByteArray(), fragmentTimestamp))
-        }
-        return emptyList()
+        if (!inFragment) return emptyList()
+        fragment.append(packet, from + hdr + 1, to)
+        if (!end) return emptyList()
+        inFragment = false
+        return listOf(NalUnit(fragment.toByteArray(), fragmentTimestamp))
     }
 
     private fun aggregation(
-        payload: ByteArray,
+        packet: ByteArray,
+        from: Int,
+        to: Int,
         codec: VideoCodec,
         timestamp: Long,
     ): List<NalUnit> {
         val out = ArrayList<NalUnit>()
-        var i = codec.nalHeaderLength
-        while (i + 2 <= payload.size) {
-            val size = ((payload[i].toInt() and BYTE_MASK) shl 8) or (payload[i + 1].toInt() and BYTE_MASK)
+        var i = from + codec.nalHeaderLength
+        while (i + 2 <= to) {
+            val size = ((packet[i].toInt() and BYTE_MASK) shl 8) or (packet[i + 1].toInt() and BYTE_MASK)
             i += 2
-            val end = minOf(i + size, payload.size)
-            if (end > i) out += NalUnit(payload.copyOfRange(i, end), timestamp)
+            val end = minOf(i + size, to)
+            if (end > i) out += NalUnit(packet.copyOfRange(i, end), timestamp)
             i = end
         }
         return out
@@ -150,7 +157,7 @@ public class RtpDemuxer(
         lastSequence[stream] = seq
         if (diff != 1 && isVideo) {
             droppedPackets++
-            fragment = null
+            inFragment = false
         }
         return true
     }
@@ -214,6 +221,12 @@ public class RtpDemuxer(
 
         /** Strips the fixed header, CSRCs, extension and padding. */
         public fun payload(packet: ByteArray): ByteArray {
+            val bounds = payloadBounds(packet)
+            return packet.copyOfRange((bounds ushr Int.SIZE_BITS).toInt(), bounds.toInt())
+        }
+
+        /** Payload `from shl 32 or to` inside [packet] (packed to avoid a per-packet allocation). */
+        private fun payloadBounds(packet: ByteArray): Long {
             require(packet.size >= HEADER_SIZE) { "RTP packet is too short" }
             val b0 = packet[0].toInt() and BYTE_MASK
             require(b0 ushr 6 == 2) { "Unsupported RTP version" }
@@ -233,7 +246,7 @@ public class RtpDemuxer(
                 require(padding in 1..(end - offset)) { "Invalid RTP padding length" }
                 end -= padding
             }
-            return packet.copyOfRange(offset, end)
+            return (offset.toLong() shl Int.SIZE_BITS) or end.toLong()
         }
 
         private inline fun require(

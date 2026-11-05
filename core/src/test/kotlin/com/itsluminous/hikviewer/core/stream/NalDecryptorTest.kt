@@ -107,10 +107,9 @@ class NalDecryptorTest {
         fun `a cached inter decision skips the buffering and is still verified`() {
             val wrongHint = NalDecryptor(KEY, interEncryptedHint = true)
             val rightHint = NalDecryptor(KEY, interEncryptedHint = false)
-            val units = readUnits("h264_nals_header_clear_selective.bin")
-
-            val outWrong = run(wrongHint, units)
-            val outRight = run(rightHint, units)
+            // Fresh arrays per decryptor: a fed NAL is decrypted in place and belongs to the decryptor.
+            val outWrong = run(wrongHint, readUnits("h264_nals_header_clear_selective.bin"))
+            val outRight = run(rightHint, readUnits("h264_nals_header_clear_selective.bin"))
 
             assertThat(rightHint.interEncrypted).isFalse()
             assertSameNals(outRight, clearAfterGate)
@@ -286,6 +285,21 @@ class NalDecryptorTest {
         assertThat(NalDecryptor.keyBytes("AB")).isEqualTo(byteArrayOf(0x41, 0x42) + ByteArray(14))
         assertThat(NalDecryptor.keyBytes("0123456789ABCDEFGHIJ")).isEqualTo("0123456789ABCDEF".toByteArray())
         assertThat(NalDecryptor.keyBytes("")).isEqualTo(ByteArray(16))
+    }
+
+    @Test
+    fun `encrypted bodies are decrypted in place, headers and clear tails untouched`() {
+        val decryptor = NalDecryptor(KEY)
+        val units = readUnits("h264_nals_header_clear_all.bin")
+        val out = run(decryptor, units)
+        assertSameNals(out, clearAfterGate)
+        // The emitted arrays are the fed arrays themselves (no copy), now holding clear data.
+        units.drop(1).zip(out).forEach { (fed, emitted) -> assertThat(emitted).isSameInstanceAs(fed) }
+        // A body shorter than one AES block is left alone; a long one keeps its clear tail past 4096 bytes.
+        val idrIndex = out.indexOfFirst { it[0].toInt() and 0x1F == 5 }
+        val idr = out[idrIndex]
+        assertThat(idr.size).isGreaterThan(4096 + 1)
+        assertThat(idr.copyOfRange(4097, idr.size)).isEqualTo(clearAfterGate[idrIndex].copyOfRange(4097, idr.size))
     }
 
     @Test

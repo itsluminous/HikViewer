@@ -243,7 +243,9 @@ class LiveStreamTest {
             connections++
             handshake()
             if (connections <= 2) {
-                sendTs(packets = 40) // a few pictures, then the relay drops us
+                // Two complete pictures (the first GOP's IDR is 31 KB), then the relay drops us: ten
+                // pictures need the third connection whatever the socket buffering delivers.
+                sendTs(packets = 30)
                 close()
             } else {
                 sendTs()

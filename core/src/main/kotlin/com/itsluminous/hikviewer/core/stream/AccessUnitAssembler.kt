@@ -1,7 +1,5 @@
 package com.itsluminous.hikviewer.core.stream
 
-import java.io.ByteArrayOutputStream
-
 /** Codec-specific data `MediaCodec` needs before the first frame (`csd-0`, `csd-1`, ...). */
 public class CodecConfig(
     /** The codec. */
@@ -57,12 +55,16 @@ public class AccessUnit(
  * picture (AUD, parameter set, prefix SEI) follows slice data. Parameter sets are remembered so
  * every keyframe can carry a [CodecConfig] for `MediaCodec`. RTP timestamps wrap at 32 bits; they
  * are unwrapped here so presentation times increase monotonically.
+ *
+ * NALs are held by reference until the picture is complete and then written once into an array
+ * of exactly the right size, so each picture costs one copy (the one `MediaCodec` needs anyway).
  */
 public class AccessUnitAssembler(
     /** The codec; known from [NalDecryptor.codec] before the first NAL reaches the assembler. */
     public val codec: VideoCodec,
 ) {
-    private val current = ByteArrayOutputStream()
+    private val current = ArrayList<ByteArray>()
+    private var currentBytes = 0
     private var currentTimestamp: Long? = null
     private var currentHasVcl = false
     private var currentKeyframe = false
@@ -95,30 +97,39 @@ public class AccessUnitAssembler(
                         (!vcl && codec.startsAccessUnit(type))
                 )
         val completed = if (startsNew) complete() else null
-        if (current.size() == 0) currentTimestamp = timestamp
+        if (current.isEmpty()) currentTimestamp = timestamp
         if (vcl) {
             currentHasVcl = true
             if (codec.isIrap(type)) currentKeyframe = true
         }
-        current.write(START_CODE)
-        current.write(data)
-        if (current.size() > MAX_ACCESS_UNIT) return completed ?: complete()
+        current += data
+        currentBytes += START_CODE.size + data.size
+        if (currentBytes > MAX_ACCESS_UNIT) return completed ?: complete()
         return completed
     }
 
     /** Returns the picture being assembled, if any (call at end of stream). */
-    public fun flush(): AccessUnit? = if (current.size() == 0) null else complete()
+    public fun flush(): AccessUnit? = if (current.isEmpty()) null else complete()
 
     private fun complete(): AccessUnit {
+        val bytes = ByteArray(currentBytes)
+        var at = 0
+        for (nal in current) {
+            START_CODE.copyInto(bytes, at)
+            at += START_CODE.size
+            nal.copyInto(bytes, at)
+            at += nal.size
+        }
         val unit =
             AccessUnit(
                 codec = codec,
-                data = current.toByteArray(),
+                data = bytes,
                 presentationTimeUs = currentTimestamp?.let { it * MICROS_PER_SECOND / TIMESTAMP_HZ },
                 isKeyframe = currentKeyframe,
                 config = config,
             )
-        current.reset()
+        current.clear()
+        currentBytes = 0
         currentHasVcl = false
         currentKeyframe = false
         currentTimestamp = null

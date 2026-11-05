@@ -14,15 +14,6 @@ object PlaybackTimeline {
     /** Seconds in a day; the bar's scale. */
     const val DAY_SECONDS: Long = 24 * 60 * 60
 
-    /** Seek step of a single LEFT/RIGHT press. */
-    const val SEEK_STEP_SECONDS: Long = 10
-
-    /** Seek step once a key has auto-repeated [ACCELERATE_AFTER_REPEATS] times. */
-    const val FAST_SEEK_STEP_SECONDS: Long = 60
-
-    /** Key repeats before a held LEFT/RIGHT jumps by the fast step. */
-    const val ACCELERATE_AFTER_REPEATS: Int = 4
-
     /** Where [time] sits on a 24 h bar, 0f at midnight and 1f at the next midnight. */
     fun fractionOfDay(time: LocalDateTime): Float =
         (time.toLocalTime().toSecondOfDay().toFloat() / DAY_SECONDS).coerceIn(0f, 1f)
@@ -57,9 +48,26 @@ object PlaybackTimeline {
         }
     }
 
-    /** The seek step for a key event with [repeatCount] (0 for a plain press). */
-    fun seekStep(repeatCount: Int): Long =
-        if (repeatCount >= ACCELERATE_AFTER_REPEATS) FAST_SEEK_STEP_SECONDS else SEEK_STEP_SECONDS
+    /**
+     * [time] kept inside the day's footage: between the first segment's start and the last one's
+     * end (a seek past either would only land on an edge anyway, so the label may as well say so),
+     * or inside [day] when nothing is recorded.
+     */
+    fun clampToRecorded(
+        day: LocalDate,
+        segments: List<RecordSegment>,
+        time: LocalDateTime,
+    ): LocalDateTime {
+        val inDay = clampToDay(day, time)
+        if (segments.isEmpty()) return inDay
+        val first = segments.minOf { it.begin }
+        val last = clampToDay(day, segments.maxOf { it.end })
+        return when {
+            inDay.isBefore(first) -> first
+            inDay.isAfter(last) -> last
+            else -> inDay
+        }
+    }
 
     /** The segment containing [time], else the first one starting after it; null when none is left. */
     fun segmentAtOrAfter(

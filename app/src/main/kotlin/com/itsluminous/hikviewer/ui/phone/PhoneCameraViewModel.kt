@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.ui.phone
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.core.devices.Camera
@@ -35,7 +36,8 @@ enum class PhoneCameraMode {
  * [PlaybackViewModel] embedded per camera on this ViewModel's scope — the same engine as the TV
  * playback screen, so seek, speed and day changes behave identically.
  *
- * Scrubbing the bar stops the live stream and opens recorded footage at that time; [goLive]
+ * Scrubbing the bar (a tap or a drag, debounced by the engine's [com.itsluminous.hikviewer.ui.playback.SeekController])
+ * stops the live stream and opens recorded footage at that time; [goLive]
  * closes the footage and reopens the live stream. Switching camera (swipe) always comes back to
  * live: the new camera's footage is listed again so the bar shows its own recordings.
  */
@@ -48,6 +50,8 @@ class PhoneCameraViewModel(
     private val today: () -> LocalDate = { LocalDate.now() },
     /** Where recording searches run; a test dispatcher in tests. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Monotonic milliseconds for the engines' seek timing; tests pass their scheduler's time. */
+    private val clock: () -> Long = { SystemClock.uptimeMillis() },
     liveFactory: (PhoneCameraViewModel) -> PlaybackCoordinator,
 ) : ViewModel() {
     private val carousel =
@@ -180,7 +184,7 @@ class PhoneCameraViewModel(
         val current = camera
         recordedFlow.value =
             current?.let {
-                PlaybackViewModel(it, account, factory, today(), io = io, externalScope = viewModelScope)
+                PlaybackViewModel(it, account, factory, today(), io = io, clock = clock, externalScope = viewModelScope)
             }
         if (visible) recordedFlow.value?.listDay()
     }

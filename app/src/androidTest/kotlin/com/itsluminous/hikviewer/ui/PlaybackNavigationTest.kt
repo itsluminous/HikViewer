@@ -111,8 +111,11 @@ class PlaybackNavigationTest {
                 .second.begin == today.atTime(23, 55),
         )
 
-        // The bar is the active control: RIGHT seeks and the release reopens 10 s later.
+        // The bar is the active control: RIGHT moves the label at once; the stream reopens 10 s on
+        // once the seek debounce has run out.
+        val before = timeLabel()
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assert(timeLabel() != before) { "label did not move on RIGHT" }
         awaitPlaybackOpens(2)
         val reopened = account.playbackOpened[1].second.begin
         assert(!reopened.isBefore(today.atTime(23, 55, 10))) { "reopened at $reopened" }
@@ -146,5 +149,70 @@ class PlaybackNavigationTest {
 
         pressBack()
         onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
+    @Test
+    fun holdingLeftSeeksInGrowingJumpsAndReopensOnceAfterRelease() {
+        longOk()
+        repeat(TileAction.entries.indexOf(TileAction.PLAYBACK)) { dpad(KeyEvent.KEYCODE_DPAD_DOWN) }
+        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        awaitPlaybackOpens(1)
+        waitFor(500) // let the first pictures move the playhead before the hold starts
+        val opens = account.playbackOpened.size
+
+        // Hold LEFT: a key down, then auto-repeats every 150 ms for 3 s, as a remote sends them. The
+        // jumps between consecutive labels grow from 10 s to 30 s to 60 s with the hold time; no
+        // reopen happens while repeats keep coming.
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val down = android.os.SystemClock.uptimeMillis()
+        val jumps = mutableListOf<Pair<Long, Long>>() // (hold millis, seconds moved)
+        var repeatCount = 0
+        var last = parseLabel(timeLabel())
+        while (android.os.SystemClock.uptimeMillis() - down < 3_000) {
+            val now = android.os.SystemClock.uptimeMillis()
+            instrumentation.sendKeySync(
+                KeyEvent(down, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, repeatCount++),
+            )
+            instrumentation.waitForIdleSync()
+            val label = parseLabel(timeLabel())
+            jumps += (now - down) to (last - label)
+            last = label
+            waitFor(150)
+        }
+        val up = android.os.SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(down, up, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT, 0))
+        assert(account.playbackOpened.size == opens) { "reopened during the hold: ${account.playbackOpened.size}" }
+        val early = jumps.filter { it.first < 900 }.map { it.second }
+        val middle = jumps.filter { it.first in 1_100..2_300 }.map { it.second }
+        val late = jumps.filter { it.first > 2_700 }.map { it.second }
+        assert(early.isNotEmpty() && early.all { it == 10L }) { "first second: $early (all: $jumps)" }
+        assert(middle.isNotEmpty() && middle.all { it == 30L }) { "1–2.5 s: $middle (all: $jumps)" }
+        assert(late.isNotEmpty() && late.all { it == 60L }) { "after 2.5 s: $late (all: $jumps)" }
+
+        // Released: one reopen at the label, 600 ms later.
+        val target = timeLabel()
+        awaitPlaybackOpens(opens + 1)
+        waitFor(300)
+        assert(account.playbackOpened.size == opens + 1) { "more than one reopen: ${account.playbackOpened.size}" }
+        val reopened =
+            account.playbackOpened
+                .last()
+                .second.begin
+        assert(
+            reopened.toLocalTime().toSecondOfDay().toLong() == parseLabel(target),
+        ) { "reopened at $reopened for $target" }
+        pressBack()
+    }
+
+    private fun timeLabel(): String {
+        var text = ""
+        onView(withId(R.id.time_label)).check { v, _ -> text = (v as android.widget.TextView).text.toString() }
+        return text
+    }
+
+    /** `HH:mm:ss` → seconds of the day. */
+    private fun parseLabel(label: String): Long {
+        val (h, m, s) = label.split(':').map { it.toLong() }
+        return h * 3600 + m * 60 + s
     }
 }

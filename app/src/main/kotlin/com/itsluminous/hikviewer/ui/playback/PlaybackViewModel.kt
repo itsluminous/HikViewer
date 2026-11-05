@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.ui.playback
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -89,8 +90,10 @@ data class PlaybackUiState(
  *
  *  * **1x** opens `[position, segment end]` and lets the relay stream in real time; the playhead
  *    follows the pictures' presentation times. When the window ends the next segment is opened.
- *  * **Seek** moves the playhead at once and reopens at the new time once the key is released
- *    (or [SEEK_COMMIT_MILLIS] after the last step), so a held key does not open a window per step.
+ *  * **Seek** moves the playhead (and the label) at once; the stream is reopened there only after
+ *    [SeekController.DEBOUNCE_MILLIS] without further seek input, so a burst of presses, a held
+ *    key or a drag along the bar opens one window. A held key accelerates on the controller's
+ *    schedule and the playhead is clamped to the day's footage.
  *  * **Other speeds** hop: every [HOP_MILLIS] the playhead moves `factor * HOP_MILLIS` and a short
  *    window opens there, so the screen shows one picture group per hop, forward or backward.
  *  * **Pause** stops the stream and keeps the last picture; resume reopens at the playhead.
@@ -108,8 +111,8 @@ class PlaybackViewModel(
     startDay: LocalDate,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val hopMillis: Long = HOP_MILLIS,
-    private val seekCommitMillis: Long = SEEK_COMMIT_MILLIS,
-    private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
+    /** Monotonic milliseconds for the seek timing; tests pass their scheduler's time. */
+    private val clock: () -> Long = { SystemClock.uptimeMillis() },
     private val externalScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val stateFlow = MutableStateFlow(PlaybackUiState(day = startDay))
@@ -148,6 +151,7 @@ class PlaybackViewModel(
      * reopen would land where the stream was, not where the user pointed).
      */
     @Volatile private var seeking = false
+    private val seek = SeekController(clock)
     private var hopJob: Job? = null
     private var seekJob: Job? = null
     private var started = false
@@ -166,7 +170,7 @@ class PlaybackViewModel(
     /** Stops everything for good; what [onCleared] does, for an owner that is not a ViewModelStore. */
     fun close() {
         started = false
-        stopTransport()
+        stopTransportAndHold()
     }
 
     /** The screen is visible: list the day and play. */
@@ -182,7 +186,7 @@ class PlaybackViewModel(
     /** The screen is gone: stop the stream and the timers (the phase is kept for a later resume). */
     fun onStop() {
         started = false
-        stopTransport()
+        stopTransportAndHold()
     }
 
     /** LEFT/RIGHT on the date chip: show [delta] days later (never after [today]). */
@@ -192,7 +196,7 @@ class PlaybackViewModel(
     ) {
         val day = stateFlow.value.day.plusDays(delta.toLong())
         if (day.isAfter(today)) return
-        stopTransport()
+        stopTransportAndHold()
         stateFlow.update {
             it.copy(day = day, segments = emptyList(), phase = PlaybackPhase.LOADING, position = day.atStartOfDay())
         }
@@ -205,33 +209,48 @@ class PlaybackViewModel(
         stateFlow.update { it.copy(control = entries[(it.control.ordinal + delta).mod(entries.size)]) }
     }
 
-    /** One LEFT/RIGHT step on the bar; [repeatCount] is the key's auto-repeat count. */
-    fun seekBy(
-        direction: Int,
-        repeatCount: Int = 0,
-    ) {
-        val seconds = PlaybackTimeline.seekStep(repeatCount) * direction
+    /**
+     * LEFT/RIGHT pressed or auto-repeated on the bar (+1 forward, -1 back): the playhead moves by
+     * the hold-dependent step at once; the reopen waits for the debounce.
+     */
+    fun seekBy(direction: Int) {
+        val seconds = seek.press() * direction
+        moveTarget { s -> PlaybackTimeline.shift(s.day, s.position, seconds) }
+    }
+
+    /** The seek key went up: the next press starts at the smallest step again. */
+    fun endSeekHold() {
+        seek.release()
+    }
+
+    /** A tap, click or drag sample on the bar at [fraction] of the day. */
+    fun seekToFraction(fraction: Float) {
+        seek.input()
+        moveTarget { s -> PlaybackTimeline.timeAt(s.day, fraction) }
+    }
+
+    /** Moves the playhead to [target] of the state, clamped to the footage, and arms the debounced reopen. */
+    private fun moveTarget(target: (PlaybackUiState) -> LocalDateTime) {
         seeking = true
-        stateFlow.update { it.copy(position = PlaybackTimeline.shift(it.day, it.position, seconds)) }
-        seekJob?.cancel()
+        stateFlow.update { it.copy(position = PlaybackTimeline.clampToRecorded(it.day, it.segments, target(it))) }
+        if (seekJob?.isActive == true) return
         seekJob =
             scope.launch {
-                delay(seekCommitMillis)
+                while (true) {
+                    val wait = seek.dueIn() ?: return@launch
+                    if (wait == 0L) break
+                    delay(wait)
+                }
+                seekJob = null
                 commitSeek()
             }
     }
 
-    /** A tap or click on the bar at [fraction] of the day. */
-    fun seekToFraction(fraction: Float) {
-        seeking = true
-        stateFlow.update { it.copy(position = PlaybackTimeline.timeAt(it.day, fraction)) }
-        commitSeek()
-    }
-
-    /** The seek key was released: reopen at the playhead now. */
+    /** Reopens the stream at the playhead now; the debounce calls this once the quiet time has run out. */
     fun commitSeek() {
         seekJob?.cancel()
         seekJob = null
+        seek.settle()
         seeking = false
         val s = stateFlow.value
         if (s.phase == PlaybackPhase.PAUSED ||
@@ -249,7 +268,7 @@ class PlaybackViewModel(
     fun togglePause() {
         when (stateFlow.value.phase) {
             PlaybackPhase.PLAYING -> {
-                stopTransport()
+                stopTransportAndHold()
                 stateFlow.update { it.copy(phase = PlaybackPhase.PAUSED) }
             }
             PlaybackPhase.PAUSED, PlaybackPhase.ENDED -> {
@@ -276,7 +295,8 @@ class PlaybackViewModel(
 
     /** Periodic watchdog from the Activity: recreates a wedged decoder. */
     fun tick() {
-        player.tick(clock())
+        // The player stack stamps everything with System.nanoTime, so the watchdog gets that clock.
+        player.tick(System.nanoTime() / NANOS_PER_MILLI)
     }
 
     override fun onCleared() {
@@ -322,11 +342,24 @@ class PlaybackViewModel(
         if (stateFlow.value.speed.isRealTime) playFrom(stateFlow.value.position) else startHopping()
     }
 
+    /**
+     * [stopTransport], and the seek key's hold is forgotten too: the screen, the day or the
+     * playing state is going away, so a key-up may never arrive and the next press must start
+     * small again. A plain [stopTransport] (a speed change, a seek commit) keeps the hold of a
+     * key that is still down.
+     */
+    private fun stopTransportAndHold() {
+        seek.release()
+        stopTransport()
+    }
+
+    /** Stops the stream and every timer; a pending debounced reopen is dropped (whoever restarts reopens at the playhead). */
     private fun stopTransport() {
         hopJob?.cancel()
         hopJob = null
         seekJob?.cancel()
         seekJob = null
+        seek.settle()
         seeking = false
         generation++
         player.stop()
@@ -427,9 +460,6 @@ class PlaybackViewModel(
     companion object {
         /** Period of the fast-forward / reverse hops. */
         const val HOP_MILLIS: Long = 2_000
-
-        /** Pause after the last seek step before the stream is reopened at the new playhead. */
-        const val SEEK_COMMIT_MILLIS: Long = 400
 
         /** Footage asked for per hop: one GOP plus the relay's rounding. */
         val HOP_WINDOW: Duration = Duration.ofSeconds(3)

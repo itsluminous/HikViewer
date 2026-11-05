@@ -12,9 +12,11 @@ import com.itsluminous.hikviewer.core.playback.RecordSegment
 
 /**
  * A 24 h bar: recorded [segments] are filled, the playhead is a vertical line, hour ticks every
- * six hours. A tap or click seeks to that fraction of the day through [onSeek]. The bar is not a
- * focusable view: the Activity routes D-pad keys by the ViewModel's logical control, and
- * [highlighted] draws the frame that shows it is the active control.
+ * six hours. A tap or click seeks to that fraction of the day through [onSeek]; a drag (finger or
+ * pressed mouse) reports every sample, so the playhead and label follow the pointer while the
+ * ViewModel's debounce holds the reopen until the pointer rests. The bar is not a focusable view:
+ * the Activity routes D-pad keys by the ViewModel's logical control, and [highlighted] draws the
+ * frame that shows it is the active control.
  */
 class TimeBarView
     @JvmOverloads
@@ -43,7 +45,7 @@ class TimeBarView
                 invalidate()
             }
 
-        /** Called with the fraction of the day under a tap or click. */
+        /** Called with the fraction of the day under the pointer: on press, on every drag sample and on release. */
         var onSeek: ((Float) -> Unit)? = null
 
         private val density = resources.displayMetrics.density
@@ -100,13 +102,19 @@ class TimeBarView
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            if (event.actionMasked == MotionEvent.ACTION_UP && width > 0) {
-                onSeek?.invoke((event.x / width).coerceIn(0f, 1f))
-                performClick()
-                return true
+            if (width <= 0) return super.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> onSeek?.invoke(fractionAt(event.x))
+                MotionEvent.ACTION_UP -> {
+                    onSeek?.invoke(fractionAt(event.x))
+                    performClick()
+                }
+                else -> return super.onTouchEvent(event)
             }
-            return super.onTouchEvent(event)
+            return true
         }
+
+        private fun fractionAt(x: Float): Float = (x / width).coerceIn(0f, 1f)
 
         override fun performClick(): Boolean {
             super.performClick()

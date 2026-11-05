@@ -70,6 +70,7 @@ class PhoneCameraViewModelTest {
         graph.playbackFactory,
         { today },
         dispatcher,
+        clock = { dispatcher.scheduler.currentTime }, // the seek debounce follows the test scheduler
     ) { _ ->
         graph.playbackFactory.create(
             opener = { camera, quality, onStatus -> graph.account.openStream(camera, quality, onStatus) },

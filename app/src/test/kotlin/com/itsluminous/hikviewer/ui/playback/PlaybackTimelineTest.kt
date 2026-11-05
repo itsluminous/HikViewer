@@ -30,11 +30,17 @@ class PlaybackTimelineTest {
     }
 
     @Test
-    fun `a held seek key accelerates after a few repeats`() {
-        assertThat(PlaybackTimeline.seekStep(0)).isEqualTo(10)
-        assertThat(PlaybackTimeline.seekStep(PlaybackTimeline.ACCELERATE_AFTER_REPEATS - 1)).isEqualTo(10)
-        assertThat(PlaybackTimeline.seekStep(PlaybackTimeline.ACCELERATE_AFTER_REPEATS)).isEqualTo(60)
-        assertThat(PlaybackTimeline.seekStep(40)).isEqualTo(60)
+    fun `a seek is clamped to the day's footage, or to the day when nothing is recorded`() {
+        assertThat(PlaybackTimeline.clampToRecorded(day, segments, day.atTime(10, 0))).isEqualTo(day.atTime(10, 0))
+        assertThat(PlaybackTimeline.clampToRecorded(day, segments, day.atTime(13, 0))).isEqualTo(day.atTime(13, 0))
+        assertThat(PlaybackTimeline.clampToRecorded(day, segments, day.atTime(3, 0))).isEqualTo(day.atTime(6, 0))
+        assertThat(PlaybackTimeline.clampToRecorded(day, segments, day.plusDays(1).atTime(1, 0)))
+            .isEqualTo(day.atTime(23, 59, 59))
+        val short = listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING))
+        assertThat(PlaybackTimeline.clampToRecorded(day, short, day.atTime(18, 0))).isEqualTo(day.atTime(12, 0))
+        assertThat(PlaybackTimeline.clampToRecorded(day, emptyList(), day.minusDays(1).atTime(18, 0)))
+            .isEqualTo(day.atStartOfDay())
+        assertThat(PlaybackTimeline.clampToRecorded(day, emptyList(), day.atTime(18, 0))).isEqualTo(day.atTime(18, 0))
     }
 
     @Test

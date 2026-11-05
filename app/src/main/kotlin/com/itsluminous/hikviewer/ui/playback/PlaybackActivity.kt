@@ -28,7 +28,7 @@ import java.time.LocalDate
  * The D-pad never moves view focus here: the controls hide after the shared idle time and a
  * hidden view cannot hold focus, so the ViewModel keeps a logical [PlaybackControl] (UP/DOWN
  * cycle it, drawn as an accent frame) and the Activity routes LEFT/RIGHT/OK to it. A pointer or
- * finger works directly: tap the bar to seek, click the chips.
+ * finger works directly: tap or drag along the bar to seek, click the chips.
  */
 class PlaybackActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlaybackBinding
@@ -172,7 +172,7 @@ class PlaybackActivity : AppCompatActivity() {
     ): Boolean {
         val seekKey = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
         if (seekKey && viewModel.state.value.control == PlaybackControl.BAR) {
-            viewModel.commitSeek()
+            viewModel.endSeekHold()
             return true
         }
         return super.onKeyUp(keyCode, event)
@@ -184,7 +184,7 @@ class PlaybackActivity : AppCompatActivity() {
         repeatCount: Int,
     ) {
         when (control) {
-            PlaybackControl.BAR -> viewModel.seekBy(direction, repeatCount)
+            PlaybackControl.BAR -> viewModel.seekBy(direction)
             PlaybackControl.DATE -> if (repeatCount == 0) viewModel.changeDay(direction)
             PlaybackControl.SPEED -> if (repeatCount == 0) viewModel.cycleSpeed(forward = direction > 0)
         }

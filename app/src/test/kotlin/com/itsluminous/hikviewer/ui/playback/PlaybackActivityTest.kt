@@ -92,12 +92,20 @@ class PlaybackActivityTest {
                 a.key(KeyEvent.KEYCODE_DPAD_LEFT)
                 assertThat(a.text(R.id.speed_button)).isEqualTo("1x")
 
-                // DOWN DOWN → bar; RIGHT seeks 10 s and the key release reopens there.
+                // DOWN DOWN → bar; RIGHT seeks 10 s, the label moves at once and the stream reopens
+                // there once the seek debounce has run out.
                 a.key(KeyEvent.KEYCODE_DPAD_DOWN)
                 a.key(KeyEvent.KEYCODE_DPAD_DOWN)
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
                 val opens = account.playbackOpened.size
+                val before = a.text(R.id.time_label)
                 a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
+                assertThat(a.text(R.id.time_label)).isNotEqualTo(before)
+                assertThat(account.playbackOpened).hasSize(opens)
+                ShadowLooper.idleMainLooper(
+                    SeekController.DEBOUNCE_MILLIS + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
                 awaitUi { account.playbackOpened.size == opens + 1 }
                 val reopened =
                     account.playbackOpened
@@ -141,6 +149,11 @@ class PlaybackActivityTest {
                 awaitUi { account.playbackOpened.size > opensToday }
                 val opens = account.playbackOpened.size
                 a.findViewById<TimeBarView>(R.id.time_bar).onSeek!!.invoke(0.75f)
+                assertThat(a.text(R.id.time_label)).isEqualTo("18:00:00") // the label leads the stream
+                ShadowLooper.idleMainLooper(
+                    SeekController.DEBOUNCE_MILLIS + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
                 awaitUi { account.playbackOpened.size > opens }
                 assertThat(
                     account.playbackOpened
@@ -148,7 +161,48 @@ class PlaybackActivityTest {
                         .second.begin,
                 ).isEqualTo(LocalDate.now().minusDays(1).atTime(18, 0))
                 assertThat(a.text(R.id.time_label)).isEqualTo("18:00:00")
+
+                // A drag along the bar: every sample moves the label, the stream reopens once where the finger rested.
+                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
+                val samples = mutableListOf<Float>()
+                val forward = bar.onSeek!!
+                bar.onSeek = { f ->
+                    samples += f
+                    forward(f)
+                }
+                val dragged = account.playbackOpened.size
+                bar.drag(0.76f, 0.78f, 0.80f)
+                assertThat(samples).hasSize(3)
+                assertThat(a.text(R.id.time_label)).isEqualTo("19:12:00")
+                assertThat(account.playbackOpened).hasSize(dragged)
+                ShadowLooper.idleMainLooper(
+                    SeekController.DEBOUNCE_MILLIS + 1,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
+                awaitUi { account.playbackOpened.size > dragged }
+                assertThat(account.playbackOpened).hasSize(dragged + 1)
+                assertThat(
+                    account.playbackOpened
+                        .last()
+                        .second.begin,
+                ).isEqualTo(LocalDate.now().minusDays(1).atTime(19, 12))
             }
+        }
+    }
+
+    /** Press, move, release across the bar at the given fractions of its width. */
+    private fun TimeBarView.drag(vararg fractions: Float) {
+        val t0 = android.os.SystemClock.uptimeMillis()
+        fractions.forEachIndexed { i, f ->
+            val action =
+                when (i) {
+                    0 -> android.view.MotionEvent.ACTION_DOWN
+                    fractions.lastIndex -> android.view.MotionEvent.ACTION_UP
+                    else -> android.view.MotionEvent.ACTION_MOVE
+                }
+            val event = android.view.MotionEvent.obtain(t0, t0 + i * 20L, action, f * width, height / 2f, 0)
+            dispatchTouchEvent(event)
+            event.recycle()
         }
     }
 

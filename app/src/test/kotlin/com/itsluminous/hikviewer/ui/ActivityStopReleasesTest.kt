@@ -24,6 +24,7 @@ import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import com.itsluminous.hikviewer.ui.phone.PhoneCameraViewModel
 import com.itsluminous.hikviewer.ui.playback.PlaybackActivity
 import com.itsluminous.hikviewer.ui.playback.PlaybackViewModel
+import com.itsluminous.hikviewer.ui.playback.SeekController
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -153,6 +154,7 @@ class ActivityStopReleasesTest {
             scenario.moveToState(Lifecycle.State.RESUMED)
             await { account.activeStreams.get() > 0 }
             scenario.onActivity { a -> a.viewModels<PhoneCameraViewModel>().value.scrubTo(0.5f) }
+            ShadowLooper.idleMainLooper(SeekController.DEBOUNCE_MILLIS + 1, java.util.concurrent.TimeUnit.MILLISECONDS)
             await { account.playbackOpened.isNotEmpty() }
             scenario.moveToState(Lifecycle.State.CREATED)
             await { account.activeStreams.get() == 0 }

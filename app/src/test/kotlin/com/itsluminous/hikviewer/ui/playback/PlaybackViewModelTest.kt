@@ -62,8 +62,16 @@ class PlaybackViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(hopMillis: Long = 2_000) =
-        PlaybackViewModel(camera, graph.account, graph.playbackFactory, today, io = dispatcher, hopMillis = hopMillis)
+    private fun viewModel(hopMillis: Long = 2_000) = PlaybackViewModel(
+        camera,
+        graph.account,
+        graph.playbackFactory,
+        today,
+        io = dispatcher,
+        hopMillis = hopMillis,
+        // The seek debounce and acceleration read this clock; the scheduler's time keeps them in step with delay().
+        clock = { dispatcher.scheduler.currentTime },
+    )
 
     private val account get() = cloud.accounts.single()
 
@@ -126,7 +134,7 @@ class PlaybackViewModelTest {
     }
 
     @Test
-    fun `seek steps accumulate and reopen once after the commit delay or on key release`() {
+    fun `seek presses move the label at once and reopen once after 600 ms of quiet`() {
         cloud.recordings =
             { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
         val vm = started()
@@ -135,43 +143,107 @@ class PlaybackViewModelTest {
         assertThat(account.playbackOpened).hasSize(2)
         val before = vm.state.value.position
 
-        repeat(3) { vm.seekBy(+1, repeatCount = it) }
-        vm.seekBy(+1, repeatCount = PlaybackTimeline.ACCELERATE_AFTER_REPEATS)
-        run()
-        assertThat(vm.state.value.position).isEqualTo(before.plusSeconds(10 + 10 + 10 + 60))
-        assertThat(account.playbackOpened).hasSize(2) // not yet: the key may still be held
-
-        run(PlaybackViewModel.SEEK_COMMIT_MILLIS + 1)
+        // Three quick presses (released in between): +10 s each, nothing reopened while input keeps coming.
+        repeat(3) {
+            vm.seekBy(+1)
+            vm.endSeekHold()
+            run(200)
+        }
+        assertThat(vm.state.value.position).isEqualTo(before.plusSeconds(30))
+        assertThat(account.playbackOpened).hasSize(2)
+        run(SeekController.DEBOUNCE_MILLIS - 201) // 599 ms since the last press: not yet
+        assertThat(account.playbackOpened).hasSize(2)
+        run(1) // 600 ms: reopened at the target
         assertThat(account.playbackOpened).hasSize(3)
         assertThat(
             account.playbackOpened
                 .last()
                 .second.begin,
-        ).isEqualTo(before.plusSeconds(90))
+        ).isEqualTo(before.plusSeconds(30))
 
-        vm.seekBy(-1)
-        val target = vm.state.value.position
-        vm.commitSeek()
-        run()
+        // A tap on the bar is debounced the same way; a drag's samples collapse into one reopen.
+        vm.seekToFraction(0.25f)
+        run(300)
+        vm.seekToFraction(0.3f)
+        run(300)
+        vm.seekToFraction(0.35f)
+        assertThat(vm.state.value.position).isEqualTo(yesterday.atTime(8, 24))
+        assertThat(account.playbackOpened).hasSize(3)
+        run(SeekController.DEBOUNCE_MILLIS)
         assertThat(account.playbackOpened).hasSize(4)
         assertThat(
             account.playbackOpened
                 .last()
                 .second.begin,
-        ).isEqualTo(target)
+        ).isEqualTo(yesterday.atTime(8, 24))
 
-        vm.seekToFraction(0.25f) // a tap on the bar seeks at once
+        vm.seekToFraction(0.5f) // noon is the end of the footage: the playhead stops there, nothing left to open
+        run(SeekController.DEBOUNCE_MILLIS)
+        assertThat(vm.state.value.position).isEqualTo(yesterday.atTime(12, 0))
+        assertThat(account.playbackOpened).hasSize(4)
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.ENDED)
+    }
+
+    @Test
+    fun `a held seek key accelerates on the schedule, clamps to the footage and resets on release`() {
+        cloud.recordings =
+            { day -> listOf(RecordSegment(day.atTime(6, 0), day.atTime(12, 0), RecordSegment.TYPE_TIMING)) }
+        val vm = started()
+        vm.changeDay(-1, today)
         run()
-        assertThat(account.playbackOpened).hasSize(5)
+        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(9, 0)))
+        run(SeekController.DEBOUNCE_MILLIS)
+        val opens = account.playbackOpened.size
+        var at = vm.state.value.position // 09:00 plus the two seconds of pictures the fake delivered at once
+        val start = at
+
+        // Key down, then auto-repeats every 100 ms: 10 s steps for the first second, 30 s to 2.5 s, then 1 min.
+        fun repeatFor(millis: Long): List<Long> {
+            val jumps = mutableListOf<Long>()
+            var elapsed = 0L
+            while (elapsed < millis) {
+                vm.seekBy(+1)
+                val next = vm.state.value.position
+                jumps +=
+                    java.time.Duration
+                        .between(at, next)
+                        .seconds
+                at = next
+                run(100)
+                elapsed += 100
+            }
+            return jumps
+        }
+        assertThat(repeatFor(1_000).distinct()).containsExactly(10L)
+        assertThat(repeatFor(1_500).distinct()).containsExactly(30L)
+        assertThat(repeatFor(1_000).distinct()).containsExactly(60L)
+        assertThat(account.playbackOpened).hasSize(opens) // the key never rested: no reopen yet
+        val label = vm.state.value.position
+        assertThat(label).isEqualTo(start.plusSeconds(100 + 15 * 30 + 10 * 60))
+
+        vm.endSeekHold()
+        run(SeekController.DEBOUNCE_MILLIS)
+        assertThat(account.playbackOpened).hasSize(opens + 1)
         assertThat(
             account.playbackOpened
                 .last()
                 .second.begin,
-        ).isEqualTo(yesterday.atTime(6, 0))
-        vm.seekToFraction(0.5f) // noon is the end of the footage: nothing left to open
-        run()
-        assertThat(account.playbackOpened).hasSize(5)
-        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.ENDED)
+        ).isEqualTo(label)
+
+        // The next hold starts small again; seeking past the footage stops at its edges.
+        val resumed = vm.state.value.position // the reopened window's first pictures moved it on a little
+        vm.seekBy(-1)
+        assertThat(vm.state.value.position).isEqualTo(resumed.minusSeconds(10))
+        vm.endSeekHold()
+        vm.seekToFraction(PlaybackTimeline.fractionOfDay(yesterday.atTime(11, 59, 50)))
+        run(SeekController.DEBOUNCE_MILLIS)
+        vm.seekBy(+1) // +10 s would pass noon: clamped to the end of the footage
+        assertThat(vm.state.value.position).isEqualTo(yesterday.atTime(12, 0))
+        run(6_000) // still held (no release): six seconds on, the step is 15 min
+        repeat(30) { vm.seekBy(-1) } // 7.5 h back: clamped to the first recording
+        assertThat(vm.state.value.position).isEqualTo(yesterday.atTime(6, 0))
+        vm.endSeekHold()
+        vm.onStop()
     }
 
     @Test
@@ -189,8 +261,8 @@ class PlaybackViewModelTest {
         assertThat(sought).isEqualTo(PlaybackTimeline.shift(today, playing, 10))
         run(SyntheticStream.FRAME_PERIOD_MILLIS * 3) // the stream delivers three more pictures
         assertThat(vm.state.value.position).isEqualTo(sought)
-        vm.commitSeek() // UP
-        run()
+        vm.endSeekHold() // UP
+        run(SeekController.DEBOUNCE_MILLIS)
         assertThat(
             account.playbackOpened
                 .last()
@@ -210,8 +282,8 @@ class PlaybackViewModelTest {
         vm.changeDay(-1, today)
         run()
         vm.seekBy(+1)
-        vm.commitSeek()
-        run()
+        vm.endSeekHold()
+        run(SeekController.DEBOUNCE_MILLIS)
         val opens = account.playbackOpened.size
         val playhead = vm.state.value.position
 
@@ -220,7 +292,8 @@ class PlaybackViewModelTest {
         assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PAUSED)
         assertThat(account.playbackOpened).hasSize(opens)
         vm.seekBy(+1)
-        run(PlaybackViewModel.SEEK_COMMIT_MILLIS + 1)
+        vm.endSeekHold()
+        run(SeekController.DEBOUNCE_MILLIS + 1)
         assertThat(account.playbackOpened).hasSize(opens) // seeking while paused only moves the playhead
         assertThat(vm.state.value.position).isEqualTo(playhead.plusSeconds(10))
 

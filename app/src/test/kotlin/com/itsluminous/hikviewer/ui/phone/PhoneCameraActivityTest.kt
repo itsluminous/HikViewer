@@ -15,6 +15,7 @@ import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.ui.playback.SeekController
 import com.itsluminous.hikviewer.ui.playback.TimeBarView
 import org.junit.Before
 import org.junit.Test
@@ -88,6 +89,8 @@ class PhoneCameraActivityTest {
                 bar.dispatchTouchEvent(tap)
                 tap.recycle()
             }
+            // The footage opens once the seek debounce has run out.
+            ShadowLooper.idleMainLooper(SeekController.DEBOUNCE_MILLIS + 1, java.util.concurrent.TimeUnit.MILLISECONDS)
             awaitUi { account.playbackOpened.isNotEmpty() }
             scenario.onActivity { a ->
                 val vm = a.viewModels<PhoneCameraViewModel>().value

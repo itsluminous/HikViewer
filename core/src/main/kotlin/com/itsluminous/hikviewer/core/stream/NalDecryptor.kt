@@ -74,6 +74,7 @@ public class NalDecryptor(
         private set
 
     private var verifyingHint = interEncryptedHint != null
+    private val scratchBlock = ByteArray(AES_BLOCK)
     private val undecided = ArrayList<NalUnit>()
     private var pending: ArrayList<Pending>? = null
     private var pendingBytes = 0
@@ -269,15 +270,53 @@ public class NalDecryptor(
      * TYPE_HINT: an encrypted NAL carries a clear copy of its header first (decrypting the next block
      * reproduces it); a short clear NAL carries a duplicated header; a plain clear NAL (P-slice)
      * carries nothing extra. The header is encrypted so the IRAP gate cannot apply here.
+     *
+     * This is the variant the user's recorder sends, so it is the hot path: the probe decrypts the
+     * first block once into [scratchBlock] and compares in place, and that block is reused for the
+     * output instead of being decrypted a second time. One allocation per NAL (the stripped copy).
      */
     private fun stripTypeHint(
         n: ByteArray,
         hdr: Int,
-    ): ByteArray = when {
-        n.size >= hdr + AES_BLOCK && aesBlock(n, hdr).copyOf(hdr).contentEquals(n.copyOf(hdr)) ->
-            decryptBody(n, hdr)
-        n.size >= 2 * hdr && n.copyOfRange(hdr, 2 * hdr).contentEquals(n.copyOf(hdr)) -> n.copyOfRange(hdr, n.size)
-        else -> n
+    ): ByteArray {
+        if (n.size >= hdr + AES_BLOCK) {
+            cipher.doFinal(n, hdr, AES_BLOCK, scratchBlock, 0)
+            if (startsWith(scratchBlock, n, hdr)) return decryptBodyAfterProbe(n, hdr)
+        }
+        if (n.size >= 2 * hdr && regionMatches(n, hdr, n, 0, hdr)) return n.copyOfRange(hdr, n.size)
+        return n
+    }
+
+    /** Body after [hdr] with its first block already in [scratchBlock]; decrypts the rest. */
+    private fun decryptBodyAfterProbe(
+        n: ByteArray,
+        hdr: Int,
+    ): ByteArray {
+        val encryptedLength = encryptedLength(n, hdr)
+        val out = ByteArray(n.size - hdr)
+        scratchBlock.copyInto(out, 0, 0, AES_BLOCK)
+        if (encryptedLength > AES_BLOCK) {
+            cipher.doFinal(n, hdr + AES_BLOCK, encryptedLength - AES_BLOCK, out, AES_BLOCK)
+        }
+        n.copyInto(out, encryptedLength, hdr + encryptedLength, n.size)
+        return out
+    }
+
+    private fun startsWith(
+        block: ByteArray,
+        n: ByteArray,
+        count: Int,
+    ): Boolean = regionMatches(block, 0, n, 0, count)
+
+    private fun regionMatches(
+        a: ByteArray,
+        aFrom: Int,
+        b: ByteArray,
+        bFrom: Int,
+        count: Int,
+    ): Boolean {
+        for (i in 0 until count) if (a[aFrom + i] != b[bFrom + i]) return false
+        return true
     }
 
     private fun emitHeaderClear(
@@ -409,19 +448,6 @@ public class NalDecryptor(
         n: ByteArray,
         from: Int,
     ): Int = (minOf(n.size - from, ENCRYPTED_PREFIX) / AES_BLOCK) * AES_BLOCK
-
-    /** Decrypts the body after [from] into a new array (the header is dropped). */
-    private fun decryptBody(
-        n: ByteArray,
-        from: Int,
-    ): ByteArray {
-        val encryptedLength = encryptedLength(n, from)
-        if (encryptedLength == 0) return n.copyOfRange(from, n.size)
-        val out = ByteArray(n.size - from)
-        cipher.doFinal(n, from, encryptedLength, out, 0)
-        n.copyInto(out, encryptedLength, from + encryptedLength, n.size)
-        return out
-    }
 
     /** Decrypts the body after [from] inside [n] itself; no allocation. */
     private fun decryptInPlace(

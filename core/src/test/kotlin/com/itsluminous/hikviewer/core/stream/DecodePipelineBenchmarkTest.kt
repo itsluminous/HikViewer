@@ -2,7 +2,8 @@ package com.itsluminous.hikviewer.core.stream
 
 import com.google.common.truth.Truth.assertThat
 import com.sun.management.ThreadMXBean
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.lang.management.ManagementFactory
 import java.nio.ByteBuffer
 
@@ -14,19 +15,23 @@ import java.nio.ByteBuffer
  * `.research/CPU.md` records), but they keep the pipeline from regressing into per-byte copies.
  */
 class DecodePipelineBenchmarkTest {
-    private val nals = NalDecryptorTest.readUnits("h264_nals_header_clear_all.bin")
-    private val gop = rtpPackets(nals)
+    private lateinit var gop: List<ByteArray>
 
-    @Test
-    fun `cost per picture stays bounded`() {
+    /** `type_hint` is what the user's recorder sends; `header_clear_all` decrypts every slice. */
+    @ParameterizedTest
+    @ValueSource(strings = ["h264_nals_type_hint.bin", "h264_nals_header_clear_all.bin"])
+    fun `cost per picture stays bounded`(fixture: String) {
+        gop = rtpPackets(NalDecryptorTest.readUnits(fixture))
         val warm = replay(200)
-        val measured = replay(GOPS)
+        // Best of three: the JVM's JIT and GC make single runs noisy by a factor of two.
+        val measured = (1..RUNS).map { replay(GOPS) }.minBy { it.nanos }
         val pictures = measured.pictures
         val perPictureUs = measured.nanos / 1_000.0 / pictures
         val perPictureBytes = measured.allocated.toDouble() / pictures
         val payloadPerPicture = gop.sumOf { it.size }.toDouble() / warm.picturesPerGop
         println(
-            "pipeline: %d pictures, %.1f us/picture, %.0f B allocated/picture (%.1fx the %.0f B payload)".format(
+            "pipeline %s: %d pictures, %.1f us/picture, %.0f B allocated/picture (%.1fx the %.0f B payload)".format(
+                fixture.removePrefix("h264_nals_").removeSuffix(".bin"),
                 pictures,
                 perPictureUs,
                 perPictureBytes,
@@ -123,6 +128,7 @@ class DecodePipelineBenchmarkTest {
 
     private companion object {
         const val GOPS = 3_000
+        const val RUNS = 3
         const val MTU = 1_400
         const val MAX_ALLOCATION_RATIO = 8.0
         const val TICKS_PER_FRAME = 7_500L // 90 kHz at 12 fps

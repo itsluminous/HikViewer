@@ -106,6 +106,19 @@ blocks a release. Open an issue before picking one up so the discussion has a ho
   tiles. The round-3 CPU notes list what was tried; the next candidates are the AES calls per NAL
   (one `Cipher.doFinal` per 16-byte probe block plus one per body) and the RTP reassembly copies.
 
+- **Round-7 playback on real recordings.** The keyframe gate and the `PlaybackStepper` were
+  verified on the TV only in the debug demo mode (the recorder was offline): -10x for 60 s gave no
+  spinner and no green picture, +10x ran to "End of recordings". With the recorder back: -10x,
+  +10x and repeated seeks for 60 s each on HEVC 720p recordings, screen chroma check, and the
+  stepper's `late` / `failed` counters in the `PlaybackViewModel` log line. If the relay turns out
+  to deliver a window faster than real time, a longer `PlaybackStepper.WINDOW` would serve several
+  steps per fetch (the class already keeps such a window open).
+- **`PresentationRate` measurement.** The policy (software grid tiles present every second picture
+  above 8 tiles, the hero always at full rate) is plumbed and tested but switched off
+  (`PresentationRate.ENABLED`). It saves composition only, never decoding. Measure on the MiTV with
+  16 live streams: `gfxinfo` janky %, SurfaceFlinger and idle CPU, on vs off; keep it only if it
+  measurably helps.
+
 ## Code and tests
 
 - **`GridActivity.updateLiveCount` recounts every player on each liveness change** (O(n²) over 16

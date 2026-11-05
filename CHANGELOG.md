@@ -66,6 +66,21 @@ All notable changes to HikViewer are recorded here. The format follows
 
 ### Fixed
 
+- Recorded playback turned solid green after a seek or at a fast speed (-10x reproduced it within
+  five seconds): every hop and seek reopened the stream into a running decoder, which then decoded
+  P-frames whose reference picture it had never seen. Every reopen now flushes the decoder, resends
+  the parameter sets and admits nothing until the next keyframe (`KeyframeGate`); reverse speeds
+  feed keyframes only.
+- Speeds other than 1x showed a picture, the connecting spinner for about two seconds, the next
+  picture. Each one-second step reopened the player's stream. A `PlaybackStepper` now fetches the
+  windows itself, up to two steps ahead, into a ring of keyframes, and feeds the player one
+  continuous stream of keyframes, so the decoder is never rebuilt between steps and the spinner
+  never shows inside a run; a step whose keyframe is late keeps the last picture and moves the time
+  label. Lowering the quality would not have helped: the recorder keeps one quality, and the time
+  went to reconnecting, not decoding. In the TV demo: -10x for 60 s, 0 spinner samples, no green.
+- A decoder that was offered its input buffers before the stream delivered anything dropped them
+  all and stopped after its first picture (introduced with the keyframe gate, never released).
+
 - Turning a phone on the Settings screen emptied the camera selection: every row's checkbox shares
   an id, so the restored view state unticked them all and saved the result. The list now lives in a
   ViewModel and the rows opt out of view state saving.

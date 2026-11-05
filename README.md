@@ -61,8 +61,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 - **Fullscreen**: OK on a tile. LEFT / RIGHT (or a swipe on a phone) switches camera, Back returns to
   the same tile. The hint hides after 5 s.
 - **Recorded playback** from the long-press menu: fullscreen video, a 24 h time bar with the recorded
-  spans highlighted, a speed toggle (−10× … +10×; speeds other than 1× step between keyframes,
-  reverse included, because the cloud only plays forward at 1×), and a date chip. LEFT / RIGHT seek
+  spans highlighted, a speed toggle (−10× … +10×; speeds other than 1× show one keyframe a second,
+  each `speed` seconds of footage apart, reverse included, because the cloud only plays forward at
+  1×; the windows are fetched ahead, so the picture changes without a spinner in between), and a date chip. LEFT / RIGHT seek
   10 s; hold the key and the steps grow 10 s → 30 s → 1 min → 5 min → 15 min, resetting when you let
   go. The time label follows every press at once; the video reopens 0.6 s after the last one, so a
   burst of presses or a long hold costs one reconnect. On a phone, drag the bar: the finger's

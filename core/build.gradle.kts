@@ -1,4 +1,4 @@
-// :core — pure Kotlin/JVM. Holds the Hik-Connect protocol (REST client, VTDU token, VTM relay
+// :core - pure Kotlin/JVM. Holds the Hik-Connect protocol (REST client, VTDU token, VTM relay
 // framing, RTP/PS demux, NAL decryption, access-unit assembly). No Android imports, so every
 // test runs on the JVM in seconds and the module can be driven from the command line.
 plugins {

@@ -1,4 +1,4 @@
-# EditorConfig: https://editorconfig.org — read by IDEs and by ktlint.
+# EditorConfig: https://editorconfig.org, read by IDEs and by ktlint.
 root = true
 
 [*]

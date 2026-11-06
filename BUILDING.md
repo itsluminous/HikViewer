@@ -37,7 +37,8 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-17.jdk/Conten
 ./gradlew :core:test               # protocol unit tests (JUnit 5)
 ./gradlew :app:testDebugUnitTest   # UI unit tests (Robolectric)
 ./gradlew check                    # every quality gate, see next section
-./gradlew ci                       # alias for what CI runs (= check on every module)
+./gradlew ci                       # alias for what CI runs (= check on every module + noEmDash)
+./gradlew fixEmDash                # rewrite every em dash in tracked text files to ' - '
 ./gradlew ktlintFormat             # auto-fix formatting findings
 ```
 
@@ -54,6 +55,7 @@ Builds produce one universal APK per build type. There are no ABI splits: the ap
 | Static analysis | detekt, `config/detekt/detekt.yml` on top of the defaults, `maxIssues: 0`, no baseline | `*/build/reports/detekt/` |
 | Android Lint | `abortOnError`, `warningsAsErrors`, `checkAllWarnings`, `checkDependencies`; tuning in `config/lint/lint.xml`, no baseline | `app/build/reports/lint-results-debug.*` |
 | Coverage | Kover, XML + HTML; line-coverage floor 85 % in `:core`, 75 % in `:app` (debug variant); measured 97 % and 88 % at `v0.1.0` | `core/build/reports/kover/`, `app/build/reports/kover/` |
+| Em dash | `noEmDash` (root project): fails listing `file:line` for every U+2014 in a `git ls-files` text file; `./gradlew fixEmDash` rewrites them to ` - ` | console |
 
 Fix the finding rather than suppressing it. If a rule is wrong for this project, tune it in the config file with a comment that says why.
 

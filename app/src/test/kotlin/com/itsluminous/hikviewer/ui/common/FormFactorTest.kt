@@ -21,7 +21,7 @@ class FormFactorTest {
     @Test
     fun `a touch screen without leanback or a TV ui mode is a phone`() {
         packageManager.setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
-        uiModeManager.currentModeType = Configuration.UI_MODE_TYPE_NORMAL
+        uiModeManager.setCurrentModeType(Configuration.UI_MODE_TYPE_NORMAL)
         assertThat(FormFactor.isTelevision(context)).isFalse()
     }
 
@@ -35,7 +35,7 @@ class FormFactorTest {
     @Test
     fun `the TV ui mode from the system service means television`() {
         packageManager.setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
-        uiModeManager.currentModeType = Configuration.UI_MODE_TYPE_TELEVISION
+        uiModeManager.setCurrentModeType(Configuration.UI_MODE_TYPE_TELEVISION)
         assertThat(FormFactor.isTelevision(context)).isTrue()
     }
 
@@ -43,14 +43,14 @@ class FormFactorTest {
     @Config(qualifiers = "television")
     fun `the TV ui mode from the configuration means television`() {
         packageManager.setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
-        uiModeManager.currentModeType = Configuration.UI_MODE_TYPE_NORMAL
+        uiModeManager.setCurrentModeType(Configuration.UI_MODE_TYPE_NORMAL)
         assertThat(FormFactor.isTelevision(context)).isTrue()
     }
 
     @Test
     fun `no touch screen at all means television`() {
         packageManager.setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, false)
-        uiModeManager.currentModeType = Configuration.UI_MODE_TYPE_NORMAL
+        uiModeManager.setCurrentModeType(Configuration.UI_MODE_TYPE_NORMAL)
         assertThat(FormFactor.isTelevision(context)).isTrue()
     }
 }

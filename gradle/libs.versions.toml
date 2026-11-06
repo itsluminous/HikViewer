@@ -13,20 +13,20 @@ kover = "0.9.11"             # >= 0.9.5 for AGP 9 variants
 ktlintGradle = "14.2.0"      # org.jlleitschuh.gradle.ktlint wrapper around ktlint 1.x
 
 # --- android sdk -------------------------------------------------------------
-compileSdk = "35"
-targetSdk = "35"
+compileSdk = "37"            # androidx.core 1.19 compiles against API 37; the SDK package is "platforms;android-37.0"
+targetSdk = "36"             # behaviour the app is tested against (Android 16 phone AVD); raise deliberately, not with compileSdk
 minSdk = "26"
 
 # --- libraries ---------------------------------------------------------------
 androidxActivity = "1.9.3"
-androidxAppcompat = "1.7.0"
-androidxConstraintlayout = "2.2.0"
-androidxCore = "1.15.0"
+androidxAppcompat = "1.8.0"
+androidxConstraintlayout = "2.2.2"
+androidxCore = "1.19.1"
 androidxLifecycle = "2.8.7"
-androidxRecyclerview = "1.3.2"
-androidxSecurityCrypto = "1.1.0-alpha06"
+androidxRecyclerview = "1.4.0"
+androidxSecurityCrypto = "1.1.0"
 coroutines = "1.11.0"
-material = "1.12.0"
+material = "1.14.0"
 okhttp = "4.12.0"
 # JSON: kotlinx-serialization was chosen over Moshi because
 #   * it is compile-time and reflection-free, so no KSP/kapt round-trip and no ProGuard keep rules

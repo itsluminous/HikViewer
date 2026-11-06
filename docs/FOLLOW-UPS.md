@@ -30,6 +30,7 @@ Known gaps, open questions and ideas that were weighed and set aside, with the r
 
 ## Code and tests
 
+- **`androidx.security:security-crypto` is deprecated as of 1.1.0.** AndroidX stopped the library (Tink-backed `EncryptedSharedPreferences` and `MasterKey`) with no successor artifact; `AppGraph.encryptedPrefs` carries a `@Suppress("DEPRECATION")` with the reason. The session and the verification code are stored in its on-disk format, so replacing it (a `KeyStore` AES key wrapping the values, or the Tink `AndroidKeysetManager` directly) needs a one-time migration that reads the old preferences before the first write. The library still works and gets no new releases; nothing forces the move until a `targetSdk` or Tink change breaks it.
 - **`GridActivity.updateLiveCount` recounts every player on each liveness change** (O(n²) over 16 tiles, at most twice a second per tile). Harmless today; a counter maintained incrementally would be cleaner.
 - **One INFO line per key press in release builds** (`GridActivity.dispatchKeyEvent`, "reached the grid N ms after the press"). It is what a TV logcat is read for when the remote feels slow and costs nothing per frame; logging only when the wait exceeds 50 ms would keep the signal and drop the noise.
 - **`CpuHeadroomProbe.stop()` does not join its thread.** A burst in flight finishes after the stop; its sample is discarded by a generation check, so the reading is right, but the thread can outlive the probe by up to a second.

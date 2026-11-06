@@ -9,7 +9,9 @@
 
     <!-- One column, as wide as the screen allows up to form_width: on a TV the 420 dp form it
          always was, on a 360 dp phone the full width, so no switch thumb or "signal" label ends
-         up past the edge. -->
+         up past the edge. Sections top to bottom: Grid layout, Tile overlays, Fullscreen quality,
+         Screen (phones), Live cameras, Visible cameras and order, Change encryption password,
+         About, Logout; every section head carries the "section" tag so a test can walk them. No nextFocus* attributes: the D-pad follows this visual order on its own. -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
@@ -31,7 +33,9 @@
                 android:text="@string/settings_title" />
 
             <TextView
+                android:id="@+id/section_layout"
                 style="@style/TextAppearance.HikViewer.Label"
+                android:tag="@string/settings_section_tag"
                 android:labelFor="@id/layout_spinner"
                 android:text="@string/settings_layout" />
 
@@ -41,25 +45,31 @@
                 android:layout_height="48dp" />
 
             <TextView
+                android:id="@+id/section_overlays"
                 style="@style/TextAppearance.HikViewer.Label"
-                android:text="@string/settings_cameras" />
+                android:tag="@string/settings_section_tag"
+                android:text="@string/settings_overlays" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_cameras_help"
-                android:textColor="#B0F2F4F7"
-                android:textSize="13sp" />
-
-            <LinearLayout
-                android:id="@+id/camera_list"
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/show_names"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="vertical" />
+                android:minHeight="48dp"
+                android:text="@string/settings_show_names"
+                android:textColor="@color/on_background" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/show_fps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/settings_show_fps"
+                android:textColor="@color/on_background" />
 
             <TextView
+                android:id="@+id/section_quality"
                 style="@style/TextAppearance.HikViewer.Label"
+                android:tag="@string/settings_section_tag"
                 android:text="@string/settings_quality" />
 
             <androidx.appcompat.widget.SwitchCompat
@@ -70,8 +80,32 @@
                 android:text="@string/settings_quality_main"
                 android:textColor="@color/on_background" />
 
+            <!-- Phones only: a TV never dims while video plays, so the section is hidden there. -->
+            <LinearLayout
+                android:id="@+id/screen_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/section_screen"
+                    style="@style/TextAppearance.HikViewer.Label"
+                    android:tag="@string/settings_section_tag"
+                    android:text="@string/settings_screen" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/keep_screen_on"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_keep_screen_on"
+                    android:textColor="@color/on_background" />
+            </LinearLayout>
+
             <TextView
+                android:id="@+id/section_live_cameras"
                 style="@style/TextAppearance.HikViewer.Label"
+                android:tag="@string/settings_section_tag"
                 android:labelFor="@id/live_cameras"
                 android:text="@string/settings_live_cameras" />
 
@@ -96,54 +130,38 @@
                 tools:text="Automatic (8 on this device)" />
 
             <TextView
+                android:id="@+id/section_cameras"
                 style="@style/TextAppearance.HikViewer.Label"
-                android:text="@string/settings_overlays" />
+                android:tag="@string/settings_section_tag"
+                android:text="@string/settings_cameras" />
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/show_names"
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="@string/settings_show_names"
-                android:textColor="@color/on_background" />
+                android:text="@string/settings_cameras_help"
+                android:textColor="#B0F2F4F7"
+                android:textSize="13sp" />
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/show_fps"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="@string/settings_show_fps"
-                android:textColor="@color/on_background" />
-
-            <!-- Phones only: a TV never dims while video plays, so the section is hidden there. -->
             <LinearLayout
-                android:id="@+id/screen_section"
+                android:id="@+id/camera_list"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
 
-                <TextView
-                    style="@style/TextAppearance.HikViewer.Label"
-                    android:text="@string/settings_screen" />
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/keep_screen_on"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:text="@string/settings_keep_screen_on"
-                    android:textColor="@color/on_background" />
-            </LinearLayout>
-
+            <!-- The button is the whole section, so it carries the section tag itself. -->
             <Button
                 android:id="@+id/change_code"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
+                android:tag="@string/settings_section_tag"
                 android:text="@string/settings_change_code" />
 
             <TextView
+                android:id="@+id/section_about"
                 style="@style/TextAppearance.HikViewer.Label"
+                android:tag="@string/settings_section_tag"
                 android:text="@string/settings_about" />
 
             <TextView
@@ -153,12 +171,35 @@
                 android:textColor="@color/on_background"
                 tools:text="HikViewer 0.1.0" />
 
+            <!-- Two link rows: outlined buttons so a remote, a mouse and a finger all reach them,
+                 each opening ACTION_VIEW and falling back to a dialog with the address as text on
+                 a TV that has no browser or UPI app. -->
+            <Button
+                android:id="@+id/source_code"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_source_code"
+                android:textAllCaps="false"
+                android:textColor="@color/on_background" />
+
+            <Button
+                android:id="@+id/donate"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_donate"
+                android:textAllCaps="false"
+                android:textColor="@color/on_background" />
+
             <Button
                 android:id="@+id/logout"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
+                android:tag="@string/settings_section_tag"
                 android:text="@string/settings_logout"
                 android:textColor="@color/error_text" />
         </LinearLayout>

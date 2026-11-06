@@ -1,8 +1,11 @@
 package com.itsluminous.hikviewer.ui.settings
 
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
@@ -325,6 +328,134 @@ class SettingsActivityTest {
 
     private fun android.app.Activity.keepsScreenOn(): Boolean =
         window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+
+    /** The text of every view tagged "section" under the column, in visual (depth-first) order. */
+    private fun View.sectionTitles(): List<String> = when {
+        tag == "section" && this is TextView -> listOf(text.toString())
+        this is ViewGroup -> (0 until childCount).flatMap { getChildAt(it).sectionTitles() }
+        else -> emptyList()
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `sections run in the required order on a phone, Screen included, Logout last`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                assertThat(a.findViewById<View>(R.id.column).sectionTitles())
+                    .containsExactly(
+                        "Grid layout",
+                        "Tile overlays",
+                        "Fullscreen quality",
+                        "Screen",
+                        "Live cameras",
+                        "Visible cameras and order",
+                        "Change encryption password",
+                        "About",
+                        "Logout",
+                    ).inOrder()
+            }
+        }
+    }
+
+    /** Same order on a TV; the Screen section is gone, and no view steers the D-pad off the visual order. */
+    @Test
+    @Config(qualifiers = "television")
+    fun `sections run in the required order on a television, without Screen`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val column = a.findViewById<ViewGroup>(R.id.column)
+                val shown = column.sectionTitles().filter { it != "Screen" }
+                assertThat(a.findViewById<View>(R.id.section_screen).isShown).isFalse()
+                assertThat(shown)
+                    .containsExactly(
+                        "Grid layout",
+                        "Tile overlays",
+                        "Fullscreen quality",
+                        "Live cameras",
+                        "Visible cameras and order",
+                        "Change encryption password",
+                        "About",
+                        "Logout",
+                    ).inOrder()
+                val steered =
+                    column.allViews().filter {
+                        it.nextFocusDownId != View.NO_ID ||
+                            it.nextFocusUpId != View.NO_ID
+                    }
+                assertThat(steered).isEmpty()
+                // The last focusable thing on the screen is Logout.
+                assertThat(column.allViews().last { it.isFocusable && it.isShown }.id).isEqualTo(R.id.logout)
+            }
+        }
+    }
+
+    private fun View.allViews(): List<View> {
+        val children =
+            if (this is ViewGroup) {
+                (0 until childCount).flatMap {
+                    getChildAt(
+                        it,
+                    ).allViews()
+                }
+            } else {
+                emptyList()
+            }
+        return listOf(this) + children
+    }
+
+    @Test
+    @Config(qualifiers = "television")
+    fun `the About rows are focusable and open the GitHub page and the UPI link with ACTION_VIEW`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val source = a.findViewById<Button>(R.id.source_code)
+                val donate = a.findViewById<Button>(R.id.donate)
+                assertThat(source.text.toString()).isEqualTo("Source code on GitHub")
+                assertThat(donate.text.toString()).isEqualTo("Donate via UPI")
+                assertThat(source.isFocusable).isTrue()
+                assertThat(donate.isFocusable).isTrue()
+                source.performClick()
+                val github = shadowOf(a).nextStartedActivity
+                assertThat(github.action).isEqualTo(Intent.ACTION_VIEW)
+                assertThat(github.data).isEqualTo(Uri.parse("https://github.com/itsluminous/HikViewer"))
+                donate.performClick()
+                val upi = shadowOf(a).nextStartedActivity
+                assertThat(upi.action).isEqualTo(Intent.ACTION_VIEW)
+                assertThat(upi.data).isEqualTo(Uri.parse("upi://pay?pa=electricprakash@axisb&cn=ClearSMS"))
+                assertThat(ShadowDialog.getLatestDialog()).isNull()
+            }
+        }
+    }
+
+    /** A TV with no browser and no UPI app: no crash, a dialog with the address as selectable text. */
+    @Test
+    @Config(qualifiers = "television")
+    fun `without a handler each About row shows the address in a dialog instead of crashing`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                shadowOf(app).checkActivities(true) // nothing resolves ACTION_VIEW, so startActivity throws
+                a.findViewById<View>(R.id.source_code).performClick()
+                ShadowLooper.idleMainLooper()
+                val github = ShadowDialog.getLatestDialog() as AlertDialog
+                val githubText = github.findViewById<TextView>(android.R.id.message)!!
+                assertThat(githubText.text.toString()).contains("https://github.com/itsluminous/HikViewer")
+                assertThat(githubText.isTextSelectable).isTrue()
+                github.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                ShadowLooper.idleMainLooper()
+                a.findViewById<View>(R.id.donate).performClick()
+                ShadowLooper.idleMainLooper()
+                val upi = ShadowDialog.getLatestDialog() as AlertDialog
+                assertThat(upi).isNotSameInstanceAs(github)
+                val upiText = upi.findViewById<TextView>(android.R.id.message)!!
+                assertThat(upiText.text.toString()).contains("electricprakash@axisb")
+                assertThat(upiText.text.toString()).doesNotContain("upi://")
+                assertThat(upiText.isTextSelectable).isTrue()
+                assertThat(shadowOf(a).nextStartedActivity).isNull()
+                assertThat(a.isFinishing).isFalse()
+            }
+        }
+    }
 
     /** Every control of a row and every switch ends inside a 360 dp screen, and the signal label is on it. */
     @Test

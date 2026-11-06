@@ -6,6 +6,8 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.UiController
+import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressKey
 import androidx.test.espresso.assertion.ViewAssertions.matches
@@ -102,6 +104,22 @@ class GridNavigationTest {
     private fun dpad(keyCode: Int) {
         onView(isRoot()).perform(pressKey(keyCode))
     }
+
+    /** Gives the matched view focus on the main thread, the way a D-pad move would. */
+    private fun takeFocus(): ViewAction =
+        object : ViewAction {
+            override fun getConstraints(): Matcher<View> = isDisplayed()
+
+            override fun getDescription(): String = "request focus"
+
+            override fun perform(
+                uiController: UiController,
+                view: View,
+            ) {
+                check(view.requestFocus()) { "view refused focus" }
+                uiController.loopMainThreadUntilIdle()
+            }
+        }
 
     /** Holds OK down past the long-press timeout, as a remote user does to open the tile menu. */
     private fun longOk() {
@@ -282,7 +300,12 @@ class GridNavigationTest {
         // 12 cameras: the menu lists AUTO, 3x3, 4x3 and 1+5 … 1+11 (1+15 and 4x4 need more cameras).
         pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.HERO_1_5))
         onView(tile(0)).check(matches(tileNamed("Camera 1")))
-        onView(withId(R.id.layout_button)).check(matches(hasFocus())) // the bar keeps focus after the popup
+        // The bar keeps focus after the popup unless the popup took longer than the bar's idle
+        // timeout (a slow emulator): then focus has gone back to the first tile. Reach the button
+        // again either way.
+        onView(tile(0)).perform(takeFocus())
+        dpad(KeyEvent.KEYCODE_DPAD_UP)
+        onView(withId(R.id.layout_button)).check(matches(hasFocus()))
         dpad(KeyEvent.KEYCODE_DPAD_CENTER)
         pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.AUTO))
         onView(tile(0)).check(matches(tileNamed("Camera 2")))

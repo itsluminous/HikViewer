@@ -34,6 +34,8 @@ jobs:
       HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the annotated tag object carries the release notes
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -119,11 +121,27 @@ jobs:
             esac
           fi
 
+      # Release notes come from the annotated tag's message (`git tag -a vX.Y -m ...`); a lightweight tag
+      # has none, and the release then falls back to GitHub's generated list of merged pull requests.
+      - name: Read the tag message
+        id: notes
+        run: |
+          body=$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")
+          subject=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+          # A lightweight tag reports the commit subject here; only an annotated tag has a body.
+          if [ -n "$body" ]; then
+            printf 'has_notes=true\n' >> "$GITHUB_OUTPUT"
+            { printf 'body<<NOTES_EOF\n'; printf '%s\n\n%s\n' "$subject" "$body"; printf 'NOTES_EOF\n'; } >> "$GITHUB_OUTPUT"
+          else
+            printf 'has_notes=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: HikViewer ${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: ${{ steps.notes.outputs.has_notes != 'true' }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |

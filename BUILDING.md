@@ -168,7 +168,7 @@ keytool -genkeypair -v -keystore release.jks -alias hikviewer -keyalg RSA -keysi
 
 ### GitHub releases
 
-Pushing a tag `vX.Y` or `vX.Y.Z` runs `.github/workflows/release.yml`, which runs the quality gates, builds `HikViewer-X.Y[.Z].apk` with `-PversionName=X.Y[.Z]`, and attaches it plus a `SHA256SUMS` file to a GitHub release with GitHub's auto-generated release notes (marked pre-release when the tag contains a `-`). There is no changelog in the repository.
+Pushing a tag `vX.Y` or `vX.Y.Z` runs `.github/workflows/release.yml`, which runs the quality gates, builds `HikViewer-X.Y[.Z].apk` with `-PversionName=X.Y[.Z]`, and attaches it plus a `SHA256SUMS` file to a GitHub release (marked pre-release when the tag contains a `-`). The release notes are the message of the annotated tag (`git tag -a v0.1 -m 'HikViewer 0.1' -m '- first bullet' ...`); a lightweight tag gets GitHub's generated list of merged pull requests instead. There is no changelog in the repository.
 
 Signing uses these repository secrets:
 

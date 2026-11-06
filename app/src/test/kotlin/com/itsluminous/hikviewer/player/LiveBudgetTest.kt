@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.player
 
 import com.google.common.truth.Truth.assertThat
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class LiveBudgetTest {
@@ -139,6 +140,122 @@ class LiveBudgetTest {
         val budget = LiveBudget(caps())
         budget.sample(0, LiveBudget.LAG_FRAMES)
         assertThat(budget.sample(5_000, LiveBudget.LAG_FRAMES)).isEqualTo(8)
+    }
+}
+
+/** Settings → Live cameras: an explicit N replaces the device ceiling and switches probing off. */
+class LiveBudgetUserCeilingTest {
+    private val caps = DeviceCapabilities(false, 1_800L shl 20, 4)
+    private val calm = LiveBudget.HEADROOM_PROMOTE_MILLIS
+    private val mb = 1024L * 1024L
+
+    @Test
+    fun `a new budget is Automatic, and the log names the mode and the device facts`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        assertThat(budget.automaticCeiling).isEqualTo(8)
+        assertThat(budget.ceiling).isEqualTo(8)
+        assertThat(budget.probingAllowed).isTrue()
+        assertThat(budget.maxLive).isEqualTo(8 + LiveBudget.EXTRA_LIVE_TILES)
+        assertThat(log.single()).isEqualTo("live budget: ceiling=8 (auto: lowRam=false, ram=1800 MB, cores=4)")
+    }
+
+    @Test
+    fun `an explicit ceiling takes effect at once, up or down, and is logged as the user's`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        budget.setCeiling(12, probing = false)
+        assertThat(budget.ceiling).isEqualTo(12)
+        assertThat(budget.liveLimit).isEqualTo(12)
+        assertThat(budget.maxLive).isEqualTo(12)
+        assertThat(budget.probingAllowed).isFalse()
+        assertThat(log.last()).isEqualTo("live budget: ceiling=12 (user)")
+        budget.setCeiling(4, probing = false)
+        assertThat(budget.liveLimit).isEqualTo(4)
+        assertThat(log.last()).isEqualTo("live budget: ceiling=4 (user)")
+        // Setting what is already in force is not a change: no log line, no decoder churn.
+        budget.setCeiling(4, probing = false)
+        assertThat(log.count { "ceiling=4" in it }).isEqualTo(1)
+    }
+
+    @Test
+    fun `with an explicit ceiling the budget never probes above it however idle the device looks`() {
+        val budget = LiveBudget(caps)
+        budget.setCeiling(12, probing = false)
+        var now = 0L
+        budget.sample(now, 0, idleFraction = 1f, spareMemoryBytes = 500 * mb, tileCount = 16)
+        repeat(10) {
+            now += calm
+            assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 16)).isEqualTo(12)
+        }
+    }
+
+    @Test
+    fun `lag demotes below the explicit ceiling and calm promotes back up to it, never above`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        budget.setCeiling(12, probing = false)
+        budget.sample(0, 10)
+        assertThat(budget.sample(LiveBudget.LAG_DEMOTE_MILLIS, 10)).isEqualTo(11)
+        assertThat(budget.sample(LiveBudget.LAG_DEMOTE_MILLIS + LiveBudget.MIN_CHANGE_INTERVAL_MILLIS, 10))
+            .isEqualTo(10)
+        assertThat(log.last()).contains("demote, queue=10 frames, limit=10")
+        var now = 30_000L
+        budget.sample(now, 0)
+        now += calm
+        assertThat(budget.sample(now, 0)).isEqualTo(11)
+        now += calm
+        assertThat(budget.sample(now, 0)).isEqualTo(12)
+        // At the ceiling: full headroom readings change nothing, as there is no probing.
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 16)).isEqualTo(12)
+        now += 10 * calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb, tileCount = 16)).isEqualTo(12)
+    }
+
+    @Test
+    fun `a 1 GB television asked for 16 degrades one tile at a time and never below one`() {
+        val small = DeviceCapabilities(isLowRamDevice = true, totalMemoryBytes = 1_024L shl 20, cpuCores = 4)
+        val budget = LiveBudget(small)
+        assertThat(budget.automaticCeiling).isEqualTo(4)
+        budget.setCeiling(16, probing = false)
+        assertThat(budget.liveLimit).isEqualTo(16)
+        var t = 0L
+        repeat(30) {
+            t += LiveBudget.MIN_CHANGE_INTERVAL_MILLIS
+            budget.sample(t, 99)
+        }
+        assertThat(budget.liveLimit).isEqualTo(LiveBudget.MIN_LIVE)
+    }
+
+    @Test
+    fun `back to Automatic restores the device ceiling and probing, with fresh timers`() {
+        val log = mutableListOf<String>()
+        val budget = LiveBudget(caps, log::add)
+        budget.setCeiling(12, probing = false)
+        // Demoted twice and relapsed once under the user's ceiling...
+        budget.sample(0, 10)
+        budget.sample(LiveBudget.LAG_DEMOTE_MILLIS, 10)
+        assertThat(budget.liveLimit).isEqualTo(11)
+        // ...then Automatic again: the ceiling, limit and calm requirement are those of a new budget.
+        budget.setCeiling(budget.automaticCeiling, probing = true)
+        assertThat(budget.ceiling).isEqualTo(8)
+        assertThat(budget.liveLimit).isEqualTo(8)
+        assertThat(budget.probingAllowed).isTrue()
+        assertThat(budget.maxLive).isEqualTo(12)
+        assertThat(budget.headroomMillis).isEqualTo(LiveBudget.HEADROOM_PROMOTE_MILLIS)
+        assertThat(log.last()).isEqualTo("live budget: ceiling=8 (auto: lowRam=false, ram=1800 MB, cores=4)")
+        // Probing works as on a fresh budget: one tile after a calm period with headroom.
+        var now = 100_000L
+        budget.sample(now, 0, 1f, 500 * mb)
+        now += calm
+        assertThat(budget.sample(now, 0, 1f, 500 * mb)).isEqualTo(9)
+    }
+
+    @Test
+    fun `an explicit ceiling must leave at least one live tile`() {
+        val budget = LiveBudget(caps)
+        assertThrows(IllegalArgumentException::class.java) { budget.setCeiling(0, probing = false) }
     }
 }
 

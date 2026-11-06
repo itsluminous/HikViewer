@@ -10,6 +10,7 @@ import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressKey
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.Visibility
@@ -98,6 +99,10 @@ class GridNavigationTest {
 
         /** How close to the hide timeout a "still shown" check is still meaningful. */
         const val TIMER_SLACK_MILLIS = 300L
+
+        /** Twelve software decoders on the emulator take a few seconds to all show pictures. */
+        const val STATUS_TIMEOUT_MILLIS = 30_000L
+        const val STATUS_POLL_MILLIS = 500L
     }
 
     /** Sends a D-pad key to whatever has focus, as a remote does. */
@@ -367,5 +372,56 @@ class GridNavigationTest {
                     .order(GridLayoutMode.AUTO)
                     ?.sortedBy { it.substringAfter('/').toInt() },
         )
+    }
+
+    /**
+     * Settings → Live cameras round trip on the 12-tile grid of the 2 GB test TV (ceiling 8): the
+     * row says what Automatic resolves to, picking 12 makes every tile live when the grid comes
+     * back, and Automatic again drops four tiles to stills. The status is driven by real decoders,
+     * so each state is waited for.
+     */
+    @Test
+    fun liveCamerasSettingRoundTripChangesTheGridStatus() {
+        waitForStatus("12 cameras · 8 live · 4 at 1 fps")
+        openSettings()
+        onView(withId(R.id.live_cameras))
+            .perform(scrollTo())
+            .check(matches(withText("Automatic (8 on this device)")))
+        onView(withId(R.id.live_cameras)).perform(click())
+        onView(withText("12")).inRoot(isDialog()).perform(click())
+        onView(withId(R.id.live_cameras)).check(matches(withText("12")))
+        assert(app.graph.settingsStore.liveCameras == 12)
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+        waitForStatus("12 live")
+        openSettings()
+        onView(withId(R.id.live_cameras)).perform(scrollTo(), click())
+        onView(withText(R.string.settings_live_cameras_automatic)).inRoot(isDialog()).perform(click())
+        assert(app.graph.settingsStore.liveCameras == null)
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+        waitForStatus("12 cameras · 8 live · 4 at 1 fps")
+    }
+
+    /** UP from the top row reaches the bar; RIGHT moves from Layout to Settings; OK opens it. */
+    private fun openSettings() {
+        InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        dpad(KeyEvent.KEYCODE_DPAD_UP)
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        onView(withId(R.id.settings_button)).check(matches(hasFocus()))
+        ok()
+        onView(withId(R.id.layout_spinner)).check(matches(isDisplayed()))
+    }
+
+    /** Waits until the top bar's status reads [expected]: the decoders need a moment to flow after a reassignment. */
+    private fun waitForStatus(expected: String) {
+        val deadline = android.os.SystemClock.uptimeMillis() + STATUS_TIMEOUT_MILLIS
+        var seen = ""
+        while (android.os.SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity { seen = it.findViewById<android.widget.TextView>(R.id.status).text.toString() }
+            if (seen == expected) return
+            waitFor(STATUS_POLL_MILLIS)
+        }
+        throw AssertionError("status never read '$expected'; last was '$seen'")
     }
 }

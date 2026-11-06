@@ -77,6 +77,26 @@ class PlaybackCoordinator(
     /** Live-tile limit currently in force (for diagnostics). */
     val liveLimit: Int get() = budget.liveLimit
 
+    /** What "Automatic" resolves to on this device, for the Settings summary. */
+    val automaticCeiling: Int get() = budget.automaticCeiling
+
+    /**
+     * Settings → Live cameras: [userCeiling] tiles decode live and the rest show stills, or null
+     * for Automatic (the device ceiling, probing above it with measured headroom). Applied at
+     * once: tiles are reassigned, and the probe thread starts or stops with whether there is
+     * anything left to probe for. A value that is already in force changes nothing.
+     */
+    fun setLiveCeiling(userCeiling: Int?) {
+        val before = budget.liveLimit
+        if (userCeiling == null) {
+            budget.setCeiling(budget.automaticCeiling, probing = true)
+        } else {
+            budget.setCeiling(userCeiling, probing = false)
+        }
+        if (running) probeIfWorthIt()
+        if (budget.liveLimit != before) applyPolicy()
+    }
+
     /** Replaces the camera set; players of cameras no longer shown are stopped. */
     fun setCameras(cameras: List<Camera>) {
         val existing = playersFlow.value.associateBy { it.camera.key }
@@ -92,14 +112,14 @@ class PlaybackCoordinator(
     }
 
     /**
-     * The probe thread only runs when there is a tile beyond the static ceiling to win. While it
-     * does not, the budget is told nothing (0 idle, 0 spare), so it can never climb above the
-     * ceiling on a reading that was not taken: an unfilled probe once read as 100 % idle and
-     * promoted a six-tile grid to a limit of twelve, which the next, bigger grid then started
-     * all at once.
+     * The probe thread only runs when there is a tile beyond the ceiling to win, and the budget
+     * may win one (not with a user-chosen ceiling, which is exact). While it does not run, the
+     * budget is told nothing (0 idle, 0 spare), so it can never climb above the ceiling on a
+     * reading that was not taken: an unfilled probe once read as 100 % idle and promoted a
+     * six-tile grid to a limit of twelve, which the next, bigger grid then started all at once.
      */
     private fun probeIfWorthIt() {
-        val worth = playersFlow.value.size > budget.ceiling
+        val worth = budget.probingAllowed && playersFlow.value.size > budget.ceiling
         if (worth == probing) return
         probing = worth
         if (worth) headroom.start() else headroom.stop()

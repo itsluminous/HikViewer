@@ -21,6 +21,7 @@ import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
+import com.itsluminous.hikviewer.player.LiveBudget
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.KeepScreenOn
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
@@ -30,8 +31,8 @@ import com.itsluminous.hikviewer.ui.login.LoginActivity
 import kotlinx.coroutines.launch
 
 /**
- * Settings: layout, visible cameras and order, fullscreen quality, keep screen on (phones), encryption
- * password, about, logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
+ * Settings: layout, visible cameras and order, fullscreen quality, live cameras, keep screen on
+ * (phones), encryption password, about, logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
  * the grid re-reads the store when this screen returns. The camera list is a plain `LinearLayout`
  * of rows (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop;
@@ -60,6 +61,7 @@ class SettingsActivity : AppCompatActivity() {
         bindLayout()
         bindCameraList()
         bindQuality()
+        bindLiveCameras()
         bindOverlays()
         bindScreen()
         bindCode()
@@ -139,6 +141,36 @@ class SettingsActivity : AppCompatActivity() {
         binding.qualityMain.isChecked = settings.fullscreenQuality == StreamQuality.MAIN
         binding.qualityMain.setOnCheckedChangeListener { _, checked ->
             settings.fullscreenQuality = if (checked) StreamQuality.MAIN else StreamQuality.SUB
+        }
+    }
+
+    /**
+     * Live cameras: Automatic (the device ceiling, named so the user knows what it resolves to) or
+     * one of the explicit counts. The chooser is a single-choice `AlertDialog` list, like the
+     * tile menu's Change: already focusable for a remote and tappable for a finger. The store is
+     * written at once; the grid re-applies it when this screen returns.
+     */
+    private fun bindLiveCameras() {
+        val automatic = LiveBudget.staticCeiling(AppGraph.of(this).capabilities)
+        val choices = SettingsStore.LIVE_CAMERA_CHOICES
+
+        fun summary(): String =
+            settings.liveCameras?.toString() ?: getString(R.string.settings_live_cameras_automatic_summary, automatic)
+        binding.liveCameras.text = summary()
+        binding.liveCameras.setOnClickListener {
+            val labels =
+                (listOf(getString(R.string.settings_live_cameras_automatic)) + choices.map { it.toString() })
+                    .toTypedArray<CharSequence>()
+            val checked = settings.liveCameras?.let { choices.indexOf(it) + 1 } ?: 0
+            AlertDialog
+                .Builder(this)
+                .setTitle(R.string.settings_live_cameras)
+                .setSingleChoiceItems(labels, checked) { dialog, which ->
+                    settings.liveCameras = if (which == 0) null else choices[which - 1]
+                    binding.liveCameras.text = summary()
+                    dialog.dismiss()
+                }.setNegativeButton(R.string.code_cancel, null)
+                .show()
         }
     }
 

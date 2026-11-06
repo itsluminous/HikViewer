@@ -5,9 +5,10 @@ import androidx.core.content.edit
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 
 /**
- * User settings: visible cameras and their order, fullscreen quality, tile overlays, keep-screen-on
- * and the video verification code. Kept in encrypted preferences because of the verification code. The grid
- * layout and per-layout tile positions live in [GridArrangementStore] on the same preferences.
+ * User settings: visible cameras and their order, fullscreen quality, tile overlays, keep-screen-on,
+ * the live-camera count and the video verification code. Kept in encrypted preferences because of
+ * the verification code. The grid layout and per-layout tile positions live in
+ * [GridArrangementStore] on the same preferences.
  *
  * Camera references are [com.itsluminous.hikviewer.core.devices.Camera.key] strings
  * (`serial/channel`), which survive renames on the recorder.
@@ -52,6 +53,19 @@ class SettingsStore(
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, false)
         set(value) = prefs.edit { putBoolean(KEY_KEEP_SCREEN_ON, value) }
 
+    /**
+     * How many grid tiles decode live before the rest fall back to one keyframe a second, or null
+     * for Automatic (the device-derived ceiling, with probing above it). An explicit value is one
+     * of [LIVE_CAMERA_CHOICES]; anything else stored (an old build, a hand edit) reads as Automatic
+     * rather than as a ceiling the device was never measured for.
+     */
+    var liveCameras: Int?
+        get() = prefs.getInt(KEY_LIVE_CAMERAS, LIVE_CAMERAS_AUTOMATIC).takeIf { it in LIVE_CAMERA_CHOICES }
+        set(value) =
+            prefs.edit {
+                if (value == null) remove(KEY_LIVE_CAMERAS) else putInt(KEY_LIVE_CAMERAS, value)
+            }
+
     /** The video verification (encryption) code, once the user entered a matching one. */
     var verificationCode: String?
         get() = prefs.getString(KEY_VERIFICATION_CODE, null)
@@ -63,13 +77,19 @@ class SettingsStore(
     /** Wipes everything (logout). */
     fun clear() = prefs.edit { clear() }
 
-    private companion object {
-        const val SEPARATOR = ","
-        const val KEY_VISIBLE = "visibleCameras"
-        const val KEY_QUALITY = "fullscreenQuality"
-        const val KEY_VERIFICATION_CODE = "verificationCode"
-        const val KEY_SHOW_NAMES = "showCameraNames"
-        const val KEY_SHOW_FPS = "showFrameRate"
-        const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+    /** The explicit live-camera counts the Settings chooser offers; null in [liveCameras] is Automatic. */
+    companion object {
+        /** Even steps from the smallest grid that needs a cap to the largest layout (4 x 4). */
+        val LIVE_CAMERA_CHOICES: List<Int> = listOf(4, 6, 8, 10, 12, 14, 16)
+
+        private const val LIVE_CAMERAS_AUTOMATIC = 0
+        private const val SEPARATOR = ","
+        private const val KEY_VISIBLE = "visibleCameras"
+        private const val KEY_QUALITY = "fullscreenQuality"
+        private const val KEY_VERIFICATION_CODE = "verificationCode"
+        private const val KEY_SHOW_NAMES = "showCameraNames"
+        private const val KEY_SHOW_FPS = "showFrameRate"
+        private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_LIVE_CAMERAS = "liveCameras"
     }
 }

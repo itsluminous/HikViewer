@@ -24,6 +24,27 @@ class SettingsStoreTest {
         assertThat(store.showCameraNames).isFalse()
         assertThat(store.showFrameRate).isFalse()
         assertThat(store.keepScreenOn).isFalse()
+        assertThat(store.liveCameras).isNull() // Automatic
+    }
+
+    @Test
+    fun `live cameras round-trips every offered count and null is Automatic again`() {
+        assertThat(SettingsStore.LIVE_CAMERA_CHOICES).containsExactly(4, 6, 8, 10, 12, 14, 16).inOrder()
+        SettingsStore.LIVE_CAMERA_CHOICES.forEach { n ->
+            store.liveCameras = n
+            assertThat(SettingsStore(prefs).liveCameras).isEqualTo(n)
+        }
+        store.liveCameras = null
+        assertThat(SettingsStore(prefs).liveCameras).isNull()
+        assertThat(prefs.contains("liveCameras")).isFalse()
+    }
+
+    @Test
+    fun `a stored live-camera count that is not offered reads as Automatic`() {
+        prefs.edit().putInt("liveCameras", 7).commit()
+        assertThat(store.liveCameras).isNull()
+        prefs.edit().putInt("liveCameras", 32).commit()
+        assertThat(store.liveCameras).isNull()
     }
 
     @Test

@@ -162,6 +162,54 @@ class PlaybackCoordinatorTest {
         }
 
     @Test
+    fun `a user ceiling reassigns the tiles at once, stops the probe, and Automatic brings both back`() =
+        runTest(dispatcher) {
+            val c = coordinator()
+            c.setCameras(cameras(16))
+            c.players.value.forEach { it.attachSurface(Shadow.newInstanceOf(Surface::class.java)) }
+            c.start()
+            dispatcher.scheduler.runCurrent()
+            assertThat(c.automaticCeiling).isEqualTo(8)
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(8)
+            assertThat(probe.started).isEqualTo(1)
+            c.setLiveCeiling(12)
+            assertThat(c.liveLimit).isEqualTo(12)
+            assertThat(c.players.value.map { it.mode.isLive }).isEqualTo(List(12) { true } + List(4) { false })
+            assertThat(probe.stopped).isEqualTo(1)
+            // The probe's rosy readings are not read while it is off: the limit stays at exactly 12.
+            repeat(60) {
+                now += 500
+                dispatcher.scheduler.advanceTimeBy(500)
+                dispatcher.scheduler.runCurrent()
+            }
+            assertThat(c.liveLimit).isEqualTo(12)
+            // The same value again is a no-op (applySettings re-applies it on every grid change).
+            c.setLiveCeiling(12)
+            assertThat(probe.stopped).isEqualTo(1)
+            // Down to 4: eight tiles release their decoders, four stay live.
+            c.setLiveCeiling(4)
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(4)
+            // Automatic: the device ceiling, and the probe is worth running again for the 16 tiles.
+            c.setLiveCeiling(null)
+            assertThat(c.liveLimit).isEqualTo(8)
+            assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(8)
+            assertThat(probe.started).isEqualTo(2)
+            c.release()
+        }
+
+    @Test
+    fun `a user ceiling chosen before start is budgeted from the first tile on`() = runTest(dispatcher) {
+        val c = coordinator()
+        c.setLiveCeiling(6)
+        c.setCameras(cameras(12))
+        assertThat(c.players.value.count { it.mode.isLive }).isEqualTo(6)
+        c.start()
+        dispatcher.scheduler.runCurrent()
+        assertThat(probe.started).isEqualTo(0)
+        c.release()
+    }
+
+    @Test
     fun `start opens every stream in parallel and stop releases everything`() = runTest(dispatcher) {
         val c = coordinator()
         c.setCameras(cameras(4))

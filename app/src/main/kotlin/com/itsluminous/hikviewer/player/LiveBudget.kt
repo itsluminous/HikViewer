@@ -23,17 +23,30 @@ package com.itsluminous.hikviewer.player
  * memory below [LOW_MEMORY_BYTES]) counts as lag, so they are shed before the decoders fall behind
  * or the low-memory killer acts. Pure Kotlin so the thresholds are unit-testable; the caller feeds
  * time and the readings.
+ *
+ * The ceiling can be replaced by the user's choice (Settings, "Live cameras"): [setCeiling] makes
+ * N the ceiling and switches probing off, since N is exactly what was asked for; the lag and
+ * memory machinery keeps demoting below N and promoting back up to it. Automatic is
+ * [setCeiling] with [automaticCeiling] and probing on, which is the state a new budget starts in.
  */
 class LiveBudget(
     capabilities: DeviceCapabilities,
     /** Receives one line per decision, for the INFO log. */
     private val onDecision: (String) -> Unit = {},
 ) {
-    /** Live tiles the hardware facts alone allow; the budget probes above it only with measured headroom. */
-    val ceiling: Int = staticCeiling(capabilities)
+    /** The ceiling the hardware facts alone give; what "Automatic" means on this device. */
+    val automaticCeiling: Int = staticCeiling(capabilities)
+
+    /** Live tiles allowed without measured headroom; the budget probes above it only when [probingAllowed]. */
+    var ceiling: Int = automaticCeiling
+        private set
+
+    /** Whether the budget may try tiles above [ceiling] on measured headroom (Automatic only). */
+    var probingAllowed: Boolean = true
+        private set
 
     /** Hard upper bound, probes included. */
-    val maxLive: Int = ceiling + EXTRA_LIVE_TILES
+    val maxLive: Int get() = if (probingAllowed) ceiling + EXTRA_LIVE_TILES else ceiling
 
     /** Tiles currently allowed to be live. */
     var liveLimit: Int = ceiling
@@ -48,11 +61,36 @@ class LiveBudget(
     var headroomMillis: Long = HEADROOM_PROMOTE_MILLIS
         private set
 
+    private val automaticNote =
+        "auto: lowRam=${capabilities.isLowRamDevice}, ram=${capabilities.totalMemoryMb} MB, " +
+            "cores=${capabilities.cpuCores}"
+
     init {
-        onDecision(
-            "live budget: ceiling=$ceiling (lowRam=${capabilities.isLowRamDevice}, " +
-                "ram=${capabilities.totalMemoryMb} MB, cores=${capabilities.cpuCores})",
-        )
+        onDecision("live budget: ceiling=$ceiling ($automaticNote)")
+    }
+
+    /**
+     * Replaces the ceiling: [ceiling] tiles may be live, and above it the budget probes only when
+     * [probing]. The user asked for this, so it takes effect at once: the limit becomes the new
+     * ceiling (clamped down when it was above, raised when it was below) and the lag, calm and
+     * change timers start over, exactly as a budget created with this ceiling would. A call that
+     * changes nothing is ignored, so re-applying settings on every grid change costs no decoders.
+     */
+    fun setCeiling(
+        ceiling: Int,
+        probing: Boolean,
+    ) {
+        require(ceiling >= MIN_LIVE) { "ceiling must be at least $MIN_LIVE, was $ceiling" }
+        if (ceiling == this.ceiling && probing == probingAllowed) return
+        this.ceiling = ceiling
+        probingAllowed = probing
+        liveLimit = ceiling
+        lagSince = null
+        calmSince = null
+        lastChangeAt = null
+        lastPromotionAt = null
+        headroomMillis = HEADROOM_PROMOTE_MILLIS
+        onDecision("live budget: ceiling=$ceiling (${if (probing) automaticNote else "user"})")
     }
 
     /**

@@ -103,7 +103,10 @@ class GridViewModel(
         }
     }
 
-    /** Re-reads settings (last layout, visible cameras, that layout's arrangement) and reconfigures the tiles. */
+    /**
+     * Re-reads settings (last layout, visible cameras, that layout's arrangement, live-camera count)
+     * and reconfigures the tiles.
+     */
     fun applySettings() {
         val inv = inventory ?: return
         val layout = arrangement.lastLayout
@@ -123,6 +126,8 @@ class GridViewModel(
         // used to open 16 relay connections and run 16 decrypt pipelines for 6 pictures on screen.
         // The shape, not the layout, knows the count: a turned phone shows one tile less of 1 + 6.
         val shown = cameras.take(GridGeometry.shape(layout, cameras.size, portrait).capacity)
+        // The ceiling first, so the new tile set is budgeted (and probed for) under the setting in force.
+        playback.setLiveCeiling(settings.liveCameras)
         playback.setCameras(shown)
         playback.heroIndex = if (layout.isHero) hero else null
         if (visible && !needsCode) playback.start()

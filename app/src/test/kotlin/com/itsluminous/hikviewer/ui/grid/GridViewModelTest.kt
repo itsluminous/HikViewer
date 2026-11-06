@@ -310,6 +310,36 @@ class GridViewModelTest {
         vm.playback.release()
     }
 
+    /**
+     * Settings → Live cameras rides the same re-read as every other setting: a return from Settings
+     * reassigns the tiles.
+     */
+    @Test
+    fun `the live-camera setting caps the live tiles on the grid and Automatic restores the device ceiling`() =
+        runTest(dispatcher) {
+            graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+            graph.settingsStore.visibleCameraKeys = (1..16).map { "${FakeCloudServices.SERIAL}/$it" }
+            graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X4
+            val vm = viewModel()
+            vm.load()
+            dispatcher.scheduler.advanceUntilIdle()
+            val players = vm.playback.players.value
+            assertThat(players).hasSize(16)
+            // Automatic on the 2 GB test TV: 8 live, 8 stills.
+            assertThat(vm.playback.liveLimit).isEqualTo(8)
+            assertThat(players.count { it.mode.isLive }).isEqualTo(8)
+            graph.settingsStore.liveCameras = 12
+            vm.applySettings()
+            assertThat(vm.playback.liveLimit).isEqualTo(12)
+            assertThat(players.map { it.mode.isLive }).isEqualTo(List(12) { true } + List(4) { false })
+            assertThat(players.drop(12).all { it.mode == TileMode.KEYFRAME }).isTrue()
+            graph.settingsStore.liveCameras = null
+            vm.applySettings()
+            assertThat(vm.playback.liveLimit).isEqualTo(8)
+            assertThat(players.count { it.mode.isLive }).isEqualTo(8)
+            vm.playback.release()
+        }
+
     @Test
     fun `playback follows onStart and onStop`() = runTest(dispatcher) {
         graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE

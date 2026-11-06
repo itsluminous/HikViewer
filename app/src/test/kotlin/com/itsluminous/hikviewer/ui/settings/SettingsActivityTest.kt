@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -252,6 +253,76 @@ class SettingsActivityTest {
         }
     }
 
+    /** Automatic by default, and the summary says what Automatic is on this device (8 on the 2 GB test TV). */
+    @Test
+    @Config(qualifiers = "television")
+    fun `live cameras is offered on a television, Automatic with the resolved number`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val row = a.findViewById<Button>(R.id.live_cameras)
+                assertThat(row.isShown).isTrue()
+                assertThat(row.isFocusable).isTrue()
+                assertThat(row.text.toString()).isEqualTo("Automatic (8 on this device)")
+                assertThat(app.graph.settingsStore.liveCameras).isNull()
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `live cameras is offered on a phone and a stored count is the summary`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        app.graph.settingsStore.liveCameras = 6
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val row = a.findViewById<Button>(R.id.live_cameras)
+                assertThat(row.isShown).isTrue()
+                assertThat(row.text.toString()).isEqualTo("6")
+                val where = IntArray(2).also(row::getLocationOnScreen)
+                assertThat(where[0] + row.width).isAtMost(a.resources.displayMetrics.widthPixels)
+            }
+        }
+    }
+
+    /** The chooser lists Automatic and the seven counts; picking one persists it and updates the summary at once. */
+    @Test
+    @Config(qualifiers = "television")
+    fun `choosing a live-camera count persists it, and Automatic again removes it`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val row = a.findViewById<Button>(R.id.live_cameras)
+                row.performClick()
+                ShadowLooper.idleMainLooper()
+                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val list = dialog.listView
+                assertThat((0 until list.count).map { list.adapter.getItem(it).toString() })
+                    .containsExactly("Automatic", "4", "6", "8", "10", "12", "14", "16")
+                    .inOrder()
+                assertThat(list.checkedItemPosition).isEqualTo(0)
+                list.performItemClick(list.getChildAt(5), 5, list.adapter.getItemId(5))
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.liveCameras).isEqualTo(12)
+                assertThat(row.text.toString()).isEqualTo("12")
+                assertThat(dialog.isShowing).isFalse()
+                // Reopened: the stored count is the checked one; Automatic clears it.
+                row.performClick()
+                ShadowLooper.idleMainLooper()
+                val again = ShadowDialog.getLatestDialog() as AlertDialog
+                assertThat(again.listView.checkedItemPosition).isEqualTo(5)
+                again.listView.performItemClick(again.listView.getChildAt(0), 0, again.listView.adapter.getItemId(0))
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.liveCameras).isNull()
+                assertThat(row.text.toString()).isEqualTo("Automatic (8 on this device)")
+                // Cancel changes nothing.
+                row.performClick()
+                ShadowLooper.idleMainLooper()
+                (ShadowDialog.getLatestDialog() as AlertDialog).getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.liveCameras).isNull()
+            }
+        }
+    }
+
     private fun android.app.Activity.keepsScreenOn(): Boolean =
         window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
 
@@ -265,8 +336,14 @@ class SettingsActivityTest {
                 val screenWidth = a.resources.displayMetrics.widthPixels
                 assertThat(screenWidth).isEqualTo(720) // 360 dp at xhdpi: the qualifier took
                 val views =
-                    listOf(R.id.show_names, R.id.show_fps, R.id.quality_main, R.id.layout_spinner, R.id.change_code)
-                        .map { a.findViewById<View>(it) } +
+                    listOf(
+                        R.id.show_names,
+                        R.id.show_fps,
+                        R.id.quality_main,
+                        R.id.live_cameras,
+                        R.id.layout_spinner,
+                        R.id.change_code,
+                    ).map { a.findViewById<View>(it) } +
                         (0 until list.childCount).flatMap { i ->
                             listOf(R.id.check, R.id.name, R.id.signal, R.id.handle)
                                 .map { list.getChildAt(i).findViewById<View>(it) }

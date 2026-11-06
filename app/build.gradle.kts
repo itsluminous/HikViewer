@@ -1,6 +1,6 @@
 import java.util.Properties
 
-// :app — the Android application. UI (grid, fullscreen, settings), MediaCodec decoder pool,
+// :app - the Android application. UI (grid, fullscreen, settings), MediaCodec decoder pool,
 // encrypted preferences. Protocol code lives in :core so it stays testable on the JVM.
 plugins {
     alias(libs.plugins.android.application)
@@ -14,6 +14,13 @@ plugins {
  * `assembleRelease` always produces an installable APK, e.g. for pull-request builds.
  */
 val releaseSigning = ReleaseSigning.load(rootProject.file("keystore.properties"), providers)
+
+/**
+ * App version. The release workflow passes the tag minus its leading `v`
+ * (`./gradlew assembleRelease -PversionName=1.2.3`); a build without the property is `0.0.0-dev`
+ * with versionCode 1, so a dev build never outranks a published release on a device.
+ */
+val appVersion = AppVersion.from(providers.gradleProperty("versionName").orNull)
 
 android {
     namespace = "com.itsluminous.hikviewer"
@@ -32,8 +39,8 @@ android {
             libs.versions.targetSdk
                 .get()
                 .toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersion.code
+        versionName = appVersion.name
         // Installs the fake-cloud Application so Espresso never touches Hik-Connect.
         testInstrumentationRunner = "com.itsluminous.hikviewer.TestRunner"
     }
@@ -65,7 +72,19 @@ android {
 
     // One universal APK per build type (`app-debug.apk`, `app-release.apk`) and no ABI splits:
     // the app ships no native code, so a per-ABI APK would be the same bytes behind a manifest
-    // filter and only confuse sideloading.
+    // filter and only confuse sideloading. A release built with `-PversionName=X.Y.Z` (the
+    // release workflow) is written as `HikViewer-X.Y.Z.apk`, the file name the GitHub release carries.
+    // `applicationVariants` is the old variant API; the new one has no output-file-name hook yet.
+    @Suppress("DEPRECATION")
+    applicationVariants.configureEach {
+        if (buildType.name == "release" && appVersion.fromProperty) {
+            outputs.configureEach {
+                (this as com.android.build.gradle.api.ApkVariantOutput).outputFileName =
+                    "HikViewer-${appVersion.name}.apk"
+            }
+        }
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = false
@@ -139,6 +158,41 @@ dependencies {
 
     testImplementation(libs.bundles.app.unit.test)
     androidTestImplementation(libs.bundles.app.android.test)
+}
+
+/**
+ * `versionName` / `versionCode` pair. [code] is `major * 10000 + minor * 100 + patch` of the
+ * numeric part of [name] (`1.2.3` -> 10203, `0.1` -> 100, `0.1.0` -> 100); a pre-release suffix
+ * such as `-rc1` is ignored for the code, so `1.0.0-rc1` and `1.0.0` share 10000 and the final
+ * build must be installed over the candidate with `-r`. The code is clamped to at least 1 because
+ * Android rejects 0. [fromProperty] says whether the name came from `-PversionName` (a release)
+ * rather than the dev default.
+ */
+data class AppVersion(
+    val name: String,
+    val code: Int,
+    val fromProperty: Boolean,
+) {
+    companion object {
+        private const val DEV_NAME = "0.0.0-dev"
+        private val semver = Regex("""^(\d+)\.(\d+)(?:\.(\d+))?(?:-[0-9A-Za-z.]+)?$""")
+
+        fun from(property: String?): AppVersion {
+            val name = property?.trim()?.takeIf { it.isNotEmpty() } ?: DEV_NAME
+            val match =
+                semver.matchEntire(name)
+                    ?: error(
+                        "versionName '$name' must look like X.Y, X.Y.Z or X.Y.Z-suffix " +
+                            "(the release tag without its leading 'v')",
+                    )
+            val (major, minor, patch) = match.destructured
+            require(major.toInt() < 100 && minor.toInt() < 100 && (patch.toIntOrNull() ?: 0) < 100) {
+                "versionName '$name': each component must be below 100 so versionCode stays unambiguous"
+            }
+            val code = major.toInt() * 10000 + minor.toInt() * 100 + (patch.toIntOrNull() ?: 0)
+            return AppVersion(name = name, code = maxOf(code, 1), fromProperty = property != null)
+        }
+    }
 }
 
 /** Resolved release-signing material, or `null` when neither env vars nor the properties file are set. */

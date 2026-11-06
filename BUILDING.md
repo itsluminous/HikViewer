@@ -209,7 +209,16 @@ sizes the text from the width left of the glyph and asserts in pixels that all i
 at 320 × 180 by reading its header. Re-run the script after changing the design; never hand-edit
 the image.
 
-## Release signing
+## Versioning and release signing
+
+The version comes from the Gradle property `versionName`: `./gradlew assembleRelease -PversionName=1.2.3`
+sets `versionName` 1.2.3 and `versionCode` 10203 (`major * 10000 + minor * 100 + patch`; `0.1` and
+`0.1.0` are both 100; a pre-release suffix such as `-rc1` is kept in the name and ignored for the
+code) and writes the APK as `app/build/outputs/apk/release/HikViewer-1.2.3.apk`. The release
+workflow passes the tag without its leading `v`. A build without the property is `0.0.0-dev` with
+`versionCode` 1 and keeps the default file name `app-release.apk`; it never outranks a published
+release, so to update a device that already runs a release from a local build pass a higher
+`-PversionName`.
 
 `assembleRelease` looks for signing material in this order and falls back to the debug keystore when
 nothing is found, so a release build always succeeds:
@@ -231,10 +240,12 @@ keytool -genkeypair -v -keystore release.jks -alias hikviewer -keyalg RSA -keysi
 
 ### GitHub releases
 
-Pushing a tag `v*` runs `.github/workflows/release.yml`, which runs the quality gates, builds, signs
-and attaches `HikViewer-<version>-universal.apk` plus a `SHA256SUMS` file to a GitHub release
-(marked pre-release when the tag contains a `-`). Signing uses these repository secrets; when they
-are missing the APK is debug-signed:
+Pushing a tag `vX.Y` or `vX.Y.Z` runs `.github/workflows/release.yml`, which runs the quality gates,
+builds `HikViewer-X.Y[.Z].apk` with `-PversionName=X.Y[.Z]`, and attaches it plus a `SHA256SUMS`
+file to a GitHub release with GitHub's auto-generated release notes (marked pre-release when the tag
+contains a `-`). There is no changelog in the repository.
+
+Signing uses these repository secrets:
 
 | Secret | Value |
 |---|---|
@@ -243,7 +254,16 @@ are missing the APK is debug-signed:
 | `KEY_ALIAS` | key alias |
 | `KEY_PASSWORD` | key password |
 
-Verify a downloaded APK with `apksigner verify --print-certs HikViewer-<version>-universal.apk`.
+The job cannot test a secret in a step's `if:` (the `secrets` context is not available there), so it
+copies `secrets.KEYSTORE_BASE64 != ''` into a job-level `HAS_KEYSTORE` env var. With the secrets
+set, the keystore is decoded to `$RUNNER_TEMP`, Gradle signs with it, and a verify step reads the
+certificate's SHA-256 fingerprint out of the keystore with `keytool` and fails the job unless
+`apksigner verify --print-certs` reports exactly that fingerprint on the APK, so a mis-wired secret
+(wrong alias, empty password) cannot publish a debug-signed release. Without the secrets the APK is
+debug-signed and the step only prints a warning, so a fork can cut test releases.
+
+Verify a downloaded APK with `apksigner verify --print-certs HikViewer-<version>.apk` and
+`sha256sum -c SHA256SUMS`.
 
 ## Continuous integration
 
@@ -262,7 +282,7 @@ Dependabot (`.github/dependabot.yml`) opens weekly PRs for the version catalog a
 ```
 app/                 Android application (:app)
   src/main/          UI, player, data stores, resources
-  src/debug/         demo mode (DemoActivity, synthetic clips) — debug builds only
+  src/debug/         demo mode (DemoActivity, synthetic clips), debug builds only
   src/test/          Robolectric unit tests; src/testDebug/ for the demo mode
   src/sharedTest/    fakes shared by Robolectric and Espresso (FakeCloudServices, SyntheticStream)
   src/androidTest/   Espresso suites (TV D-pad, phone touch)

@@ -1,11 +1,18 @@
 # Release build. Triggered by pushing a tag such as `v1.2.3`.
 #
-# The APKs are signed with the release keystore when the four secrets below are configured
-# (see BUILDING.md); otherwise the debug key is used so a fork can still cut test releases.
+# The tag names the build: `v1.2.3` becomes versionName 1.2.3 (versionCode 10203, see
+# app/build.gradle.kts) and the file `HikViewer-1.2.3.apk`, attached to a GitHub release together
+# with a `SHA256SUMS` file and GitHub's auto-generated release notes.
+#
+# Signing: when the four secrets below are configured the APK is signed with that keystore and the
+# job FAILS if the APK comes out signed with anything else (a mis-wired secret must never ship a
+# debug-signed release). Without the secrets the APK is debug-signed, so a fork can cut test releases.
 #   KEYSTORE_BASE64   - `base64 < release.jks`
 #   KEYSTORE_PASSWORD
 #   KEY_ALIAS
 #   KEY_PASSWORD
+# The `secrets` context is not available in a step's `if:`, so the presence check is a job-level
+# env var that the shell steps read.
 name: Release
 
 on:
@@ -23,6 +30,8 @@ jobs:
     name: Build and publish release
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,52 +46,86 @@ jobs:
         with:
           cache-read-only: true
 
+      - name: Version from tag
+        id: version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building HikViewer $version from tag $GITHUB_REF_NAME"
+
       - name: Decode release keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: env.HAS_KEYSTORE == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
+          set -euo pipefail
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Run quality gates
         run: ./gradlew ci --stacktrace
 
-      - name: Assemble release APKs
+      - name: Assemble release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease -PversionName="${{ steps.version.outputs.version }}" --stacktrace
 
-      - name: Rename APKs and write checksums
-        id: artifacts
+      - name: Collect APK and write checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          out=dist
-          mkdir -p "$out"
+          apk="app/build/outputs/apk/release/HikViewer-$VERSION.apk"
+          test -f "$apk" || { echo "::error::expected $apk, found:"; find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print; exit 1; }
+          mkdir -p dist
           # One universal APK (no ABI splits: the app has no native code).
-          cp app/build/outputs/apk/release/app-release.apk "$out/HikViewer-$version-universal.apk"
-          (cd "$out" && sha256sum *.apk > "HikViewer-$version-SHA256SUMS.txt")
-          ls -l "$out"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          cp "$apk" dist/
+          (cd dist && sha256sum -- *.apk > SHA256SUMS)
+          cat dist/SHA256SUMS
 
-      - name: Verify APK signatures
+      - name: Verify APK signature
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          for apk in dist/*.apk; do
-            "$apksigner" verify --print-certs "$apk" | head -2
-          done
+          apksigner=$(find "$ANDROID_HOME"/build-tools -maxdepth 2 -name apksigner | sort -V | tail -1)
+          apk="dist/HikViewer-$VERSION.apk"
+          # build-tools 35 prints "Signer #1 certificate DN: ...", 37 prints "V2 Signer: certificate DN: ...".
+          certs=$("$apksigner" verify --print-certs "$apk")
+          dn=$(printf '%s\n' "$certs" | sed -n 's/.*certificate DN: //p' | head -1)
+          actual=$(printf '%s\n' "$certs" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          if [ "$HAS_KEYSTORE" = "true" ]; then
+            # The release keystore was supplied: the APK must carry exactly that certificate.
+            expected=$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" 2>/dev/null \
+              | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f' || true)
+            if [ -z "$expected" ]; then
+              echo "::error::could not read the release certificate from the keystore (wrong KEYSTORE_PASSWORD or KEY_ALIAS?)"
+              exit 1
+            fi
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::APK is signed by '$dn' ($actual), not by the release key ($expected)"
+              exit 1
+            fi
+            echo "Signed with the release key ($expected)."
+          else
+            case "$dn" in
+              *"CN=Android Debug"*) echo "::warning::no KEYSTORE_BASE64 secret: the APK is debug-signed" ;;
+              *) echo "::error::no keystore was supplied yet the APK is signed by '$dn'"; exit 1 ;;
+            esac
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          name: HikViewer ${{ steps.artifacts.outputs.version }}
+          name: HikViewer ${{ steps.version.outputs.version }}
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            dist/*.apk
-            dist/*-SHA256SUMS.txt
+            dist/HikViewer-${{ steps.version.outputs.version }}.apk
+            dist/SHA256SUMS

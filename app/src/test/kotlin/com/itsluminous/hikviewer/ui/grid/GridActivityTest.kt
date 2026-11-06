@@ -23,6 +23,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.shadows.ShadowLooper
 
 // A 1080p television in landscape; Robolectric's default device is a portrait phone.
@@ -258,11 +259,7 @@ class GridActivityTest {
                 awaitUi { cloud.deviceListings == listings + 1 }
                 ShadowLooper.idleMainLooper()
                 assertThat(app.graph.settingsStore.verificationCode).isEqualTo(FakeCloudServices.GOOD_CODE)
-                assertThat(
-                    shadowOf(
-                        ApplicationProvider.getApplicationContext<android.app.Application>(),
-                    ).latestAlertDialog,
-                ).isNull()
+                assertThat(ShadowAlertDialog.getLatestAlertDialog()).isNull()
             }
         }
     }

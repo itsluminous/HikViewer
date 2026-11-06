@@ -1,3 +1,6 @@
+// kotlinx-coroutines-test's dispatcher and time-control API is still marked experimental.
+@file:OptIn(ExperimentalCoroutinesApi::class)
+
 package com.itsluminous.hikviewer.player
 
 import android.view.Surface
@@ -8,6 +11,7 @@ import com.itsluminous.hikviewer.fakes.NoopKeyframePool
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.SyntheticStream
 import com.itsluminous.hikviewer.fakes.TestGraph
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest

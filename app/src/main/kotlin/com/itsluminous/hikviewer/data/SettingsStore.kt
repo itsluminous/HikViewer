@@ -5,8 +5,8 @@ import androidx.core.content.edit
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 
 /**
- * User settings: visible cameras and their order, fullscreen quality, tile overlays and the video
- * verification code. Kept in encrypted preferences because of the verification code. The grid
+ * User settings: visible cameras and their order, fullscreen quality, tile overlays, keep-screen-on
+ * and the video verification code. Kept in encrypted preferences because of the verification code. The grid
  * layout and per-layout tile positions live in [GridArrangementStore] on the same preferences.
  *
  * Camera references are [com.itsluminous.hikviewer.core.devices.Camera.key] strings
@@ -43,6 +43,15 @@ class SettingsStore(
         get() = prefs.getBoolean(KEY_SHOW_FPS, false)
         set(value) = prefs.edit { putBoolean(KEY_SHOW_FPS, value) }
 
+    /**
+     * Keep the screen on while a HikViewer screen is in the foreground (phones; a TV never dims
+     * while video plays and hides the setting). Off by default: a wall of cameras left on a phone
+     * would otherwise drain it without the user having asked.
+     */
+    var keepScreenOn: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, false)
+        set(value) = prefs.edit { putBoolean(KEY_KEEP_SCREEN_ON, value) }
+
     /** The video verification (encryption) code, once the user entered a matching one. */
     var verificationCode: String?
         get() = prefs.getString(KEY_VERIFICATION_CODE, null)
@@ -61,5 +70,6 @@ class SettingsStore(
         const val KEY_VERIFICATION_CODE = "verificationCode"
         const val KEY_SHOW_NAMES = "showCameraNames"
         const val KEY_SHOW_FPS = "showFrameRate"
+        const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
     }
 }

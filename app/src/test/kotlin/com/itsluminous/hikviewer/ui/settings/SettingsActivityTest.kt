@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.ui.settings
 import android.content.pm.PackageManager
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -213,6 +214,46 @@ class SettingsActivityTest {
             }
         }
     }
+
+    /** On a phone the switch is offered, off by default, and flipping it changes this very window at once. */
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `keep screen on is offered on a phone and applies to the window as it is toggled`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val section = a.findViewById<View>(R.id.screen_section)
+                val switch = a.findViewById<SwitchCompat>(R.id.keep_screen_on)
+                assertThat(section.visibility).isEqualTo(View.VISIBLE)
+                assertThat(switch.isChecked).isFalse()
+                assertThat(a.keepsScreenOn()).isFalse()
+                switch.performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.keepScreenOn).isTrue()
+                assertThat(a.keepsScreenOn()).isTrue()
+                switch.performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.keepScreenOn).isFalse()
+                assertThat(a.keepsScreenOn()).isFalse()
+            }
+        }
+    }
+
+    /** A TV never dims while video plays, so the section is not there. */
+    @Test
+    @Config(qualifiers = "television")
+    fun `keep screen on is hidden on a television`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                assertThat(a.findViewById<View>(R.id.screen_section).visibility).isEqualTo(View.GONE)
+                assertThat(a.findViewById<View>(R.id.keep_screen_on).isShown).isFalse()
+                assertThat(a.keepsScreenOn()).isFalse()
+            }
+        }
+    }
+
+    private fun android.app.Activity.keepsScreenOn(): Boolean =
+        window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
 
     /** Every control of a row and every switch ends inside a 360 dp screen, and the signal label is on it. */
     @Test

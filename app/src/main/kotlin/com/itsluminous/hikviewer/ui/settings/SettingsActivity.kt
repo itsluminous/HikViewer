@@ -22,6 +22,7 @@ import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.ui.common.FormFactor
+import com.itsluminous.hikviewer.ui.common.KeepScreenOn
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.VerificationCodeDialog
@@ -29,8 +30,8 @@ import com.itsluminous.hikviewer.ui.login.LoginActivity
 import kotlinx.coroutines.launch
 
 /**
- * Settings: layout, visible cameras and order, fullscreen quality, encryption password, about,
- * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
+ * Settings: layout, visible cameras and order, fullscreen quality, keep screen on (phones), encryption
+ * password, about, logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
  * the grid re-reads the store when this screen returns. The camera list is a plain `LinearLayout`
  * of rows (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop;
@@ -60,6 +61,7 @@ class SettingsActivity : AppCompatActivity() {
         bindCameraList()
         bindQuality()
         bindOverlays()
+        bindScreen()
         bindCode()
         bindAbout()
         bindLogout()
@@ -145,6 +147,19 @@ class SettingsActivity : AppCompatActivity() {
         binding.showNames.setOnCheckedChangeListener { _, checked -> settings.showCameraNames = checked }
         binding.showFps.isChecked = settings.showFrameRate
         binding.showFps.setOnCheckedChangeListener { _, checked -> settings.showFrameRate = checked }
+    }
+
+    /** Keep screen on: phones only, and applied to this window at once so the toggle is felt here. */
+    private fun bindScreen() {
+        if (FormFactor.isTelevision(this)) {
+            binding.screenSection.visibility = View.GONE
+            return
+        }
+        binding.keepScreenOn.isChecked = settings.keepScreenOn
+        binding.keepScreenOn.setOnCheckedChangeListener { _, checked ->
+            settings.keepScreenOn = checked
+            KeepScreenOn.apply(this)
+        }
     }
 
     private fun bindCode() {

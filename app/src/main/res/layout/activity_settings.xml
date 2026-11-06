@@ -90,6 +90,26 @@
                 android:text="@string/settings_show_fps"
                 android:textColor="@color/on_background" />
 
+            <!-- Phones only: a TV never dims while video plays, so the section is hidden there. -->
+            <LinearLayout
+                android:id="@+id/screen_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/TextAppearance.HikViewer.Label"
+                    android:text="@string/settings_screen" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/keep_screen_on"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_keep_screen_on"
+                    android:textColor="@color/on_background" />
+            </LinearLayout>
+
             <Button
                 android:id="@+id/change_code"
                 android:layout_width="match_parent"

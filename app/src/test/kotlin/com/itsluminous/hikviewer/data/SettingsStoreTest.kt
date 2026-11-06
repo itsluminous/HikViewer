@@ -23,6 +23,15 @@ class SettingsStoreTest {
         assertThat(store.verificationCode).isNull()
         assertThat(store.showCameraNames).isFalse()
         assertThat(store.showFrameRate).isFalse()
+        assertThat(store.keepScreenOn).isFalse()
+    }
+
+    @Test
+    fun `keep screen on round-trips`() {
+        store.keepScreenOn = true
+        assertThat(SettingsStore(prefs).keepScreenOn).isTrue()
+        store.keepScreenOn = false
+        assertThat(SettingsStore(prefs).keepScreenOn).isFalse()
     }
 
     @Test

@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isEmpty
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -333,7 +334,7 @@ class GridActivity : AppCompatActivity() {
      */
     private fun restoreFocus() {
         val grid = binding.grid
-        if (grid.childCount == 0) return
+        if (grid.isEmpty()) return
         val pending = pendingFocus
         pendingFocus = null
         if (pending == null && grid.hasFocus()) return

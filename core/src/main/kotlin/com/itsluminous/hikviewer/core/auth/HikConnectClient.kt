@@ -198,7 +198,7 @@ public class HikConnectClient(
         return withContext(Dispatchers.IO) {
             try {
                 http.newCall(request).execute().use { response ->
-                    val text = response.body?.string().orEmpty()
+                    val text = response.body.string()
                     val body = if (text.isBlank()) JsonObject(emptyMap()) else CloudJson.parseObject(text)
                     response.code to body
                 }

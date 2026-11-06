@@ -9,7 +9,6 @@ import org.jlleitschuh.gradle.ktlint.KtlintExtension
 
 plugins {
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.detekt) apply false
@@ -110,7 +109,7 @@ fun trackedTextFiles(root: File): Provider<List<File>> {
         }
 }
 
-val noEmDash by tasks.registering {
+val noEmDash = tasks.register("noEmDash") {
     group = "verification"
     description = "Fails if any tracked text file contains an em dash (U+2014); run fixEmDash to rewrite them."
     val root: File = rootDir

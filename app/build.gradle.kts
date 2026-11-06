@@ -3,8 +3,8 @@ import java.util.Properties
 // :app - the Android application. UI (grid, fullscreen, settings), MediaCodec decoder pool,
 // encrypted preferences. Protocol code lives in :core so it stays testable on the JVM.
 plugins {
+    // AGP 9 compiles Kotlin itself (built-in Kotlin); the org.jetbrains.kotlin.android plugin must not be applied.
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -70,21 +70,6 @@ android {
         }
     }
 
-    // One universal APK per build type (`app-debug.apk`, `app-release.apk`) and no ABI splits:
-    // the app ships no native code, so a per-ABI APK would be the same bytes behind a manifest
-    // filter and only confuse sideloading. A release built with `-PversionName=X.Y.Z` (the
-    // release workflow) is written as `HikViewer-X.Y.Z.apk`, the file name the GitHub release carries.
-    // `applicationVariants` is the old variant API; the new one has no output-file-name hook yet.
-    @Suppress("DEPRECATION")
-    applicationVariants.configureEach {
-        if (buildType.name == "release" && appVersion.fromProperty) {
-            outputs.configureEach {
-                (this as com.android.build.gradle.api.ApkVariantOutput).outputFileName =
-                    "HikViewer-${appVersion.name}.apk"
-            }
-        }
-    }
-
     buildFeatures {
         viewBinding = true
         buildConfig = false
@@ -137,6 +122,20 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// One universal APK per build type (`app-debug.apk`, `app-release.apk`) and no ABI splits:
+// the app ships no native code, so a per-ABI APK would be the same bytes behind a manifest
+// filter and only confuse sideloading. A release built with `-PversionName=X.Y.Z` (the
+// release workflow) is written as `HikViewer-X.Y.Z.apk`, the file name the GitHub release carries.
+// `VariantOutput.outputFileName` is the new variant API's hook (AGP 9.5.1+); the old
+// `applicationVariants` API is gone in AGP 9.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        if (appVersion.fromProperty) {
+            variant.outputs.forEach { it.outputFileName.set("HikViewer-${appVersion.name}.apk") }
+        }
+    }
 }
 
 dependencies {

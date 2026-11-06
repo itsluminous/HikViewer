@@ -12,6 +12,8 @@ import android.view.SurfaceHolder
 import android.view.View
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
+import androidx.core.view.isVisible
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
 import com.itsluminous.hikviewer.player.StillSink
@@ -73,7 +75,7 @@ class CameraTileView
         val surfaceView: View get() = binding.surface
 
         /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
-        val showsRetry: Boolean get() = binding.errorOverlay.visibility == VISIBLE
+        val showsRetry: Boolean get() = binding.errorOverlay.isVisible
 
         /** True while the user is moving this tile: thicker border and an accent wash. */
         var lifted: Boolean = false
@@ -246,7 +248,7 @@ class CameraTileView
         ) {
             val target =
                 backStill?.takeIf { it.width == width && it.height == height }
-                    ?: Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                    ?: createBitmap(width, height, Bitmap.Config.RGB_565)
             target.setPixels(pixels, 0, width, 0, 0, width, height)
             // Not View.post: that waits for the view to be attached to a window, and a decoded
             // picture that arrives a moment before attachment must still be shown.

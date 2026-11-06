@@ -78,6 +78,10 @@ class AppGraph(
             )
         }
 
+        // security-crypto 1.1.0 deprecates the whole library with no replacement from AndroidX; the
+        // stored session and verification code are in its format, so a move to Keystore-wrapped
+        // preferences is a data migration, tracked in docs/FOLLOW-UPS.md, not a version bump.
+        @Suppress("DEPRECATION")
         private fun encryptedPrefs(
             context: Context,
             name: String,

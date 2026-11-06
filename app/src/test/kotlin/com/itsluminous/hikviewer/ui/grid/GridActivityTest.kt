@@ -16,6 +16,8 @@ import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
+import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import org.junit.Before
@@ -23,6 +25,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.shadows.ShadowLooper
 
 // A 1080p television in landscape; Robolectric's default device is a portrait phone.
@@ -45,12 +48,12 @@ class GridActivityTest {
         onActivity { a -> block(a, a.findViewById(R.id.grid)) }
     }
 
-    /** Streams run on real worker threads; pumps the main looper until [condition] holds (max 5 s). */
+    /** Streams run on real worker threads; pumps the main looper until [condition] holds (max [UI_DEADLINE_MILLIS]). */
     private fun awaitUi(condition: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + 5_000
+        val deadline = System.currentTimeMillis() + UI_DEADLINE_MILLIS
         while (!condition()) {
             check(System.currentTimeMillis() < deadline) { "condition not met in time" }
-            Thread.sleep(20)
+            Thread.sleep(UI_POLL_MILLIS)
             ShadowLooper.idleMainLooper()
         }
     }
@@ -258,11 +261,7 @@ class GridActivityTest {
                 awaitUi { cloud.deviceListings == listings + 1 }
                 ShadowLooper.idleMainLooper()
                 assertThat(app.graph.settingsStore.verificationCode).isEqualTo(FakeCloudServices.GOOD_CODE)
-                assertThat(
-                    shadowOf(
-                        ApplicationProvider.getApplicationContext<android.app.Application>(),
-                    ).latestAlertDialog,
-                ).isNull()
+                assertThat(ShadowAlertDialog.getLatestAlertDialog()).isNull()
             }
         }
     }

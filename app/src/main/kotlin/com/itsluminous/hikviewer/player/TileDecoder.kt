@@ -311,7 +311,7 @@ open class TileDecoder(
                     return@synchronized // the loop comes back for the next buffer
                 }
                 if (pending.isEmpty()) return
-                val unit = pending.pollFirst()
+                val unit = pending.pollFirst() ?: return
                 val pts = unit.presentationTimeUs ?: 0L
                 if (!queueLocked(c, index, unit.data, pts, 0)) {
                     pending.addFirst(unit)

@@ -6,11 +6,11 @@ Every command below was run on macOS (Apple Silicon) with the versions listed; C
 
 | Tool | Version | Notes |
 |---|---|---|
-| JDK | 17 (Temurin or Corretto) | The project pins a Java 17 toolchain. Set `JAVA_HOME` if your default `java` is older. |
-| Android SDK | platform 35, build-tools 35.0.0 | Install via Android Studio or `sdkmanager "platforms;android-35" "build-tools;35.0.0"`. |
-| Gradle | wrapper, 8.14.6 | Nothing to install: `./gradlew` downloads it. |
-| Android Gradle Plugin | 8.7.3 | From `gradle/libs.versions.toml`. |
-| Kotlin | 2.1.21 | From `gradle/libs.versions.toml`. |
+| JDK | 17 (Temurin or Corretto) | The project pins a Java 17 toolchain; AGP 9.5 needs at least 17. Set `JAVA_HOME` if your default `java` is older. |
+| Android SDK | platform 37 (`compileSdk`), build-tools 36.0.0 | Install via Android Studio or `sdkmanager "platforms;android-37.0" "build-tools;36.0.0"` (the SDK names platform 37 with its minor version). `targetSdk` is 36, `minSdk` 26. |
+| Gradle | wrapper, 9.8.2 | Nothing to install: `./gradlew` downloads it. |
+| Android Gradle Plugin | 9.5.1 | From `gradle/libs.versions.toml`. AGP 9 compiles Kotlin itself (built-in Kotlin), so there is no `kotlin-android` plugin in the build. |
+| Kotlin | 2.4.21 | From `gradle/libs.versions.toml`; the `kotlin-jvm` plugin on the root classpath is the Kotlin Gradle plugin AGP picks up. |
 | ffmpeg | any recent | Only to regenerate the demo clips (see below); not needed to build. |
 
 Point Gradle at the SDK once:
@@ -26,7 +26,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-17.jdk/Conten
 
 | Module | What it is | Tests |
 |---|---|---|
-| `:core` | Pure Kotlin/JVM: Hik-Connect REST client, VTDU token, VTM relay framing, RTP/MPEG-PS demux, NAL decryption, recording search and playback. No Android imports. | JUnit 5 + Truth + MockWebServer, run on the JVM. |
+| `:core` | Pure Kotlin/JVM: Hik-Connect REST client, VTDU token, VTM relay framing, RTP/MPEG-PS demux, NAL decryption, recording search and playback. No Android imports. | JUnit 6 (Jupiter) + Truth + MockWebServer, run on the JVM. |
 | `:app` | Android application `com.itsluminous.hikviewer`: UI, MediaCodec decoder pool, encrypted settings. | JUnit 4 + Robolectric (unit), Espresso (instrumented). |
 
 ## Everyday commands
@@ -34,7 +34,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-17.jdk/Conten
 ```sh
 ./gradlew assembleDebug            # debug APK -> app/build/outputs/apk/debug/app-debug.apk
 ./gradlew assembleRelease          # release APK (debug-signed unless a keystore is configured, see below)
-./gradlew :core:test               # protocol unit tests (JUnit 5)
+./gradlew :core:test               # protocol unit tests (JUnit 6)
 ./gradlew :app:testDebugUnitTest   # UI unit tests (Robolectric)
 ./gradlew check                    # every quality gate, see next section
 ./gradlew ci                       # alias for what CI runs (= check on every module + noEmDash)
@@ -42,7 +42,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-17.jdk/Conten
 ./gradlew ktlintFormat             # auto-fix formatting findings
 ```
 
-Builds produce one universal APK per build type. There are no ABI splits: the app has no native code, so a per-ABI APK would only be a smaller-looking copy of the same thing. The debug build has the application id `com.itsluminous.hikviewer.debug`, so it installs next to a release build instead of replacing it. Sizes at `v0.1.0`: debug 9.4 MB, release (R8, resources shrunk) 2.0 MB.
+Builds produce one universal APK per build type. There are no ABI splits: the app has no native code, so a per-ABI APK would only be a smaller-looking copy of the same thing. The debug build has the application id `com.itsluminous.hikviewer.debug`, so it installs next to a release build instead of replacing it. Sizes at `v0.1.0`: debug 9.4 MB, release (R8, resources shrunk) 2.0 MB; with AGP 9 (R8 optimized resource shrinking on by default) the release APK is 1.7 MB.
 
 ## Quality gates
 
@@ -50,7 +50,7 @@ Builds produce one universal APK per build type. There are no ABI splits: the ap
 
 | Gate | Tool and configuration | Report |
 |---|---|---|
-| Unit tests | JUnit 5 (`:core`, 165 tests), JUnit 4 + Robolectric (`:app`, 232 tests in the debug variant) | `*/build/reports/tests/` |
+| Unit tests | JUnit 6 (`:core`, 171 tests), JUnit 4 + Robolectric (`:app`, 379 tests in the debug variant) | `*/build/reports/tests/` |
 | Formatting | ktlint (`org.jlleitschuh.gradle.ktlint`), `ktlint_official` style from `.editorconfig` | `*/build/reports/ktlint/` |
 | Static analysis | detekt, `config/detekt/detekt.yml` on top of the defaults, `maxIssues: 0`, no baseline | `*/build/reports/detekt/` |
 | Android Lint | `abortOnError`, `warningsAsErrors`, `checkAllWarnings`, `checkDependencies`; tuning in `config/lint/lint.xml`, no baseline | `app/build/reports/lint-results-debug.*` |
@@ -125,7 +125,7 @@ HIKVIEWER_LOCAL_ENV=$PWD/local.env ./gradlew :core:test --tests '*RealAccountInt
 Instrumented (Espresso) tests run against every connected device, so pin the device. They use the fake cloud from `app/src/sharedTest` and real `MediaCodec` decoders fed from the committed synthetic H.264 clip, so no account is needed:
 
 ```sh
-ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest   # TV: D-pad suites, 13 tests
+ANDROID_SERIAL=emulator-5554 ./gradlew connectedDebugAndroidTest   # TV: D-pad suites, 18 of the 22 tests run
 ANDROID_SERIAL=emulator-5558 ./gradlew connectedDebugAndroidTest   # phone: touch suite
 ```
 

@@ -7,9 +7,9 @@
 [versions]
 # --- build tooling -----------------------------------------------------------
 agp = "8.7.3"                # Android Gradle Plugin; compileSdk 35 needs >= 8.6
-kotlin = "2.1.21"            # Kotlin 2.x with K2 compiler
+kotlin = "2.4.21"            # Kotlin 2.x with K2 compiler
 detekt = "1.23.8"
-kover = "0.9.1"
+kover = "0.9.11"
 ktlintGradle = "14.2.0"      # org.jlleitschuh.gradle.ktlint wrapper around ktlint 1.x
 
 # --- android sdk -------------------------------------------------------------
@@ -25,7 +25,7 @@ androidxCore = "1.15.0"
 androidxLifecycle = "2.8.7"
 androidxRecyclerview = "1.3.2"
 androidxSecurityCrypto = "1.1.0-alpha06"
-coroutines = "1.9.0"
+coroutines = "1.11.0"
 material = "1.12.0"
 okhttp = "4.12.0"
 # JSON: kotlinx-serialization was chosen over Moshi because
@@ -34,7 +34,7 @@ okhttp = "4.12.0"
 #   * the same @Serializable models work unchanged in the pure-JVM :core module and in :app,
 #   * it is maintained by JetBrains alongside the Kotlin version we compile with,
 #   * Hik-Connect responses are plain JSON objects; we need no Moshi-only adapters.
-serialization = "1.7.3"
+serialization = "1.12.0"
 
 # --- test libraries ----------------------------------------------------------
 androidxJunit = "1.2.1"

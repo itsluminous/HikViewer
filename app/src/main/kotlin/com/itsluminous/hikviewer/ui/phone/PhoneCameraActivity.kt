@@ -39,8 +39,9 @@ import java.time.LocalDateTime
  * alone, as large as the screen allows (`layout-land`). Swiping the picture switches camera in
  * both. A rotation recreates the Activity with the other layout while the [PhoneCameraViewModel]
  * keeps the camera, the mode and the recorded engine, so footage resumes at the same position;
- * the controls that have no view in landscape are simply absent from the binding there. A TV
- * never shows this screen.
+ * the controls that have no view in landscape are simply absent from the binding there. The tile
+ * menu's Playback opens the same screen in its recorded mode ([EXTRA_PLAYBACK]), so footage too
+ * follows the phone instead of forcing it sideways. A TV never shows this screen.
  */
 class PhoneCameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPhoneCameraBinding
@@ -64,6 +65,7 @@ class PhoneCameraActivity : AppCompatActivity() {
                 graph.arrangementStore,
                 intent.getIntExtra(FullscreenActivity.EXTRA_INDEX, 0),
                 graph.playbackFactory,
+                startInPlayback = intent.getBooleanExtra(EXTRA_PLAYBACK, false),
             ) { vm ->
                 graph.playbackFactory.create(
                     opener = { camera, quality, onStatus -> graph.account.openStream(camera, quality, onStatus) },
@@ -208,10 +210,20 @@ class PhoneCameraActivity : AppCompatActivity() {
 
     /** Intent plumbing; shares [FullscreenActivity.EXTRA_INDEX] so the grid refocuses the same way. */
     companion object {
-        /** Intent to open camera [index] (grid position) live with its timeline. */
+        /** Boolean: open on the camera's recorded footage (the tile menu's Playback) instead of live. */
+        const val EXTRA_PLAYBACK: String = "playback"
+
+        /**
+         * Intent to open camera [index] (grid position): live with its timeline, or, with [playback],
+         * on its recorded footage. Both follow the phone's orientation; the TV's
+         * [com.itsluminous.hikviewer.ui.playback.PlaybackActivity] is never used on a phone.
+         */
         fun intent(
             context: Context,
             index: Int,
-        ): Intent = Intent(context, PhoneCameraActivity::class.java).putExtra(FullscreenActivity.EXTRA_INDEX, index)
+            playback: Boolean = false,
+        ): Intent = Intent(context, PhoneCameraActivity::class.java)
+            .putExtra(FullscreenActivity.EXTRA_INDEX, index)
+            .putExtra(EXTRA_PLAYBACK, playback)
     }
 }

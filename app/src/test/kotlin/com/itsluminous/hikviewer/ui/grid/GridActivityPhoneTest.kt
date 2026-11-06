@@ -99,6 +99,21 @@ class GridActivityPhoneTest {
         }
     }
 
+    /** The tile menu's Playback never forces a phone sideways: it opens the camera screen in its recorded mode. */
+    @Test
+    fun `the menu's Playback entry opens the phone camera screen in playback mode`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, _ ->
+                a.onTileAction(2, TileAction.PLAYBACK)
+                ShadowLooper.idleMainLooper()
+                val next = shadowOf(a).nextStartedActivity
+                assertThat(next.component!!.className).isEqualTo(PhoneCameraActivity::class.java.name)
+                assertThat(next.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(2)
+                assertThat(next.getBooleanExtra(PhoneCameraActivity.EXTRA_PLAYBACK, false)).isTrue()
+            }
+        }
+    }
+
     /** 1 + 6 holds seven tiles upright; turned it is drawn as 1 + 5 and the seventh tile waits, unseen, in the arrangement. */
     @Test
     fun `turning the phone evicts the last tile of an even hero layout and turning back restores it`() {

@@ -40,6 +40,11 @@ enum class PhoneCameraMode {
  * stops the live stream and opens recorded footage at that time; [goLive]
  * closes the footage and reopens the live stream. Switching camera (swipe) always comes back to
  * live: the new camera's footage is listed again so the bar shows its own recordings.
+ *
+ * Opened from the tile menu's Playback entry ([startInPlayback]), the screen begins in
+ * [PhoneCameraMode.PLAYBACK] instead: the live stream is never opened and the engine plays the
+ * day's footage from where the TV playback screen would (near the end of today's recording). The
+ * phone keeps its orientation either way; the Activity's two layouts do the rest.
  */
 class PhoneCameraViewModel(
     private val account: AccountRepository,
@@ -47,6 +52,8 @@ class PhoneCameraViewModel(
     arrangement: GridArrangementStore,
     startIndex: Int,
     private val factory: PlaybackFactory,
+    /** True to open on recorded footage rather than the live stream. */
+    startInPlayback: Boolean = false,
     private val today: () -> LocalDate = { LocalDate.now() },
     /** Where recording searches run; a test dispatcher in tests. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -96,6 +103,12 @@ class PhoneCameraViewModel(
 
     init {
         rebuildRecorded()
+        if (startInPlayback) {
+            recordedFlow.value?.let { engine ->
+                modeFlow.value = PhoneCameraMode.PLAYBACK
+                activePlayerFlow.value = engine.player
+            }
+        }
     }
 
     /** Swipe: [delta] cameras on, wrapping around; back to live. */

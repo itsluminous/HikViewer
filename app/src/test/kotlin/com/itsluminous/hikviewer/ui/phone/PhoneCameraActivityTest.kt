@@ -1,6 +1,8 @@
 package com.itsluminous.hikviewer.ui.phone
 
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -263,6 +265,89 @@ class PhoneCameraActivityTest {
                 assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
                 assertThat(a.text(R.id.time_label)).startsWith("12:00")
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+            }
+        }
+    }
+
+    /**
+     * The tile menu's Playback on a phone held upright: the portrait layout in its recorded state,
+     * footage playing under the bar, no live stream, and the phone is not forced sideways. A turn
+     * shows the picture alone at the same position and speed; upright again, the bar is back.
+     */
+    @Test
+    fun `opened for playback upright it plays footage under the bar and a turn keeps position and speed`() {
+        val intent = PhoneCameraActivity.intent(app, 1, playback = true)
+        ActivityScenario.launch<PhoneCameraActivity>(intent).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            val lateEvening = LocalDate.now().atTime(23, 55) // 5 min before the last segment's end
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+                assertThat(a.resources.configuration.orientation).isEqualTo(Configuration.ORIENTATION_PORTRAIT)
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(account.opened).isEmpty()
+                assertThat(
+                    account.playbackOpened
+                        .single()
+                        .second.begin,
+                ).isEqualTo(lateEvening)
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
+                assertThat(a.findViewById<View>(R.id.speed_button).isEnabled).isTrue()
+                assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+                assertThat(a.text(R.id.time_label)).startsWith("23:5")
+                a.findViewById<View>(R.id.speed_button).performClick() // 1x -> +2x
+                ShadowLooper.idleMainLooper()
+                assertThat(a.text(R.id.speed_button)).isEqualTo("+2x")
+            }
+
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            awaitUi { account.playbackOpened.size >= 2 }
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isFalse()
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.index.value).isEqualTo(1)
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(
+                    vm.recorded.value!!
+                        .state.value.speed.label,
+                ).isEqualTo("+2x")
+                assertThat(a.text(R.id.time_label)).startsWith("23:5")
+                assertThat(account.opened).isEmpty() // still no live stream
+            }
+
+            RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
+            scenario.recreate()
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
+                assertThat(a.text(R.id.speed_button)).isEqualTo("+2x")
+                assertThat(a.text(R.id.time_label)).startsWith("23:5")
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
+            }
+        }
+    }
+
+    /** Playback asked for with the phone already sideways: the picture alone, on footage, Back returns the index. */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `opened for playback sideways it is fullscreen footage`() {
+        val intent = PhoneCameraActivity.intent(app, 2, playback = true)
+        ActivityScenario.launch<PhoneCameraActivity>(intent).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.resources.configuration.orientation).isEqualTo(Configuration.ORIENTATION_LANDSCAPE)
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(vm.camera!!.channelNo).isEqualTo(3)
+                assertThat(account.opened).isEmpty()
+                val frame = a.findViewById<View>(R.id.video_frame)
+                assertThat(frame.width).isEqualTo(frame.height * 16 / 9)
+                assertThat(a.text(R.id.time_label)).startsWith("23:5")
+                a.finish()
+                assertThat(shadowOf(a).resultIntent.getIntExtra("index", -1)).isEqualTo(2)
             }
         }
     }

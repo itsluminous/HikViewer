@@ -62,14 +62,18 @@ class PhoneCameraViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun TestScope.viewModel(start: Int = 1) = PhoneCameraViewModel(
+    private fun TestScope.viewModel(
+        start: Int = 1,
+        playback: Boolean = false,
+    ) = PhoneCameraViewModel(
         graph.account,
         graph.settingsStore,
         graph.arrangementStore,
         start,
         graph.playbackFactory,
-        { today },
-        dispatcher,
+        startInPlayback = playback,
+        today = { today },
+        io = dispatcher,
         clock = { dispatcher.scheduler.currentTime }, // the seek debounce follows the test scheduler
     ) { _ ->
         graph.playbackFactory.create(
@@ -97,6 +101,30 @@ class PhoneCameraViewModelTest {
             vm.live.players.value
                 .single(),
         )
+        vm.onStop()
+        vm.live.release()
+    }
+
+    /** The tile menu's Playback: footage from the start, the live stream never opened, Live still available. */
+    @Test
+    fun `asked for playback it opens footage near the end of today and never the live stream`() = runTest(dispatcher) {
+        val vm = viewModel(start = 1, playback = true)
+        assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+        vm.onStart()
+        settle()
+        assertThat(account.opened).isEmpty()
+        assertThat(account.searched.single().second).isEqualTo(today)
+        val window = account.playbackOpened.single().second
+        assertThat(window.begin).isEqualTo(today.atTime(23, 55)) // 5 min before the last segment's end
+        assertThat(vm.activePlayer.value).isSameInstanceAs(vm.recorded.value!!.player)
+        assertThat(
+            vm.recorded.value!!
+                .state.value.phase,
+        ).isEqualTo(PlaybackPhase.PLAYING)
+        vm.goLive()
+        settle()
+        assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.LIVE)
+        assertThat(account.opened.map { it.first.channelNo }).containsExactly(2)
         vm.onStop()
         vm.live.release()
     }

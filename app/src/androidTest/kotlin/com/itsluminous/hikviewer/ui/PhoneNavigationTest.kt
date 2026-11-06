@@ -9,10 +9,12 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.espresso.action.ViewActions.swipeLeft
 import androidx.test.espresso.action.ViewActions.swipeRight
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -35,6 +37,7 @@ import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.Description
 import org.hamcrest.Matcher
+import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.anyOf
 import org.hamcrest.Matchers.not
 import org.hamcrest.TypeSafeMatcher
@@ -122,7 +125,7 @@ class PhoneNavigationTest {
     fun tappingATileOpensThePortraitScreenWhereSwipesSwitchCameraAndTheBarScrubs() {
         onView(tile(1)).perform(click())
         onView(withId(R.id.live_dot)).check(matches(isDisplayed()))
-        onView(withText("LIVE")).check(doesNotExist()) // the dot alone says whether pictures arrive
+        onView(liveTextOnThePicture()).check(doesNotExist()) // the dot alone says whether pictures arrive
         onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
         val phone = resumedActivity()
         assert(phone is PhoneCameraActivity) { "expected the phone camera screen, got $phone" }
@@ -166,7 +169,7 @@ class PhoneNavigationTest {
         onView(withId(R.id.time_bar)).check(doesNotExist())
         onView(withId(R.id.speed_button)).check(doesNotExist())
         onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
-        onView(withText("LIVE")).check(doesNotExist()) // still the footage, and no text badge either way
+        onView(liveTextOnThePicture()).check(doesNotExist()) // still the footage, and no text badge either way
         onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
         val frame = sideways.findViewById<View>(R.id.video_frame)
         assert(frame.width == frame.height * 16 / 9) { "sideways picture is ${frame.width}x${frame.height}, not 16:9" }
@@ -181,6 +184,45 @@ class PhoneNavigationTest {
         pressBack()
         onView(withId(R.id.grid)).check(matches(isDisplayed()))
     }
+
+    /**
+     * Playback from the tile menu on a phone held upright stays upright: the camera screen in its
+     * recorded mode, footage under the bar. Turned, it is the footage alone, at the same position.
+     */
+    @Test
+    fun playbackFromTheTileMenuRespectsOrientation() {
+        onView(tile(1)).perform(longClick())
+        onView(withText(R.string.tile_action_playback)).perform(click())
+        waitFor(SEGMENTS_MILLIS)
+        val phone = resumedActivity()
+        assert(phone is PhoneCameraActivity) { "expected the phone camera screen, got $phone" }
+        assert(phone.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) { "not portrait" }
+        assert((phone as PhoneCameraActivity).hasTimeline) { "the portrait layout has the time bar" }
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
+        onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
+        onView(withId(R.id.live_button)).check(matches(isEnabled())) // footage, so Live is available
+        onView(withId(R.id.speed_button)).check(matches(isEnabled()))
+        onView(withId(R.id.time_label)).check(matches(withText(startsWith("23:5")))) // near the day's end
+        onView(liveTextOnThePicture()).check(doesNotExist())
+
+        rotate(ROTATION_LANDSCAPE)
+        val sideways = resumedActivity()
+        assert(sideways is PhoneCameraActivity) { "expected the phone camera screen sideways, got $sideways" }
+        assert(sideways.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) { "not landscape" }
+        onView(withId(R.id.time_bar)).check(doesNotExist())
+        onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
+        onView(withId(R.id.time_label)).check(matches(withText(startsWith("23:5"))))
+
+        rotate(ROTATION_PORTRAIT)
+        onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
+        onView(withId(R.id.time_label)).check(matches(withText(startsWith("23:5"))))
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
+    /** A "LIVE" label over the picture (the Live button below it, all caps by theme, is not one). */
+    private fun liveTextOnThePicture(): Matcher<View> =
+        allOf(withText("LIVE"), isDescendantOfA(withId(R.id.video_frame)))
 
     private fun resumedActivity(): android.app.Activity {
         lateinit var activity: android.app.Activity

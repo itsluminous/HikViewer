@@ -365,10 +365,19 @@ class GridActivity : AppCompatActivity() {
             )
     }
 
+    /**
+     * Playback: the TV gets the D-pad playback screen, always sideways; a phone gets its camera
+     * screen in recorded mode, which follows the phone (video over the bar upright, the picture
+     * alone sideways) and hands the tile index back like the live screen does.
+     */
     private fun openPlayback(position: Int) {
         val camera = (viewModel.state.value as? GridUiState.Ready)?.cameras?.getOrNull(position) ?: return
         viewModel.focusedIndex = position
-        startActivity(PlaybackActivity.intent(this, camera.key))
+        if (television) {
+            startActivity(PlaybackActivity.intent(this, camera.key))
+        } else {
+            fullscreen.launch(PhoneCameraActivity.intent(this, position, playback = true))
+        }
     }
 
     /**

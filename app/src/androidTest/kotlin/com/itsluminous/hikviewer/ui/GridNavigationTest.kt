@@ -106,20 +106,19 @@ class GridNavigationTest {
     }
 
     /** Gives the matched view focus on the main thread, the way a D-pad move would. */
-    private fun takeFocus(): ViewAction =
-        object : ViewAction {
-            override fun getConstraints(): Matcher<View> = isDisplayed()
+    private fun takeFocus(): ViewAction = object : ViewAction {
+        override fun getConstraints(): Matcher<View> = isDisplayed()
 
-            override fun getDescription(): String = "request focus"
+        override fun getDescription(): String = "request focus"
 
-            override fun perform(
-                uiController: UiController,
-                view: View,
-            ) {
-                check(view.requestFocus()) { "view refused focus" }
-                uiController.loopMainThreadUntilIdle()
-            }
+        override fun perform(
+            uiController: UiController,
+            view: View,
+        ) {
+            check(view.requestFocus()) { "view refused focus" }
+            uiController.loopMainThreadUntilIdle()
         }
+    }
 
     /** Holds OK down past the long-press timeout, as a remote user does to open the tile menu. */
     private fun longOk() {

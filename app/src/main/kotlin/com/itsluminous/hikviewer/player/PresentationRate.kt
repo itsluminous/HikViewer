@@ -11,10 +11,12 @@ package com.itsluminous.hikviewer.player
  * software tiles' pictures already share a 15 Hz cadence ([RenderPacer]) so that one composition
  * shows them all; halving the presented rate halves the buffers each composition has to blend.
  * Whether that is worth a 6 fps picture on eight tiles is exactly what has to be measured
- * (`gfxinfo` janky %, idle CPU, with 16 tiles at the recorder's 12 fps), and the recorder was
- * offline the night this was written, so the policy ships disabled: [divisor] answers
- * [FULL_RATE] for every tile, and the plumbing ([TileDecoder.presentEvery], the coordinator's
- * assignment) is in place for the measurement. `docs/FOLLOW-UPS.md` has the recipe.
+ * (`gfxinfo` janky %, idle CPU, with 16 tiles at the recorder's 12 fps). On the 1 GB TV
+ * emulator (software composer, 16 real cameras, round 9) it saved nothing measurable: janky %
+ * moved 4 to 8 points and SurfaceFlinger + app CPU 30 % to 24 to 31 %, below the 10-point /
+ * 15 % bar, so the policy ships disabled: [divisor] answers [FULL_RATE] for every tile, and the
+ * plumbing ([TileDecoder.presentEvery], the coordinator's assignment) is in place for the
+ * MiTV measurement. `docs/FOLLOW-UPS.md` has the numbers and the recipe.
  *
  * Rules once enabled: with [REDUCED_RATE_TILE_THRESHOLD] tiles or fewer every tile presents at
  * the stream's rate; above it the software grid tiles present every [REDUCED_DIVISOR]th picture

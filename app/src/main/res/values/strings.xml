@@ -108,7 +108,7 @@
     <string name="settings_donate_failed">No UPI app on this device. Pay to this UPI id from a phone:</string>
     <string name="settings_section_tag" translatable="false">section</string>
     <string name="url_source_code" translatable="false">https://github.com/itsluminous/HikViewer</string>
-    <string name="url_donate_upi" translatable="false">upi://pay?pa=electricprakash@axisb&amp;cn=ClearSMS</string>
+    <string name="url_donate_upi" translatable="false">upi://pay?pa=electricprakash@axisb&amp;cn=HikViewer</string>
     <string name="upi_id" translatable="false">electricprakash@axisb</string>
     <string name="settings_logout">Logout</string>
     <string name="settings_logout_confirm">Sign out and forget the saved settings on this device?</string>

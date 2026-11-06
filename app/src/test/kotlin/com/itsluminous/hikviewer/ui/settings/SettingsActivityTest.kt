@@ -422,7 +422,7 @@ class SettingsActivityTest {
                 donate.performClick()
                 val upi = shadowOf(a).nextStartedActivity
                 assertThat(upi.action).isEqualTo(Intent.ACTION_VIEW)
-                assertThat(upi.data).isEqualTo(Uri.parse("upi://pay?pa=electricprakash@axisb&cn=ClearSMS"))
+                assertThat(upi.data).isEqualTo(Uri.parse("upi://pay?pa=electricprakash@axisb&cn=HikViewer"))
                 assertThat(ShadowDialog.getLatestDialog()).isNull()
             }
         }

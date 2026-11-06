@@ -193,7 +193,7 @@ Markdown files are not hard-wrapped: one paragraph or one list item is one line,
 
 - `verify` runs `./gradlew ci` and uploads test, static-analysis and coverage reports.
 - `build` assembles debug and release APKs and uploads them (`apk-debug`, `apk-release-debug-signed`).
-- `instrumented` runs the Espresso suite on an API 34 Android TV emulator and on an API 34 phone emulator (the D-pad suites skip themselves on the phone, the touch suite on the TV); it only runs on pushes to `main` and manual runs because the emulators take several minutes to boot.
+- `instrumented` runs the Espresso suite on an API 34 Android TV emulator and on an API 34 phone emulator (the D-pad suites skip themselves on the phone, the touch suite on the TV); because the emulators take several minutes to boot it runs on pushes to `main`, on manual runs, and on pull requests that change code under `app/` or `core/`, the Gradle files or the workflows (a `changes` job with `dorny/paths-filter` decides); a docs-only pull request skips it.
 
 Dependabot (`.github/dependabot.yml`) opens weekly PRs for the version catalog and the actions.
 

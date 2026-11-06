@@ -3,8 +3,10 @@
 #   verify       - every quality gate (`./gradlew ci`): unit tests, ktlint, detekt, Android Lint, Kover.
 #   build        - debug + release APKs (release is signed with the debug key here; real signing
 #                  happens in release.yml on tags).
-#   instrumented - Espresso tests on an Android TV emulator and on a phone emulator. Slow, so only on pushes to main and
-#                  manual runs; pull requests rely on verify + build.
+#   changes      - decides whether a pull request touched anything the Espresso suites could catch.
+#   instrumented - Espresso tests on an Android TV emulator and on a phone emulator. Slow, so they run on pushes
+#                  to main, on manual runs, and on pull requests that change app or core code, Gradle files or
+#                  these workflows; a docs-only pull request relies on verify + build.
 name: CI
 
 on:
@@ -114,10 +116,38 @@ jobs:
           name: apk-release-debug-signed
           path: app/build/outputs/apk/release/app-release.apk
 
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - 'app/**'
+              - 'core/**'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '*.gradle.kts'
+              - 'gradle.properties'
+              - '.github/workflows/**'
+
   instrumented:
     name: Espresso on ${{ matrix.name }}
-    needs: verify
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [verify, changes]
+    # Always on main and on demand; on a pull request only when the filter above saw code, build or workflow
+    # changes (a dependency bump counts, since those break at runtime more often than in unit tests).
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'pull_request' && needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

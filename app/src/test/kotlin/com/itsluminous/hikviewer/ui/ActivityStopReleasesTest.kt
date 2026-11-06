@@ -65,12 +65,12 @@ class ActivityStopReleasesTest {
         app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
     }
 
-    /** Streams run on worker threads; pumps the main looper until [condition] holds (max 5 s). */
+    /** Streams run on worker threads; pumps the main looper until [condition] holds (max [UI_DEADLINE_MILLIS]). */
     private fun await(condition: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + 5_000
+        val deadline = System.currentTimeMillis() + UI_DEADLINE_MILLIS
         while (!condition() && System.currentTimeMillis() < deadline) {
             ShadowLooper.idleMainLooper()
-            Thread.sleep(10)
+            Thread.sleep(UI_POLL_MILLIS)
         }
         ShadowLooper.idleMainLooper()
         assertWithMessage(

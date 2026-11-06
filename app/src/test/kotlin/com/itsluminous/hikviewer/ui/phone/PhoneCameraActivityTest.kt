@@ -17,6 +17,8 @@ import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
+import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
 import com.itsluminous.hikviewer.ui.playback.SeekController
 import com.itsluminous.hikviewer.ui.playback.TimeBarView
 import org.junit.Before
@@ -53,10 +55,10 @@ class PhoneCameraActivityTest {
     }
 
     private fun awaitUi(condition: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + 5_000
+        val deadline = System.currentTimeMillis() + UI_DEADLINE_MILLIS
         while (!condition() && System.currentTimeMillis() < deadline) {
             ShadowLooper.idleMainLooper()
-            Thread.sleep(10)
+            Thread.sleep(UI_POLL_MILLIS)
         }
         ShadowLooper.idleMainLooper()
         assertThat(condition()).isTrue()

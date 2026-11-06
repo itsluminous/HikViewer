@@ -120,6 +120,19 @@ class GridNavigationTest {
         }
     }
 
+    /**
+     * A short OK press: down and up with the same timestamp, injected back to back. Espresso's
+     * `pressKey` syncs with the main thread between the two, and on a slow CI emulator that gap
+     * passed the 400 ms long-press timeout, so a click opened the tile's long-press menu instead.
+     */
+    private fun ok() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val now = android.os.SystemClock.uptimeMillis()
+        instrumentation.sendKeySync(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+        instrumentation.sendKeySync(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER, 0))
+        instrumentation.waitForIdleSync()
+    }
+
     /** Holds OK down past the long-press timeout, as a remote user does to open the tile menu. */
     private fun longOk() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -145,7 +158,7 @@ class GridNavigationTest {
     /** Chooses entry [index] of the open popup menu with DOWN presses and OK (keys, never a tap: see [pickMove]). */
     private fun pickPopupEntry(index: Int) {
         repeat(index) { dpad(KeyEvent.KEYCODE_DPAD_DOWN) }
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         waitFor(POPUP_DISMISS_MILLIS)
     }
 
@@ -238,7 +251,7 @@ class GridNavigationTest {
     fun okOpensFullscreenAndBackReturnsToTheSameTile() {
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         onView(withId(R.id.left_zone)).check(matches(isDisplayed()))
         // The "switch camera" hint follows the top bar's timer: shown on a key, gone after the timeout.
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -255,7 +268,7 @@ class GridNavigationTest {
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
         onView(withId(R.id.settings_button)).check(matches(hasFocus()))
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         onView(withId(R.id.logout)).perform(
             androidx.test.espresso.action.ViewActions
                 .scrollTo(),
@@ -282,7 +295,7 @@ class GridNavigationTest {
         onView(tile(0)).check(matches(tileNamed("Camera 2")))
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         onView(tile(5)).check(matches(allOf(hasFocus(), tileNamed("Camera 1"))))
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER) // drop
+        ok() // drop
         onView(withId(R.id.move_hint)).check(matches(withEffectiveVisibility(Visibility.GONE)))
         onView(withId(R.id.grid)).check(matches(isDisplayed())) // OK dropped; it did not open fullscreen
         val serial = FakeCloudServices.SERIAL
@@ -295,7 +308,7 @@ class GridNavigationTest {
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         // 12 cameras: the menu lists AUTO, 3x3, 4x3 and 1+5 … 1+11 (1+15 and 4x4 need more cameras).
         pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.HERO_1_5))
         onView(tile(0)).check(matches(tileNamed("Camera 1")))
@@ -305,7 +318,7 @@ class GridNavigationTest {
         onView(tile(0)).perform(takeFocus())
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.AUTO))
         onView(tile(0)).check(matches(tileNamed("Camera 2")))
         onView(tile(5)).check(matches(tileNamed("Camera 1")))
@@ -323,7 +336,7 @@ class GridNavigationTest {
         onView(withText("Camera 6")).inRoot(isDialog()).check(matches(isDisplayed()))
         onView(withText("Camera 2")).inRoot(isDialog()).check(matches(isChecked()))
         repeat(4) { dpad(KeyEvent.KEYCODE_DPAD_DOWN) }
-        dpad(KeyEvent.KEYCODE_DPAD_CENTER)
+        ok()
         waitFor(POPUP_DISMISS_MILLIS)
         onView(tile(1)).check(matches(allOf(hasFocus(), tileNamed("Camera 6"))))
         onView(tile(5)).check(matches(tileNamed("Camera 2")))

@@ -69,7 +69,9 @@ repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
   burst of presses or a long hold costs one reconnect. On a phone, drag the bar: the finger's
   position is the time. Times are the recorder's own clock.
 - **Hidden top bar on TV**: any key shows it, it hides 5 s after the last key, and it never steals
-  focus. UP from the top row of tiles reaches its layout and settings buttons. On a phone the bar is
+  focus. UP from the top row of tiles reaches its layout and settings buttons. If the
+  bar then sits idle for 5 s with focus on it (a layout was picked and nothing else), it hides and
+  focus goes to the first tile, without the focus border until the next key. On a phone the bar is
   always on screen (top in portrait, left edge in landscape, Layout and Settings as icons) because
   there is no D-pad to summon it.
 - **Focus border that gets out of the way**: the focused tile's border hides on the same 5 s timer

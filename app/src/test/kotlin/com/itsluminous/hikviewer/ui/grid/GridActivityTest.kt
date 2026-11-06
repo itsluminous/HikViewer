@@ -138,6 +138,34 @@ class GridActivityTest {
     }
 
     @Test
+    fun `an idle top bar hands focus to the first tile without its border and hides`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                // Focus somewhere other than the first tile, then go up into the bar and pick
+                // something there; the user then just watches.
+                assertThat(grid.getChildAt(2).requestFocus()).isTrue()
+                a.key(KeyEvent.KEYCODE_DPAD_UP)
+                val layout = a.findViewById<View>(R.id.layout_button)
+                assertThat(layout.requestFocus()).isTrue()
+                val bar = a.findViewById<View>(R.id.top_bar)
+                assertThat(bar.visibility).isEqualTo(View.VISIBLE)
+                ShadowLooper.idleMainLooper(900, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(bar.visibility).isEqualTo(View.VISIBLE)
+                assertThat(layout.isFocused).isTrue()
+                ShadowLooper.idleMainLooper(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(bar.visibility).isEqualTo(View.INVISIBLE)
+                val first = grid.childAtPosition(0) as CameraTileView
+                assertThat(first.isFocused).isTrue()
+                // Moved by the app while the user was idle: no border until the next key.
+                assertThat(first.focusBorderVisible).isFalse()
+                assertThat(grid.focusVisualShown).isFalse()
+                a.key(KeyEvent.KEYCODE_DPAD_CENTER)
+                assertThat(first.focusBorderVisible).isTrue()
+            }
+        }
+    }
+
+    @Test
     fun `clicking a tile opens fullscreen for that index`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->

@@ -112,4 +112,69 @@ class InactivityTimerTest {
         assertThat(shown).isFalse()
         assertThat(timer.isVisible).isFalse()
     }
+
+    @Test
+    fun `an idle visual that holds focus hides once it has released it`() {
+        var released = 0
+        val timer =
+            InactivityTimer(
+                bar,
+                autoHideMillis = 5_000,
+                schedule = { r, ms -> scheduled = r to ms },
+                cancel = { scheduled = null },
+                releaseFocus = {
+                    released++
+                    button.clearFocus()
+                    true
+                },
+            )
+        timer.onUserActivity()
+        assertThat(button.requestFocus()).isTrue()
+        fire()
+        assertThat(released).isEqualTo(1)
+        assertThat(timer.isVisible).isFalse()
+        assertThat(scheduled).isNull()
+    }
+
+    @Test
+    fun `an idle visual that cannot release focus stays and re-arms`() {
+        var asked = 0
+        val timer =
+            InactivityTimer(
+                bar,
+                autoHideMillis = 5_000,
+                schedule = { r, ms -> scheduled = r to ms },
+                cancel = { scheduled = null },
+                releaseFocus = {
+                    asked++
+                    false
+                },
+            )
+        timer.onUserActivity()
+        assertThat(button.requestFocus()).isTrue()
+        fire()
+        assertThat(asked).isEqualTo(1)
+        assertThat(timer.isVisible).isTrue()
+        assertThat(scheduled?.second).isEqualTo(5_000)
+    }
+
+    @Test
+    fun `an idle visual without focus is never asked to release it`() {
+        var asked = 0
+        val timer =
+            InactivityTimer(
+                bar,
+                autoHideMillis = 5_000,
+                schedule = { r, ms -> scheduled = r to ms },
+                cancel = { scheduled = null },
+                releaseFocus = {
+                    asked++
+                    true
+                },
+            )
+        timer.onUserActivity()
+        fire()
+        assertThat(asked).isEqualTo(0)
+        assertThat(timer.isVisible).isFalse()
+    }
 }

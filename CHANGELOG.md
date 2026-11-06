@@ -66,6 +66,9 @@ All notable changes to HikViewer are recorded here. The format follows
 
 ### Fixed
 
+- On the TV the top bar stayed on screen for good once focus was in it (after picking a layout,
+  few people walk back down to the cameras). After 5 s idle it now hides and focus moves to the
+  first tile, without showing the focus border until the next key.
 - Recorded playback turned solid green after a seek or at a fast speed (-10x reproduced it within
   five seconds): every hop and seek reopened the stream into a running decoder, which then decoded
   P-frames whose reference picture it had never seen. Every reopen now flushes the decoder, resends

@@ -152,8 +152,27 @@ class CameraGridLayout
         ) {
             super.requestChildFocus(child, focused)
             setFocusedChildIndex(indexOfChild(child))
-            // Focus arriving (first render, back from another screen, a D-pad move) is activity too.
-            focusTimer.onUserActivity()
+            // Focus arriving (first render, back from another screen, a D-pad move) is activity too,
+            // unless the app moved it on its own while the user was idle (focusQuietly).
+            if (!quietFocus) focusTimer.onUserActivity()
+        }
+
+        private var quietFocus = false
+
+        /**
+         * Focuses the tile at [position] without showing its border: the app moved focus by
+         * itself while the user was idle (the TV's top bar handing focus back), so the border
+         * stays hidden until the next key or pointer event, like any other idle state. Returns
+         * whether the tile took focus.
+         */
+        fun focusQuietly(position: Int): Boolean {
+            val tile = childAtPosition(position) ?: return false
+            quietFocus = true
+            try {
+                return tile.requestFocus()
+            } finally {
+                quietFocus = false
+            }
         }
 
         /** Every key to a focused tile is dispatched through its ancestors: a press shows the border. */

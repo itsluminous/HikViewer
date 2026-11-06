@@ -156,7 +156,7 @@ class GridActivity : AppCompatActivity() {
     private fun placeBar() {
         val bar = binding.topBar
         if (television) {
-            topBar = InactivityTimer(bar, AppGraph.of(this).topBarAutoHideMillis)
+            topBar = InactivityTimer(bar, AppGraph.of(this).topBarAutoHideMillis, releaseFocus = ::leaveIdleBar)
             return
         }
         bar.visibility = View.VISIBLE
@@ -185,6 +185,15 @@ class GridActivity : AppCompatActivity() {
         }
         binding.grid.layoutParams = gridParams
     }
+
+    /**
+     * The top bar went idle with focus on one of its buttons: someone who picked a layout seldom
+     * walks back down to the cameras, so the bar would stay over the grid for good. Focus goes to
+     * the first tile instead, quietly (the border stays hidden: the user is idle), and the bar
+     * hides. Not while the layout menu or a dialog is open: that is a window of its own, the keys
+     * go there and never reach this activity's timer, so idle here does not mean idle there.
+     */
+    private fun leaveIdleBar(): Boolean = hasWindowFocus() && binding.grid.focusQuietly(0)
 
     /** Drops a bar button's text, keeping it as the content description, and shrinks it to its icon. */
     private fun iconOnly(button: MaterialButton) {

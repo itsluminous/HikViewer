@@ -6,7 +6,7 @@
 
 [versions]
 # --- build tooling -----------------------------------------------------------
-agp = "8.7.3"                # Android Gradle Plugin; compileSdk 35 needs >= 8.6
+agp = "9.5.1"                # Android Gradle Plugin; compileSdk 35 needs >= 8.6
 kotlin = "2.1.21"            # Kotlin 2.x with K2 compiler
 detekt = "1.23.8"
 kover = "0.9.1"

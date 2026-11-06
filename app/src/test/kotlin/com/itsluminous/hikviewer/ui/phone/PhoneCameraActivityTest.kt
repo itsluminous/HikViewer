@@ -3,6 +3,7 @@ package com.itsluminous.hikviewer.ui.phone
 import android.content.pm.PackageManager
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.test.core.app.ActivityScenario
@@ -68,7 +69,7 @@ class PhoneCameraActivityTest {
             scenario.onActivity { a ->
                 assertThat(a.hasTimeline).isTrue()
                 assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
-                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.VISIBLE)
+                a.assertNoLiveText()
                 assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isFalse()
                 assertThat(a.findViewById<View>(R.id.speed_button).isEnabled).isFalse()
                 assertThat(
@@ -95,7 +96,7 @@ class PhoneCameraActivityTest {
             scenario.onActivity { a ->
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
-                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.GONE)
+                a.assertNoLiveText()
                 assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
                 assertThat(
                     account.playbackOpened
@@ -106,7 +107,7 @@ class PhoneCameraActivityTest {
                 a.findViewById<View>(R.id.live_button).performClick()
                 ShadowLooper.idleMainLooper()
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.LIVE)
-                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isFalse()
             }
             awaitUi { account.opened.size == 2 }
         }
@@ -159,6 +160,23 @@ class PhoneCameraActivityTest {
             awaitUi { account.searched.size == 3 }
             scenario.onActivity { a -> assertThat(a.text(R.id.date_chip)).isEqualTo(LocalDate.now().toString()) }
         }
+    }
+
+    /**
+     * The picture carries no "LIVE" text in either mode: the tile's dot alone says whether pictures
+     * arrive, and the Live button's state says which stream it is.
+     */
+    private fun PhoneCameraActivity.assertNoLiveText() {
+        val frame = findViewById<ViewGroup>(R.id.video_frame)
+        val texts = ArrayList<String>()
+
+        fun walk(v: View) {
+            if (v is TextView) texts += v.text.toString()
+            if (v is ViewGroup) (0 until v.childCount).forEach { walk(v.getChildAt(it)) }
+        }
+        walk(frame)
+        assertThat(texts.filter { it.contains("LIVE", ignoreCase = true) }).isEmpty()
+        assertThat(findViewById<View>(R.id.live_dot).visibility).isEqualTo(View.VISIBLE)
     }
 
     private fun ActivityScenario<PhoneCameraActivity>.bar(): TimeBarView {
@@ -217,7 +235,7 @@ class PhoneCameraActivityTest {
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.index.value).isEqualTo(1)
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
-                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.GONE)
+                a.assertNoLiveText()
                 // The picture fills the height, 16:9, centred.
                 val frame = a.findViewById<View>(R.id.video_frame)
                 val root = a.findViewById<View>(R.id.root)
@@ -256,7 +274,7 @@ class PhoneCameraActivityTest {
             awaitUi { account.opened.isNotEmpty() }
             scenario.onActivity { a ->
                 assertThat(a.hasTimeline).isFalse()
-                assertThat(a.findViewById<View>(R.id.live_badge).visibility).isEqualTo(View.VISIBLE)
+                a.assertNoLiveText()
                 assertThat(a.findViewById<View>(R.id.help).visibility).isEqualTo(View.VISIBLE)
                 val frame = a.findViewById<View>(R.id.video_frame)
                 a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height / 2f)

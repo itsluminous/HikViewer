@@ -121,7 +121,8 @@ class PhoneNavigationTest {
     @Test
     fun tappingATileOpensThePortraitScreenWhereSwipesSwitchCameraAndTheBarScrubs() {
         onView(tile(1)).perform(click())
-        onView(withId(R.id.live_badge)).check(matches(isDisplayed()))
+        onView(withId(R.id.live_dot)).check(matches(isDisplayed()))
+        onView(withText("LIVE")).check(doesNotExist()) // the dot alone says whether pictures arrive
         onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
         val phone = resumedActivity()
         assert(phone is PhoneCameraActivity) { "expected the phone camera screen, got $phone" }
@@ -136,12 +137,10 @@ class PhoneNavigationTest {
         // The day's segments arrive from the fake; a tap in the middle of the bar is noon, inside one.
         waitFor(SEGMENTS_MILLIS)
         onView(withId(R.id.time_bar)).perform(click())
-        onView(withId(R.id.live_badge)).check(matches(not(isDisplayed())))
         onView(withId(R.id.live_button)).check(matches(isEnabled()))
         // Espresso clicks a hair left of the exact centre, so the playhead lands just before noon.
         onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
         onView(withId(R.id.live_button)).perform(click())
-        onView(withId(R.id.live_badge)).check(matches(isDisplayed()))
         onView(withId(R.id.live_button)).check(matches(not(isEnabled())))
 
         pressBack()
@@ -156,7 +155,7 @@ class PhoneNavigationTest {
         onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
         waitFor(SEGMENTS_MILLIS)
         onView(withId(R.id.time_bar)).perform(click())
-        onView(withId(R.id.live_badge)).check(matches(not(isDisplayed())))
+        onView(withId(R.id.live_button)).check(matches(isEnabled()))
         onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
 
         rotate(ROTATION_LANDSCAPE)
@@ -167,7 +166,7 @@ class PhoneNavigationTest {
         onView(withId(R.id.time_bar)).check(doesNotExist())
         onView(withId(R.id.speed_button)).check(doesNotExist())
         onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
-        onView(withId(R.id.live_badge)).check(matches(not(isDisplayed()))) // still the footage, not live
+        onView(withText("LIVE")).check(doesNotExist()) // still the footage, and no text badge either way
         onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
         val frame = sideways.findViewById<View>(R.id.video_frame)
         assert(frame.width == frame.height * 16 / 9) { "sideways picture is ${frame.width}x${frame.height}, not 16:9" }

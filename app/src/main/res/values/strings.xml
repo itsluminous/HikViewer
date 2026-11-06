@@ -100,7 +100,6 @@
     <string name="settings_handle">⇅</string>
 
     <!-- Phone single-camera screen -->
-    <string name="phone_live_badge">● LIVE</string>
     <string name="phone_live_button">Live</string>
     <string name="phone_day_back">Previous day</string>
     <string name="phone_day_forward">Next day</string>

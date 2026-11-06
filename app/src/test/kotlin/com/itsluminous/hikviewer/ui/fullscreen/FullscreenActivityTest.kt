@@ -2,6 +2,8 @@ package com.itsluminous.hikviewer.ui.fullscreen
 
 import android.app.Activity
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -71,7 +73,7 @@ class FullscreenActivityTest {
                 ShadowLooper.idleMainLooper()
                 assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 3")
                 a.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
-                a.findViewById<android.view.View>(R.id.right_zone).performClick()
+                a.findViewById<View>(R.id.right_zone).performClick()
                 ShadowLooper.idleMainLooper()
                 assertThat(a.findViewById<TextView>(R.id.name).text.toString()).isEqualTo("Camera 2")
                 // Streams start on worker threads: a camera switched away from before its coroutine
@@ -115,6 +117,25 @@ class FullscreenActivityTest {
                 a.finish()
                 // Index 1 is where the grid shows camera 1 in this arrangement, so that tile is refocused.
                 assertThat(shadowOf(a).resultIntent.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(1)
+            }
+        }
+    }
+
+    /** The dot in the tile's corner is the only liveness indicator: no text badge anywhere on the picture. */
+    @Test
+    fun `shows the live dot and no LIVE text`() {
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                assertThat(a.findViewById<View>(R.id.live_dot).visibility).isEqualTo(View.VISIBLE)
+                val texts = ArrayList<String>()
+
+                fun walk(v: View) {
+                    if (v is TextView) texts += v.text.toString()
+                    if (v is ViewGroup) (0 until v.childCount).forEach { walk(v.getChildAt(it)) }
+                }
+                walk(a.findViewById(android.R.id.content))
+                assertThat(texts.filter { it.contains("LIVE", ignoreCase = true) }).isEmpty()
             }
         }
     }

@@ -148,9 +148,12 @@ class PhoneCameraActivity : AppCompatActivity() {
         binding.video.cameraName = viewModel.camera?.name.orEmpty()
     }
 
+    /**
+     * Live or footage: the Live button and the bar's highlight say which; the picture carries no
+     * text badge, its dot alone tells whether pictures arrive (the grid's [com.itsluminous.hikviewer.player.TileLiveness]).
+     */
     private fun renderMode() {
         val live = viewModel.mode.value == PhoneCameraMode.LIVE
-        binding.liveBadge.visibility = if (live) View.VISIBLE else View.GONE
         binding.liveButton?.isEnabled = !live
         binding.speedButton?.isEnabled = !live
         binding.timeBar?.highlighted = !live

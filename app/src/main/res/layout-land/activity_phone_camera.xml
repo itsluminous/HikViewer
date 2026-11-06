@@ -23,20 +23,6 @@
             android:layout_height="match_parent" />
 
         <TextView
-            android:id="@+id/live_badge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="top|end"
-            android:layout_margin="8dp"
-            android:background="@drawable/label_background"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="2dp"
-            android:text="@string/phone_live_badge"
-            android:textColor="@color/accent"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-        <TextView
             android:id="@+id/status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

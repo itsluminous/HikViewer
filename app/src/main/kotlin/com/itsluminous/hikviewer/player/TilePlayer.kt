@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit
  * state only goes back to [TileState.Connecting] when there is really no picture: a stream
  * reconnect or a fresh start, never a mode change.
  *
- * Threading: [lock] guards the fields only. No codec is created or released while it is held —
+ * Threading: [lock] guards the fields only. No codec is created or released while it is held:
  * creation happens on the stream thread between two short critical sections (a [generation]
  * counter discards a decoder whose tile changed its mind meanwhile), and teardown goes to the
  * [releaser] ([DecoderReleaser] by default) so the main thread and the other stream threads never

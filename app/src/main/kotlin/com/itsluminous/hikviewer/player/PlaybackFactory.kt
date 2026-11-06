@@ -8,8 +8,8 @@ import java.util.concurrent.Future
 
 /**
  * Builds [PlaybackCoordinator]s (grids) and single [TilePlayer]s (recorded playback) for the
- * screens. The two seams that touch `MediaCodec` — codec name lookup and [TileDecoder]
- * construction — are constructor parameters so tests can run whole Activities under Robolectric
+ * screens. The two seams that touch `MediaCodec` (codec name lookup and [TileDecoder]
+ * construction) are constructor parameters so tests can run whole Activities under Robolectric
  * with recording stand-ins.
  */
 class PlaybackFactory(

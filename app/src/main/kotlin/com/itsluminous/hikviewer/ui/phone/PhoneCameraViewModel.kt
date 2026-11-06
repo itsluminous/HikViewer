@@ -33,7 +33,7 @@ enum class PhoneCameraMode {
  * The phone's single-camera screen: live picture on top, the day's time bar underneath. Live and
  * recorded footage share one surface, so exactly one player owns it at a time ([activePlayer]):
  * the live [PlaybackCoordinator] (one camera, hardware decoder) or the recorded engine, a
- * [PlaybackViewModel] embedded per camera on this ViewModel's scope — the same engine as the TV
+ * [PlaybackViewModel] embedded per camera on this ViewModel's scope, the same engine as the TV
  * playback screen, so seek, speed and day changes behave identically.
  *
  * Scrubbing the bar (a tap or a drag, debounced by the engine's [com.itsluminous.hikviewer.ui.playback.SeekController])

@@ -97,7 +97,7 @@
     <string name="settings_keep_screen_on">Keep screen on while HikViewer is open</string>
     <string name="settings_change_code">Change encryption password</string>
     <string name="settings_about">About</string>
-    <string name="settings_about_version">HikViewer %1$s — unofficial Hik-Connect client, MIT licence</string>
+    <string name="settings_about_version">HikViewer %1$s - unofficial Hik-Connect client, MIT licence</string>
     <string name="settings_logout">Logout</string>
     <string name="settings_logout_confirm">Sign out and forget the saved settings on this device?</string>
     <string name="settings_camera_signal">signal</string>

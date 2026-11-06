@@ -278,7 +278,7 @@ public class NalDecryptor(
      * the clear (only IDR, parameter sets and the long-term-reference P-slices, `nal_ref_idc` 3,
      * are encrypted). Three clear slices out of a thousand were therefore "decrypted" into garbage
      * (`frame_num` 223, order count 25336…): hardware decoders and ffmpeg conceal such a picture,
-     * the MiTV's software decoder stops producing output until it is rebuilt — the once-a-minute
+     * the MiTV's software decoder stops producing output until it is rebuilt: the once-a-minute
      * freeze of every software tile. So which header bytes are encrypted is learnt as the stream
      * goes ([hintSeen]/[hintMatched], same idea as the inter-slice sampler of HEADER_CLEAR): an
      * encrypted header byte passes the probe every time, a clear one almost never, and once a byte

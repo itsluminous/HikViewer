@@ -161,7 +161,7 @@ class FakeCloudServices(
 
         /**
          * The synthetic clip for the window's length (12 fps), presentation times from zero, then
-         * `Ended` and completion — the shape `PlaybackStream` produces.
+         * `Ended` and completion, the shape `PlaybackStream` produces.
          */
         override fun openPlayback(
             camera: Camera,

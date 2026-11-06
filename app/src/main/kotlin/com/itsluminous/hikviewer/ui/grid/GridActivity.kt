@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import android.util.TypedValue
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -63,6 +64,9 @@ class GridActivity : AppCompatActivity() {
     private var topBar: InactivityTimer? = null
     private var television = true
     private var portrait = false
+
+    /** Phone landscape: the status is stacked in short lines so the side bar stays icon-wide. */
+    private var compactStatus = false
     private val tileJobs = mutableListOf<Job>()
     private val tilesByKey = LinkedHashMap<String, CameraTileView>()
     private var pendingFocus: Int? = null
@@ -175,8 +179,11 @@ class GridActivity : AppCompatActivity() {
                 }
             bar.setPadding(0, resources.getDimensionPixelSize(R.dimen.side_bar_padding), 0, 0)
             binding.title.visibility = View.GONE
+            // Stacked status (LiveStatusText.compact): the bar must stay as wide as its icons.
+            compactStatus = true
             binding.status.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
             binding.status.gravity = android.view.Gravity.CENTER_HORIZONTAL
+            binding.status.setTextSize(TypedValue.COMPLEX_UNIT_SP, SIDE_BAR_STATUS_SP)
             buttons.forEach { button ->
                 button.setPadding(0, button.paddingTop, 0, button.paddingBottom)
                 button.layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -313,7 +320,9 @@ class GridActivity : AppCompatActivity() {
     }
 
     private fun updateLiveCount(players: List<TilePlayer>) {
-        binding.status.text = LiveStatusText.format(resources, TileLiveness.count(players.map { it.liveness.value }))
+        val counts = TileLiveness.count(players.map { it.liveness.value })
+        binding.status.text =
+            if (compactStatus) LiveStatusText.compact(resources, counts) else LiveStatusText.format(resources, counts)
     }
 
     /**
@@ -427,5 +436,8 @@ class GridActivity : AppCompatActivity() {
 
     private companion object {
         const val TAG = "HikViewer"
+
+        /** The stacked status in the side bar: small enough for "1 fps" to fit the bar's width in one line. */
+        const val SIDE_BAR_STATUS_SP = 12f
     }
 }

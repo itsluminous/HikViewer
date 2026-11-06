@@ -36,6 +36,20 @@ class LiveStatusTextTest {
     }
 
     @Test
+    fun `the compact form stacks a number over its word and leaves the camera total out`() {
+        val compact = { c: LivenessCounts -> LiveStatusText.compact(resources, c).split("\n") }
+        assertThat(compact(LivenessCounts(cameras = 12, live = 12, atOneFps = 0)))
+            .containsExactly("12", "live")
+            .inOrder()
+        assertThat(compact(LivenessCounts(cameras = 16, live = 12, atOneFps = 4)))
+            .containsExactly("12", "live", "4", "1 fps")
+            .inOrder()
+        assertThat(compact(LivenessCounts(cameras = 9, live = 7, atOneFps = 0))).containsExactly("7", "live").inOrder()
+        // No line is wider than the bar's icons: "1 fps" is the longest word, two digits the longest number.
+        compact(LivenessCounts(cameras = 16, live = 10, atOneFps = 6)).forEach { assertThat(it.length).isAtMost(5) }
+    }
+
+    @Test
     fun `an empty grid is not all live`() {
         assertThat(text(LivenessCounts(cameras = 0, live = 0, atOneFps = 0))).isEqualTo("0 cameras · 0 live")
     }

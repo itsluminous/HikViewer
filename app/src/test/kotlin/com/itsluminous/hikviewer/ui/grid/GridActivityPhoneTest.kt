@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -95,6 +96,45 @@ class GridActivityPhoneTest {
                 val next = shadowOf(a).nextStartedActivity
                 assertThat(next.component!!.className).isEqualTo(PhoneCameraActivity::class.java.name)
                 assertThat(next.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(1)
+            }
+        }
+    }
+
+    /**
+     * Sideways, the status is stacked (a number, then its word) so the bar is only as wide as its
+     * icons; upright it is the TV's one-line text. Robolectric's players never decode, so every
+     * tile counts as not live and the stacked text reads "0" / "live".
+     */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `landscape stacks the status in short lines and the bar is no wider than its dimen`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, _ ->
+                val bar = a.findViewById<LinearLayout>(R.id.top_bar)
+                val status = a.findViewById<TextView>(R.id.status)
+                val width = a.resources.getDimensionPixelSize(R.dimen.side_bar_width)
+                ShadowLooper.idleMainLooper()
+                assertThat(bar.width).isEqualTo(width)
+                assertThat(status.width).isAtMost(width)
+                val lines = status.text.toString().split("\n")
+                assertThat(lines).containsExactly("0", "live").inOrder()
+                lines.forEach { assertThat(it.length).isAtMost(6) }
+                // Each line fits the bar: the TextView draws exactly the lines given, none wrapped.
+                assertThat(status.layout.lineCount).isEqualTo(lines.size)
+                listOf(R.id.layout_button, R.id.settings_button).forEach { id ->
+                    assertThat(a.findViewById<View>(id).width).isAtMost(width)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `portrait keeps the one-line status`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, _ ->
+                val status = a.findViewById<TextView>(R.id.status)
+                assertThat(status.text.toString()).doesNotContain("\n")
+                assertThat(status.text.toString()).isEqualTo("6 cameras · 0 live")
             }
         }
     }

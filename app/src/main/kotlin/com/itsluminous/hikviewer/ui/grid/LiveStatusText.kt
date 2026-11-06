@@ -31,5 +31,28 @@ object LiveStatusText {
         return parts.joinToString(resources.getString(R.string.grid_status_separator))
     }
 
+    /**
+     * The same counts stacked for the phone's landscape side bar, which is only as wide as its
+     * icons: a number on one line and its word on the next ("12" / "live", then "4" / "1 fps" when
+     * some tiles show stills). The camera total is left out, the tiles themselves show it, so no
+     * line is longer than "1 fps" and the bar never has to grow for the text.
+     */
+    fun compact(
+        resources: Resources,
+        counts: LivenessCounts,
+    ): String {
+        val lines =
+            ArrayList<String>(COMPACT_LINES).apply {
+                add(counts.live.toString())
+                add(resources.getString(R.string.grid_status_compact_live))
+                if (counts.atOneFps > 0) {
+                    add(counts.atOneFps.toString())
+                    add(resources.getString(R.string.grid_status_compact_one_fps))
+                }
+            }
+        return lines.joinToString("\n")
+    }
+
     private const val PARTS = 3
+    private const val COMPACT_LINES = 4
 }

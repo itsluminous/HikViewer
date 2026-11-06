@@ -77,6 +77,9 @@ class PlaybackCoordinator(
     /** Live-tile limit currently in force (for diagnostics). */
     val liveLimit: Int get() = budget.liveLimit
 
+    /** The ceiling the budget works under: the user's Live cameras count, or the device's automatic one. */
+    val liveCeiling: Int get() = budget.ceiling
+
     /** What "Automatic" resolves to on this device, for the Settings summary. */
     val automaticCeiling: Int get() = budget.automaticCeiling
 

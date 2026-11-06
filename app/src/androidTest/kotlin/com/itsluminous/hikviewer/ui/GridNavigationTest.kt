@@ -197,12 +197,24 @@ class GridNavigationTest {
 
     @Test
     fun upFromTheTopRowReachesTheTopBarAndDownComesBack() {
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
-        waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS * 2)
-        onView(withId(R.id.top_bar)).check(matches(isDisplayed())) // focused bar never auto-hides
+        onView(withId(R.id.top_bar)).check(matches(isDisplayed()))
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         onView(withId(R.id.grid)).check(matches(hasFocus()))
+    }
+
+    @Test
+    fun anIdleTopBarHandsFocusToTheFirstTileAndHides() {
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        dpad(KeyEvent.KEYCODE_DPAD_UP)
+        onView(withId(R.id.layout_button)).check(matches(hasFocus()))
+        // Nothing pressed for longer than the bar's timeout: it hides and the first tile takes
+        // focus, not the tile the user came from.
+        waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS * 2)
+        onView(withId(R.id.top_bar)).check(matches(withEffectiveVisibility(Visibility.INVISIBLE)))
+        onView(tile(0)).check(matches(hasFocus()))
     }
 
     @Test

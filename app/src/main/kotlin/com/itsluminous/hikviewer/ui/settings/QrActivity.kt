@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
@@ -40,7 +41,7 @@ class QrActivity : AppCompatActivity() {
     }
 
     private fun bindText(
-        view: android.widget.TextView,
+        view: TextView,
         @StringRes text: Int,
     ) {
         if (text == 0) {

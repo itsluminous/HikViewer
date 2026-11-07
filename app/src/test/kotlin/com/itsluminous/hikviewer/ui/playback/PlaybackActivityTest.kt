@@ -99,23 +99,24 @@ class PlaybackActivityTest {
                 a.key(KeyEvent.KEYCODE_DPAD_DOWN)
                 a.key(KeyEvent.KEYCODE_DPAD_DOWN)
                 assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
-                val opens = account.playbackOpened.size
+                // Windows the seek opens begin at the sought time; a window the 1x transport opens
+                // on its own when the fake stream runs out (which a loaded host lets happen in the
+                // middle of this test) begins where the last one ended. Count the former only.
+                val seekBegins = today.minusDays(1).atTime(6, 0, 10)..today.minusDays(1).atTime(6, 0, 20)
+
+                fun seekOpens() = account.playbackOpened.count { it.second.begin in seekBegins }
+                assertThat(seekOpens()).isEqualTo(0)
                 val before = a.text(R.id.time_label)
                 a.key(KeyEvent.KEYCODE_DPAD_RIGHT)
                 assertThat(a.text(R.id.time_label)).isNotEqualTo(before)
-                assertThat(account.playbackOpened).hasSize(opens)
+                // The label moved at once; the stream has not reopened before the debounce ran out.
+                assertThat(seekOpens()).isEqualTo(0)
                 ShadowLooper.idleMainLooper(
                     SeekController.DEBOUNCE_MILLIS + 1,
                     java.util.concurrent.TimeUnit.MILLISECONDS,
                 )
-                awaitUi { account.playbackOpened.size == opens + 1 }
-                val reopened =
-                    account.playbackOpened
-                        .last()
-                        .second.begin
-                assertThat(reopened).isAtLeast(today.minusDays(1).atTime(6, 0, 10))
                 // 10 s past the ~2 s shown; the fake keeps delivering while a loaded host runs the test.
-                assertThat(reopened).isAtMost(today.minusDays(1).atTime(6, 0, 20))
+                awaitUi { seekOpens() == 1 }
 
                 // OK pauses and says so; the controls hide after the idle time while paused too.
                 a.key(KeyEvent.KEYCODE_DPAD_CENTER)

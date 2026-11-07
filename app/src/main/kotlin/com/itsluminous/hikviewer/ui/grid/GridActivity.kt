@@ -393,19 +393,29 @@ class GridActivity : AppCompatActivity() {
     /**
      * Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is
      * always there, and a phone held upright gets the portrait shapes (1 x N, 2 x N) and the even
-     * 1 + N layouts that fill its two columns instead of the TV's grids.
+     * 1 + N layouts that fill its two columns instead of the TV's grids. The entry in force (the
+     * stored layout, AUTO when AUTO is stored) is checked and the D-pad starts on it; see
+     * [LayoutPickerDialog] for why this is a list dialog and not a `PopupMenu`.
      */
     private fun showLayoutMenu(anchor: View) {
-        val menu = PopupMenu(this, anchor)
         val cameras = (viewModel.state.value as? GridUiState.Ready)?.cameras?.size ?: 0
-        GridLayoutMode.available(cameras, portraitPhone = !television && portrait).forEach { mode ->
-            menu.menu.add(0, mode.ordinal, mode.ordinal, mode.labelRes)
-        }
-        menu.setOnMenuItemClickListener {
-            viewModel.setLayout(GridLayoutMode.entries[it.itemId])
-            true
-        }
-        menu.show()
+        val current = AppGraph.of(this).arrangementStore.lastLayout
+        picker =
+            LayoutPickerDialog.show(
+                this,
+                GridLayoutMode.available(cameras, portraitPhone = !television && portrait),
+                current,
+                onPick = { mode -> viewModel.setLayout(mode) },
+                // The dialog is its own window; once it is gone the bar's button takes focus back,
+                // as it did after the popup. Not after onDestroy, when the view is detached.
+                onDismiss = {
+                    picker = null
+                    if (!isDestroyed) {
+                        topBar?.onUserActivity()
+                        anchor.requestFocus()
+                    }
+                },
+            )
     }
 
     private fun showTileMenu(tile: CameraTileView) {

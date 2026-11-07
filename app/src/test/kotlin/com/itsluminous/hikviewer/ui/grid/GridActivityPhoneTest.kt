@@ -6,6 +6,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -24,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowLooper
 import java.util.concurrent.TimeUnit
 
@@ -227,18 +229,22 @@ class GridActivityPhoneTest {
                 assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
-                val menu =
-                    org.robolectric.shadows.ShadowPopupMenu
-                        .getLatestPopupMenu()
-                        .menu
-                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                val menu = layoutDialog()
+                val titles = menu.titles()
                 assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
+                assertThat(menu.checkedTitle()).isNull() // drawn as AUTO, but AUTO is not what is stored
+                menu.dismiss()
             }
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
-            scenario.grid { _, grid ->
+            scenario.grid { a, grid ->
                 assertThat(grid.shape.columns).isEqualTo(4)
                 assertThat(grid.shape.rows).isEqualTo(3)
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                // Six cameras need no more than 3 x 3, so the 4 x 3 in force is not offered and nothing is marked.
+                assertThat(layoutDialog().titles()).containsExactly("Auto", "3 × 3", "1 + 5").inOrder()
+                assertThat(layoutDialog().checkedTitle()).isNull()
             }
         }
     }
@@ -272,16 +278,13 @@ class GridActivityPhoneTest {
             scenario.grid { a, _ ->
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
-                val menu =
-                    org.robolectric.shadows.ShadowPopupMenu
-                        .getLatestPopupMenu()
-                        .menu
-                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                val menu = layoutDialog()
+                val titles = menu.titles()
                 // Six cameras: one column up to 1 x 4, two columns up to 2 x 3, and 1 + 6 has no seventh camera.
                 assertThat(titles).containsExactly("Auto", "1 × 2", "1 × 3", "1 × 4", "2 × 2", "2 × 3").inOrder()
                 assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
-                menu.performIdentifierAction(GridLayoutMode.GRID_1X3.ordinal, 0)
-                ShadowLooper.idleMainLooper()
+                assertThat(menu.checkedTitle()).isEqualTo("Auto") // nothing stored yet: AUTO is in force
+                menu.pick(titles.indexOf("1 × 3"))
                 assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_1X3)
             }
             scenario.grid { _, grid ->
@@ -297,12 +300,11 @@ class GridActivityPhoneTest {
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3).inOrder()
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
-                val menu =
-                    org.robolectric.shadows.ShadowPopupMenu
-                        .getLatestPopupMenu()
-                        .menu
-                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                val menu = layoutDialog()
+                val titles = menu.titles()
                 assertThat(titles).containsExactly("Auto", "3 × 3", "1 + 5").inOrder()
+                // 1 x 3 is a portrait shape, kept turned but not in the turned list: nothing is marked.
+                assertThat(menu.checkedTitle()).isNull()
             }
         }
     }
@@ -364,6 +366,41 @@ class GridActivityPhoneTest {
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7, 8).inOrder()
             }
         }
+    }
+
+    /** The phone's Layout list marks the layout in force: the stored one, AUTO when AUTO is stored. */
+    @Test
+    fun `the layout list checks the stored layout and auto when auto is stored`() {
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_2X2
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, _ ->
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                val menu = layoutDialog()
+                assertThat(menu.checkedTitle()).isEqualTo("2 × 2")
+                menu.pick(0) // Auto
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(layoutDialog().checkedTitle()).isEqualTo("Auto")
+            }
+        }
+    }
+
+    /** The open Layout list (the last dialog shown). */
+    private fun layoutDialog(): AlertDialog = ShadowDialog.getLatestDialog() as AlertDialog
+
+    private fun AlertDialog.titles(): List<String> =
+        (0 until listView.count).map { listView.adapter.getItem(it).toString() }
+
+    /** The checked entry's label, or null when no entry is checked. */
+    private fun AlertDialog.checkedTitle(): String? =
+        listView.checkedItemPosition.takeIf { it >= 0 }?.let { listView.adapter.getItem(it).toString() }
+
+    private fun AlertDialog.pick(index: Int) {
+        listView.performItemClick(listView.getChildAt(index) ?: listView, index, listView.getItemIdAtPosition(index))
+        ShadowLooper.idleMainLooper()
+        assertThat(isShowing).isFalse()
     }
 
     /** Channel numbers of the tiles that have a cell, in grid order (the camera name is "Camera N"). */

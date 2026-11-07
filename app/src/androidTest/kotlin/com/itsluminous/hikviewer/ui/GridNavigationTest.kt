@@ -42,6 +42,7 @@ import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.settings.DonateActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.runBlocking
+import org.hamcrest.CoreMatchers.not
 import org.hamcrest.Description
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers.allOf
@@ -374,20 +375,43 @@ class GridNavigationTest {
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
         ok()
-        // 12 cameras: the menu lists AUTO, 3x3, 4x3 and 1+5 … 1+11 (1+15 and 4x4 need more cameras).
-        pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.HERO_1_5))
+        // 12 cameras: the list has AUTO, 3x3, 4x3 and 1+5 … 1+11 (1+15 and 4x4 need more cameras); the
+        // layout in force (AUTO) is checked and the D-pad starts on it.
+        onView(withText(R.string.layout_1_11)).inRoot(isDialog()).check(matches(isDisplayed()))
+        onView(withText(R.string.layout_auto)).inRoot(isDialog()).check(matches(isChecked()))
+        onView(withText(R.string.layout_1_5)).inRoot(isDialog()).check(matches(not(isChecked())))
+        pickLayoutEntry(from = GridLayoutMode.AUTO, to = GridLayoutMode.HERO_1_5)
         onView(tile(0)).check(matches(tileNamed("Camera 1")))
-        // The bar keeps focus after the popup unless the popup took longer than the bar's idle
+        // The bar keeps focus after the list unless the list took longer than the bar's idle
         // timeout (a slow emulator): then focus has gone back to the first tile. Reach the button
         // again either way.
         onView(tile(0)).perform(takeFocus())
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         onView(withId(R.id.layout_button)).check(matches(hasFocus()))
         ok()
-        pickPopupEntry(GridLayoutMode.available(12).indexOf(GridLayoutMode.AUTO))
+        // Reopened, the list marks the pick.
+        onView(withText(R.string.layout_1_5)).inRoot(isDialog()).check(matches(isChecked()))
+        onView(withText(R.string.layout_auto)).inRoot(isDialog()).check(matches(not(isChecked())))
+        pickLayoutEntry(from = GridLayoutMode.HERO_1_5, to = GridLayoutMode.AUTO)
         onView(tile(0)).check(matches(tileNamed("Camera 2")))
         onView(tile(5)).check(matches(tileNamed("Camera 1")))
         assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.AUTO)
+    }
+
+    /**
+     * Walks the open Layout list from [from] (the checked entry, where the D-pad starts) to [to]
+     * with DOWN or UP presses and OK; a wrong start would land on the wrong entry, so this also
+     * checks that the list opens on the layout in force.
+     */
+    private fun pickLayoutEntry(
+        from: GridLayoutMode,
+        to: GridLayoutMode,
+    ) {
+        val entries = GridLayoutMode.available(12)
+        val steps = entries.indexOf(to) - entries.indexOf(from)
+        repeat(kotlin.math.abs(steps)) { dpad(if (steps > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP) }
+        ok()
+        waitFor(POPUP_DISMISS_MILLIS)
     }
 
     @Test

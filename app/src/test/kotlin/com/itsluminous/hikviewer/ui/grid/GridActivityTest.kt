@@ -26,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlertDialog
+import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowLooper
 
 // A 1080p television in landscape; Robolectric's default device is a portrait phone.
@@ -278,17 +279,39 @@ class GridActivityTest {
         }
     }
 
+    /**
+     * The Layout button opens a single-choice list of the layouts for twelve cameras with the one in
+     * force checked, AUTO on a fresh store; a pick switches and
+     * persists the layout, and the list reopened checks the new one.
+     */
     @Test
-    fun `layout menu switches the layout`() {
+    fun `layout list checks the current layout, starts the D-pad on it and switches on a pick`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
-                val vm = a.viewModels<GridViewModel>().value
-                vm.setLayout(GridLayoutMode.HERO_1_5)
+                var dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                assertThat(dialog.isShowing).isTrue()
+                val list = dialog.listView
+                val titles = (0 until list.count).map { list.adapter.getItem(it).toString() }
+                assertThat(titles)
+                    .containsExactly("Auto", "3 × 3", "4 × 3", "1 + 5", "1 + 7", "1 + 9", "1 + 11")
+                    .inOrder()
+                // AUTO, the fresh store's layout. The D-pad start (the selection) is a device fact: Robolectric
+                // reports touch mode, where ListView defers the selection; GridNavigationTest covers it.
+                assertThat(list.checkedItemPosition).isEqualTo(0)
+                val hero = titles.indexOf("1 + 5")
+                list.performItemClick(list.getChildAt(hero) ?: list, hero, list.getItemIdAtPosition(hero))
                 ShadowLooper.idleMainLooper()
+                assertThat(dialog.isShowing).isFalse()
                 assertThat(grid.mode).isEqualTo(GridLayoutMode.HERO_1_5)
                 assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_5)
+                assertThat(a.findViewById<View>(R.id.layout_button).hasFocus()).isTrue()
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                assertThat(dialog.listView.checkedItemPosition).isEqualTo(hero)
+                dialog.dismiss()
             }
         }
     }

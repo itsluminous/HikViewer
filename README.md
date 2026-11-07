@@ -4,7 +4,14 @@
 
 **HikViewer** is a small, open-source Android TV and phone client for **Hik-Connect** accounts. Sign in, pick the channels of your Hikvision DVR or NVR, and watch them live in a grid built for a remote control, a mouse or a finger. Encrypted cloud streams are decrypted on the device with your own video verification code. No alarms, no notifications, no accounts of its own, and a 2 MB APK instead of the 270 MB official app.
 
-[ [Get the APK from GitHub Releases](https://github.com/itsluminous/HikViewer/releases/latest) ]
+<a href="https://github.com/itsluminous/HikViewer/releases/latest">
+  <img alt="Get it on GitHub" height="80"
+       src="docs/badges/get-it-on-github.png" />
+</a>
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.itsluminous.hikviewer%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fitsluminous%2FHikViewer%22%2C%22author%22%3A%22itsluminous%22%2C%22name%22%3A%22HikViewer%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Afalse%7D%22%7D">
+  <img alt="Get it on Obtainium" height="80"
+       src="docs/badges/get-it-on-obtainium.png" />
+</a>
 
 ## Screenshots
 

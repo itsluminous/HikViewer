@@ -22,10 +22,32 @@ import com.itsluminous.hikviewer.R
  * arrangement is one list for both orientations, so nothing is lost (see
  * [com.itsluminous.hikviewer.ui.grid.GridGeometry]).
  *
+ * The fixed grids come in two families. The landscape shapes (3 x 3, 4 x 3, 4 x 4) are the TV's
+ * and a turned phone's; the portrait shapes ([isPortraitShape]: one column 1 x 2, 1 x 3, 1 x 4 and
+ * two columns 2 x 2 up to 2 x 8) are a phone held upright, where a tile a third of the screen wide
+ * is too small to watch. Each is a concrete layout with its own arrangement whatever the
+ * orientation; rotating the phone draws it as its counterpart of the same capacity, so every tile
+ * keeps its camera and the persisted arrangement key does not change. The mapping (columns x rows
+ * as shown on screen):
+ *
+ * | Layout | Upright | Turned |
+ * |---|---|---|
+ * | 1 x 2 | 1 x 2 | 2 x 1 |
+ * | 1 x 3 | 1 x 3 | 3 x 1 |
+ * | 1 x 4 | 1 x 4 | 2 x 2 (nearer 16:9 tiles than 4 x 1) |
+ * | 2 x N (N = 2..8) | 2 x N | N x 2 |
+ * | 3 x 3 | 3 x 3 | 3 x 3 |
+ * | 4 x 3 | 3 x 4 | 4 x 3 |
+ * | 4 x 4 | 4 x 4 | 4 x 4 |
+ *
+ * Every row but 1 x 4 is a transposition, computed by [GridGeometry]; the labels name the shape
+ * in its own orientation.
+ *
  * [available] lists the entries worth offering for a camera count: a 1 + N layout only when all
  * of its `N + 1` tiles would show a camera and its parity suits the screen (even for a phone held
- * upright, odd otherwise), a fixed grid when it is not bigger than the smallest one that holds
- * every camera, and AUTO always.
+ * upright, odd otherwise), a fixed grid of the screen's family (portrait shapes upright, landscape
+ * shapes otherwise) when it is not bigger than the smallest one of that family that holds every
+ * camera, and AUTO always.
  */
 enum class GridLayoutMode(
     /** Columns of the fixed shape; 0 for AUTO and the 1 + N layouts (computed). */
@@ -37,7 +59,7 @@ enum class GridLayoutMode(
     /** Label for pickers. */
     @StringRes val labelRes: Int,
 ) {
-    /** 3x3 up to 9 cameras, 4x3 up to 12, 4x4 above. */
+    /** Landscape: 3x3 up to 9 cameras, 4x3 up to 12, 4x4 above. Upright: the smallest portrait shape that fits. */
     AUTO(0, 0, 0, R.string.layout_auto),
 
     /** Fixed 3 columns x 3 rows. */
@@ -48,6 +70,36 @@ enum class GridLayoutMode(
 
     /** Fixed 4 columns x 4 rows. */
     GRID_4X4(4, 4, 0, R.string.layout_4x4),
+
+    /** Phone upright: one column, two rows; turned it is 2 x 1. */
+    GRID_1X2(1, 2, 0, R.string.layout_1x2),
+
+    /** Phone upright: one column, three rows; turned it is 3 x 1. */
+    GRID_1X3(1, 3, 0, R.string.layout_1x3),
+
+    /** Phone upright: one column, four rows; turned it is 2 x 2. */
+    GRID_1X4(1, 4, 0, R.string.layout_1x4),
+
+    /** Phone upright: two columns, two rows; the same turned. */
+    GRID_2X2(2, 2, 0, R.string.layout_2x2),
+
+    /** Phone upright: two columns, three rows; turned it is 3 x 2. */
+    GRID_2X3(2, 3, 0, R.string.layout_2x3),
+
+    /** Phone upright: two columns, four rows; turned it is 4 x 2. */
+    GRID_2X4(2, 4, 0, R.string.layout_2x4),
+
+    /** Phone upright: two columns, five rows; turned it is 5 x 2. */
+    GRID_2X5(2, 5, 0, R.string.layout_2x5),
+
+    /** Phone upright: two columns, six rows; turned it is 6 x 2. */
+    GRID_2X6(2, 6, 0, R.string.layout_2x6),
+
+    /** Phone upright: two columns, seven rows; turned it is 7 x 2. */
+    GRID_2X7(2, 7, 0, R.string.layout_2x7),
+
+    /** Phone upright: two columns, eight rows; turned it is 8 x 2. */
+    GRID_2X8(2, 8, 0, R.string.layout_2x8),
 
     /** Hero 2x2 on a 3x3 grid: 2 tiles right, 3 below. */
     HERO_1_5(0, 0, 5, R.string.layout_1_5),
@@ -95,6 +147,9 @@ enum class GridLayoutMode(
     /** True for the even 1 + N layouts, which fill a phone's two-column portrait grid. */
     val isPortraitHero: Boolean get() = isHero && heroCompanions % 2 == 0
 
+    /** True for the one- and two-column fixed shapes of a phone held upright (see the class table). */
+    val isPortraitShape: Boolean get() = isFixed && columns <= PORTRAIT_COLUMNS
+
     /**
      * Cells the hero spans per side on the square landscape grid (`k`), 0 otherwise. An even
      * layout uses the grid of the odd layout one tile smaller, so 1 + 6 and 1 + 5 both give 2.
@@ -104,9 +159,18 @@ enum class GridLayoutMode(
     /** Tiles the square landscape grid holds: all of an odd layout, all but one of an even layout. */
     val landscapeCapacity: Int get() = if (isHero) 2 * heroSpan + 2 else capacity
 
-    /** Resolves AUTO to a fixed shape for [tileCount]; other modes return themselves. */
-    fun resolve(tileCount: Int): GridLayoutMode = when {
+    /**
+     * Resolves AUTO to a fixed shape for [tileCount]; other modes return themselves. Turned (the
+     * default), 3 x 3 up to 9 tiles, 4 x 3 up to 12 and 4 x 4 above; [portrait], the smallest
+     * portrait shape that holds every tile: one column for one or two cameras, two columns from
+     * three up, 2 x 8 above sixteen.
+     */
+    fun resolve(
+        tileCount: Int,
+        portrait: Boolean = false,
+    ): GridLayoutMode = when {
         this != AUTO -> this
+        portrait -> autoPortraitShapes.firstOrNull { it.capacity >= tileCount } ?: autoPortraitShapes.last()
         tileCount <= GRID_3X3.capacity -> GRID_3X3
         tileCount <= GRID_4X3.capacity -> GRID_4X3
         else -> GRID_4X4
@@ -114,24 +178,33 @@ enum class GridLayoutMode(
 
     /** Pickers. */
     companion object {
+        /** Columns of a phone held upright; the portrait shapes have at most this many. */
+        const val PORTRAIT_COLUMNS: Int = 2
+
         /** The 1 + N layouts in ascending size. */
         val heroModes: List<GridLayoutMode> get() = entries.filter { it.isHero }
 
+        /** The portrait shapes AUTO picks from upright, smallest first: 1 x 2, then the two-column ones. */
+        private val autoPortraitShapes: List<GridLayoutMode> =
+            listOf(GRID_1X2) + entries.filter { it.isPortraitShape && it.columns == PORTRAIT_COLUMNS }
+
         /**
          * The entries worth offering when [cameraCount] cameras are visible, in declaration
-         * order. [portraitPhone] picks the even 1 + N layouts (which fill the two-column portrait
-         * grid) over the odd ones (which fill the square landscape grid of a TV or a turned phone).
+         * order. [portraitPhone] picks the portrait shapes and the even 1 + N layouts (which fill
+         * the two-column portrait grid) over the landscape shapes and the odd ones (which fill the
+         * square landscape grid of a TV or a turned phone).
          */
         fun available(
             cameraCount: Int,
             portraitPhone: Boolean = false,
         ): List<GridLayoutMode> {
-            val smallestFit = entries.filter { it.isFixed }.firstOrNull { it.capacity >= cameraCount }
+            val family = entries.filter { it.isFixed && it.isPortraitShape == portraitPhone }
+            val smallestFit = family.firstOrNull { it.capacity >= cameraCount }
             return entries.filter { mode ->
                 when {
                     mode == AUTO -> true
                     mode.isHero -> mode.capacity <= cameraCount && mode.isPortraitHero == portraitPhone
-                    else -> mode.capacity < cameraCount || mode == smallestFit
+                    else -> mode in family && (mode.capacity < cameraCount || mode == smallestFit)
                 }
             }
         }

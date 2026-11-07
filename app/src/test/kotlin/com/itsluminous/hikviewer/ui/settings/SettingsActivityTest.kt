@@ -72,21 +72,26 @@ class SettingsActivityTest {
         }
     }
 
+    /** Robolectric's default device is a phone held upright: the spinner lists the portrait shapes, like the grid menu. */
     @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
     fun `layout spinner, quality and overlay switches write the store`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                // Three visible cameras: the spinner offers AUTO and 3x3 only (same filter as the grid menu).
+                // Three visible cameras upright: AUTO, 1 x 2 and 1 x 3 (same filter as the grid menu).
                 val layoutSpinner = a.findViewById<Spinner>(R.id.layout_spinner)
-                assertThat(layoutSpinner.adapter.count).isEqualTo(2)
-                layoutSpinner.setSelection(1)
+                assertThat(layoutSpinner.adapter.count).isEqualTo(3)
+                assertThat((0 until 3).map { layoutSpinner.adapter.getItem(it).toString() })
+                    .containsExactly("Auto", "1 × 2", "1 × 3")
+                    .inOrder()
+                layoutSpinner.setSelection(2)
                 a.findViewById<SwitchCompat>(R.id.quality_main).isChecked = true
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isFalse()
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_fps).isChecked).isFalse()
                 a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
                 a.findViewById<SwitchCompat>(R.id.show_fps).isChecked = true
                 ShadowLooper.idleMainLooper()
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_3X3)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_1X3)
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
                 assertThat(app.graph.settingsStore.showCameraNames).isTrue()
                 assertThat(app.graph.settingsStore.showFrameRate).isTrue()
@@ -97,7 +102,25 @@ class SettingsActivityTest {
         }
     }
 
+    /** On a television the spinner has the TV's grids: AUTO and 3 x 3 for three cameras, never a portrait shape. */
     @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun `on a television the layout spinner offers the landscape grids`() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val layoutSpinner = a.findViewById<Spinner>(R.id.layout_spinner)
+                assertThat((0 until layoutSpinner.adapter.count).map { layoutSpinner.adapter.getItem(it).toString() })
+                    .containsExactly("Auto", "3 × 3")
+                    .inOrder()
+                layoutSpinner.setSelection(1)
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_3X3)
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
     fun `ticking cameras updates the layout spinner on the same screen`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, list ->
@@ -105,13 +128,14 @@ class SettingsActivityTest {
                 assertThat(
                     app.graph.settingsStore.visibleCameraKeys,
                 ).containsExactly("$serial/2", "$serial/3").inOrder()
-                // Three cameras offered AUTO and 3x3; with all five ticked the 1 + 5 layout and 4x3 fit too.
+                // Three cameras offered AUTO, 1 x 2 and 1 x 3; with all five ticked 1 x 4, 2 x 2 and 2 x 3 fit too.
                 list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
                 list.getChildAt(3).findViewById<CheckBox>(R.id.check).performClick()
                 list.getChildAt(4).findViewById<CheckBox>(R.id.check).performClick()
                 ShadowLooper.idleMainLooper()
                 assertThat(a.findViewById<Spinner>(R.id.layout_spinner).adapter.count)
-                    .isEqualTo(GridLayoutMode.available(5).size)
+                    .isEqualTo(GridLayoutMode.available(5, portraitPhone = true).size)
+                assertThat(GridLayoutMode.available(5, portraitPhone = true)).hasSize(6)
             }
         }
     }

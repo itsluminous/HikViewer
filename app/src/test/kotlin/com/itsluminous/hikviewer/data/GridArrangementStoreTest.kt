@@ -41,6 +41,23 @@ class GridArrangementStoreTest {
         assertThat(again.order(GridLayoutMode.GRID_4X4)).isNull()
     }
 
+    /**
+     * A portrait shape is one layout in both orientations (turned, 2 x 3 is drawn as 3 x 2), so its
+     * arrangement lives under the one key named after the entry, like every other layout's.
+     */
+    @Test
+    fun `a portrait shape has one key whatever the orientation it is drawn in`() {
+        GridLayoutMode.entries.filter { it.isFixed }.forEach { mode ->
+            store.setOrder(mode, listOf("S/${mode.ordinal}", "S/1"))
+            assertThat(prefs.getString("arrangement.${mode.name}", null)).isEqualTo("S/${mode.ordinal},S/1")
+        }
+        assertThat(prefs.all.keys.filter { it.startsWith("arrangement.") })
+            .containsExactlyElementsIn(GridLayoutMode.entries.filter { it.isFixed }.map { "arrangement.${it.name}" })
+        store.lastLayout = GridLayoutMode.GRID_2X3
+        assertThat(prefs.getString("gridLayout", null)).isEqualTo("GRID_2X3")
+        assertThat(GridArrangementStore(prefs).lastLayout).isEqualTo(GridLayoutMode.GRID_2X3)
+    }
+
     @Test
     fun `shares the settings preferences so a settings clear wipes it`() {
         store.setOrder(GridLayoutMode.AUTO, listOf("S/1"))

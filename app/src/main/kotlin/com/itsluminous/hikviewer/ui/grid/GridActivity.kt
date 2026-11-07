@@ -392,7 +392,8 @@ class GridActivity : AppCompatActivity() {
 
     /**
      * Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is
-     * always there, and a phone held upright gets the even 1 + N layouts that fill its two columns.
+     * always there, and a phone held upright gets the portrait shapes (1 x N, 2 x N) and the even
+     * 1 + N layouts that fill its two columns instead of the TV's grids.
      */
     private fun showLayoutMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)

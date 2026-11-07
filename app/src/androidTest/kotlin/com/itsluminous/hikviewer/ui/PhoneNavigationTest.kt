@@ -32,7 +32,9 @@ import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.grid.CameraGridLayout
+import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridActivity
+import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.phone.PhoneCameraActivity
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.Description
@@ -220,6 +222,52 @@ class PhoneNavigationTest {
         onView(withId(R.id.grid)).check(matches(isDisplayed()))
     }
 
+    /**
+     * Upright, the Layout menu offers the portrait shapes; 2 x 3 picked there is drawn 3 x 2 when
+     * the phone is turned and 2 x 3 again when it is upright, every tile keeping its camera.
+     */
+    @Test
+    fun aTwoColumnLayoutTurnsIntoItsCounterpartAndTheTilesKeepTheirCameras() {
+        onView(withId(R.id.layout_button)).perform(click())
+        onView(withText(R.string.layout_3x3)).check(doesNotExist()) // the TV's grids are not for a phone upright
+        onView(withText(R.string.layout_2x3)).perform(click())
+        waitFor(POPUP_DISMISS_MILLIS)
+        assertGrid(columns = 2, rows = 3)
+        (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
+
+        // The suite locks the grid upright (see loggedInGraph); this test is about turning it.
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        rotate(ROTATION_LANDSCAPE)
+        assertGrid(columns = 3, rows = 2)
+        assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.GRID_2X3) { "the layout is still 2 x 3" }
+        (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
+
+        rotate(ROTATION_PORTRAIT)
+        assertGrid(columns = 2, rows = 3)
+        (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
+    }
+
+    /** The resumed grid's shape (the Activity is recreated by a rotation, so the scenario's reference is stale). */
+    private fun assertGrid(
+        columns: Int,
+        rows: Int,
+    ) {
+        val activity = resumedActivity()
+        assert(activity is GridActivity) { "expected the grid, got $activity" }
+        val grid = activity.findViewById<CameraGridLayout>(R.id.grid)
+        assert(grid.shape.columns == columns && grid.shape.rows == rows) {
+            "grid is ${grid.shape.columns} x ${grid.shape.rows}, expected $columns x $rows"
+        }
+    }
+
+    private fun tileNamed(name: String): Matcher<View> = object : TypeSafeMatcher<View>() {
+        override fun describeTo(description: Description) {
+            description.appendText("tile named $name")
+        }
+
+        override fun matchesSafely(item: View): Boolean = (item as? CameraTileView)?.cameraName?.toString() == name
+    }
+
     /** A "LIVE" label over the picture (the Live button below it, all caps by theme, is not one). */
     private fun liveTextOnThePicture(): Matcher<View> =
         allOf(withText("LIVE"), isDescendantOfA(withId(R.id.video_frame)))
@@ -261,5 +309,8 @@ class PhoneNavigationTest {
 
         /** The system's rotation animation plus the recreated Activity's first frames. */
         const val ROTATION_MILLIS = 2_500L
+
+        /** A popup menu's dismiss animation. */
+        const val POPUP_DISMISS_MILLIS = 500L
     }
 }

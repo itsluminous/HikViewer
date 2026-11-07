@@ -202,6 +202,107 @@ class GridActivityPhoneTest {
         }
     }
 
+    /** Upright, the layout menu lists the portrait shapes and the even heroes, never the TV's grids; turned, the reverse. */
+    @Test
+    fun `the layout menu offers the portrait shapes upright and the landscape shapes turned`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, _ ->
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                val menu =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                        .menu
+                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                // Six cameras: one column up to 1 x 4, two columns up to 2 x 3, and 1 + 6 has no seventh camera.
+                assertThat(titles).containsExactly("Auto", "1 × 2", "1 × 3", "1 × 4", "2 × 2", "2 × 3").inOrder()
+                assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
+                menu.performIdentifierAction(GridLayoutMode.GRID_1X3.ordinal, 0)
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_1X3)
+            }
+            scenario.grid { _, grid ->
+                assertThat(grid.shape.columns).isEqualTo(1)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3).inOrder()
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.columns).isEqualTo(3) // 1 x 3 turned is 3 x 1
+                assertThat(grid.shape.rows).isEqualTo(1)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3).inOrder()
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                val menu =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                        .menu
+                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                assertThat(titles).containsExactly("Auto", "3 × 3", "1 + 5").inOrder()
+            }
+        }
+    }
+
+    /** 2 x 3 upright is 3 x 2 turned: the same six tiles with the same cameras, and a move made sideways shows upright. */
+    @Test
+    fun `a two-column layout turns into its counterpart and the tiles keep their cameras`() {
+        val serial = FakeCloudServices.SERIAL
+        app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_2X3
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.columns).isEqualTo(2)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.players.value,
+                ).hasSize(6)
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.grid { a, grid ->
+                assertThat(grid.shape.columns).isEqualTo(3)
+                assertThat(grid.shape.rows).isEqualTo(2)
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_2X3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+                assertThat(
+                    a
+                        .viewModels<GridViewModel>()
+                        .value.playback.players.value,
+                ).hasSize(6)
+                a.viewModels<GridViewModel>().value.moveTile(0, 5)
+                assertThat(app.graph.arrangementStore.order(GridLayoutMode.GRID_2X3))
+                    .containsExactlyElementsIn(listOf(6, 2, 3, 4, 5, 1, 7, 8).map { "$serial/$it" })
+                    .inOrder()
+            }
+            RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
+            scenario.recreate()
+            scenario.grid { _, grid ->
+                assertThat(grid.shape.columns).isEqualTo(2)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
+            }
+        }
+    }
+
+    /** The TV's 4 x 3 kept from a turned session is drawn 3 x 4 upright, every tile still with its camera. */
+    @Test
+    fun `a landscape shape restored upright is drawn transposed`() {
+        val serial = FakeCloudServices.SERIAL
+        app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X3
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { _, grid ->
+                assertThat(grid.shape.columns).isEqualTo(3)
+                assertThat(grid.shape.rows).isEqualTo(4)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7, 8).inOrder()
+            }
+        }
+    }
+
     /** Channel numbers of the tiles that have a cell, in grid order (the camera name is "Camera N"). */
     private fun shownChannels(grid: CameraGridLayout): List<Int> = (0 until grid.shape.capacity)
         .mapNotNull { grid.childAtPosition(it) as? CameraTileView }

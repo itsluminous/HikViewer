@@ -34,6 +34,12 @@ data class GridShape(
  * Pure layout maths for [CameraGridLayout]: which tile goes in which cell, and where a cell is in
  * pixels. Separated from the `ViewGroup` so every layout can be asserted on the JVM.
  *
+ * A fixed grid is drawn with its own columns and rows on a screen of its orientation, and turned
+ * as the counterpart of the same capacity (see [dimensions] and the table on [GridLayoutMode]):
+ * a portrait phone shows 4 x 3 as 3 x 4, a turned one shows 2 x 3 as 3 x 2 and 1 x 4 as 2 x 2. In
+ * portrait AUTO resolves to the smallest portrait shape that holds every tile, in landscape to
+ * 3 x 3, 4 x 3 or 4 x 4.
+ *
  * A 1 + N layout ([GridLayoutMode.isHero]) is a square `(k+1) x (k+1)` grid whose hero spans the
  * top-left `k x k` cells; the small tiles fill the right column top to bottom, then the bottom
  * row left to right (row-major order, like the fixed grids). In portrait (phones) the grid is two
@@ -54,9 +60,29 @@ object GridGeometry {
         portrait: Boolean = false,
     ): GridShape = when {
         portrait && mode.isHero -> portraitHero(mode)
-        portrait -> fixedShape(PORTRAIT_COLUMNS, ceilDiv(tileCount, PORTRAIT_COLUMNS).coerceAtLeast(1))
         mode.isHero -> heroShape(mode.heroSpan + 1, mode.heroSpan + 1, mode.heroSpan)
-        else -> mode.resolve(tileCount).let { fixedShape(it.columns, it.rows) }
+        else -> {
+            val (columns, rows) = dimensions(mode.resolve(tileCount, portrait), portrait)
+            fixedShape(columns, rows)
+        }
+    }
+
+    /**
+     * Columns and rows the fixed [mode] is drawn with on a screen that is [portrait] or not: its
+     * own when the shape belongs to that orientation ([GridLayoutMode.isPortraitShape]), otherwise
+     * the transposition, except that 1 x 4 turned is 2 x 2 (four tiles of 16:9 instead of a row of
+     * four slivers). The capacity never changes, so the arrangement is one list for both.
+     */
+    fun dimensions(
+        mode: GridLayoutMode,
+        portrait: Boolean,
+    ): Pair<Int, Int> {
+        require(mode.isFixed) { "$mode is not a fixed grid" }
+        return when {
+            mode.isPortraitShape == portrait -> mode.columns to mode.rows
+            mode == GridLayoutMode.GRID_1X4 -> 2 to 2
+            else -> mode.rows to mode.columns
+        }
     }
 
     /** Pixel rectangles for [shape] inside a `width` x `height` area with [gap] pixels between cells. */
@@ -113,6 +139,6 @@ object GridGeometry {
         b: Int,
     ): Int = (a + b - 1) / b
 
-    private const val PORTRAIT_COLUMNS = 2
+    private const val PORTRAIT_COLUMNS = GridLayoutMode.PORTRAIT_COLUMNS
     private const val PORTRAIT_HERO_SPAN = 2
 }

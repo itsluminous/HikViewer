@@ -49,7 +49,7 @@ class CameraGridLayout
                 requestLayout()
             }
 
-        /** True on narrow (portrait phone) screens: two columns. */
+        /** True on narrow (portrait phone) screens: the portrait shapes, at most two columns. */
         var portrait: Boolean = false
             set(value) {
                 if (field == value) return

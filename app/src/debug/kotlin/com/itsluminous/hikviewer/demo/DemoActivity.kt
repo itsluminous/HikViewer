@@ -52,7 +52,8 @@ class DemoActivity : Activity() {
         // The single-camera screens read the inventory the grid normally loaded before them; the
         // demo cloud answers from memory, so loading it here costs nothing and blocks nobody.
         if (graph.account.isLoggedIn) runBlocking { graph.account.loadInventory() }
-        graph.arrangementStore.lastLayout = layout
+        // A portrait layout (2 x N, an even hero) is the upright key's; everything else the landscape key's.
+        graph.arrangementStore.setLayout(portrait = layout.isPortrait, layout)
         graph.settingsStore.showCameraNames = intent.getBooleanExtra(EXTRA_NAMES, true)
         (application as HikViewerApp).graph = graph
 

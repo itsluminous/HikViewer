@@ -56,6 +56,7 @@ class DemoActivityTest {
         assertThat(graph.cloud).isInstanceOf(DemoCloudServices::class.java)
         assertThat(graph.account.isLoggedIn).isTrue()
         assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
+        assertThat(graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.AUTO)
         assertThat(graph.settingsStore.showCameraNames).isTrue()
         val inventory = runBlocking { graph.account.loadInventory() }
         assertThat(inventory.needsVerificationCode).isFalse()
@@ -71,6 +72,14 @@ class DemoActivityTest {
                 "Hallway",
             ).inOrder()
         assertThat(inventory.cameras.all { it.hasSignal }).isTrue()
+    }
+
+    /** A portrait layout name (what the phone screenshots pass) is the upright key's: the phone grid upright shows it. */
+    @Test
+    fun `a portrait layout name lands on the portrait key`() {
+        launch(DemoActivity.EXTRA_LAYOUT to "GRID_2X3", DemoActivity.EXTRA_CAMERAS to 6)
+        assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_2X3)
+        assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
     }
 
     @Test

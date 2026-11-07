@@ -8,7 +8,7 @@
 
 ## Screenshots
 
-The footage in these screenshots is synthetic: the debug build has a demo mode that plays bundled ffmpeg test patterns under placeholder camera names, so no real camera ever appears in the repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
+The footage in these screenshots is synthetic: the debug build has a demo mode that plays bundled clips made from stock pictures of empty rooms, one per placeholder camera name, so no real camera ever appears in the repository. See [BUILDING.md](BUILDING.md#demo-mode-and-screenshots).
 
 | Sign in | 4 × 3 grid with the top bar | 1 + 7 (hero) layout |
 | :---: | :---: | :---: |

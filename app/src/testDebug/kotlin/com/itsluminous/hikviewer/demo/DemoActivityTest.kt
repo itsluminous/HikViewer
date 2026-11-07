@@ -119,8 +119,54 @@ class DemoActivityTest {
         assertThat(pictures.first().isKeyframe).isTrue()
         assertThat(pictures.first().config).isNotNull()
         assertThat(pictures.all { it.codec == VideoCodec.H264 }).isTrue()
-        // 24 pictures per clip, then the loop continues with later presentation times.
+        // 36 pictures per clip, then the loop continues with later presentation times.
         assertThat(pictures.zipWithNext().all { (a, b) -> b.presentationTimeUs!! > a.presentationTimeUs!! }).isTrue()
+    }
+
+    /** Twelve clips, one per demo room, named after the camera; the names past them fall back by channel. */
+    @Test
+    fun `every demo camera name has its own clip and the rest fall back by channel number`() {
+        val clips = DemoClips(app.assets)
+        assertThat(clips.count).isEqualTo(12)
+        val rooms =
+            listOf(
+                "Back Garden",
+                "Driveway",
+                "Front Door",
+                "Garage",
+                "Hallway",
+                "Kitchen",
+                "Living Room",
+                "Nursery",
+                "Office",
+                "Patio",
+                "Porch",
+                "Side Gate",
+            )
+        assertThat(clips.slugs).containsExactlyElementsIn(rooms.map(DemoClips::slug)).inOrder()
+        (1..12).forEach { n -> assertThat(clips.slugs).contains(DemoClips.slug(DemoCloudServices.cameraName(n))) }
+        assertThat(DemoClips.slug("Front Door")).isEqualTo("front_door")
+        assertThat(DemoClips.slug("Camera 17")).isEqualTo("camera_17")
+        assertThat(clips.slugs).doesNotContain(DemoClips.slug("Workshop"))
+
+        // Same first picture as the clip the name maps to; a name without a clip uses channel modulo count.
+        fun first(
+            name: String,
+            index: Int,
+        ): Int = runBlocking {
+            clips
+                .stream(name, index, paced = false)
+                .take(1)
+                .toList()
+                .single()
+                .data
+                .contentHashCode()
+        }
+        assertThat(first("Front Door", 1)).isEqualTo(first("front door", 99))
+        assertThat(first("Front Door", 1)).isNotEqualTo(first("Driveway", 2))
+        // 13 mod 12 = 1: the second clip in slug order, driveway.
+        assertThat(first("Workshop", 13)).isEqualTo(first("Camera 1", 1))
+        assertThat(first("Workshop", 13)).isEqualTo(first("Driveway", 2))
     }
 
     @Test

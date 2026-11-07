@@ -64,7 +64,7 @@ class DemoCloudServices(
             quality: StreamQuality,
             verificationCode: String?,
             onStatus: (StreamStatus) -> Unit,
-        ): Flow<AccessUnit> = clips.stream(camera.channelNo, onStatus)
+        ): Flow<AccessUnit> = clips.stream(camera.name, camera.channelNo, onStatus)
 
         override suspend fun searchRecordings(
             camera: Camera,
@@ -86,7 +86,7 @@ class DemoCloudServices(
             onStatus: (StreamStatus) -> Unit,
         ): Flow<AccessUnit> = flow {
             val frames = (window.duration.seconds * FRAMES_PER_SECOND).toInt().coerceAtLeast(1)
-            clips.stream(camera.channelNo, onStatus).take(frames).collect { emit(it) }
+            clips.stream(camera.name, camera.channelNo, onStatus).take(frames).collect { emit(it) }
             onStatus(StreamStatus.Ended)
         }
 

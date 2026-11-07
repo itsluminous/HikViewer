@@ -28,11 +28,12 @@ demo() {
 key() { adb -s "$1" shell input keyevent "$2"; }
 
 # screencap -p on the device, saved as JPEG: the demo tiles are photographs, which PNG stores at
-# several megabytes a screen. Quality steps down until the file is under MAX_BYTES; the size stays.
+# several megabytes a screen. Quality steps down until the file is under MAX_BYTES; the size stays
+# (a 12-tile wall of room photographs needs about 45 at 1080p).
 shoot() {
     local serial=$1 name=$2 png="$OUT/.$2.png" file="$OUT/$2.jpg"
     adb -s "$serial" exec-out screencap -p > "$png"
-    for quality in 85 75 65 55; do
+    for quality in 85 75 65 55 45 40 35; do
         sips -s format jpeg -s formatOptions "$quality" "$png" --out "$file" > /dev/null
         [ "$(stat -f %z "$file")" -le "$MAX_BYTES" ] && break
     done

@@ -84,7 +84,7 @@ adb -s emulator-5554 shell am start -n com.itsluminous.hikviewer.debug/com.itslu
 
 ### Demo mode and screenshots
 
-Debug builds contain a demo entry point (`app/src/debug/`) that swaps the Hik-Connect cloud for an in-memory "Demo DVR": placeholder camera names and three bundled ffmpeg test patterns (`app/src/debug/assets/demo/*.ts`, 320 × 180 at 12 fps, 76 KB in total) that run through the real demuxer and `MediaCodec` path. It exists so the README screenshots never show anyone's cameras, and it is handy for trying the UI without an account. The release build has none of it.
+Debug builds contain a demo entry point (`app/src/debug/`) that swaps the Hik-Connect cloud for an in-memory "Demo DVR": placeholder camera names and twelve bundled clips, one per room (`app/src/debug/assets/demo/<slug>.ts`, 640 × 360 at 12 fps, 3 s each, about 2.2 MB in total), that run through the real demuxer and `MediaCodec` path. A clip is named after the camera it stands for (`front_door.ts` for "Front Door"), so every demo tile shows the room its label names; a camera without a clip of its own (the names past the twelve, or "Camera N") gets one by channel number. It exists so the README screenshots never show anyone's cameras, and it is handy for trying the UI without an account. The release build has none of it.
 
 ```sh
 PKG=com.itsluminous.hikviewer.debug
@@ -94,13 +94,13 @@ adb -s emulator-5554 shell am start -n $PKG/com.itsluminous.hikviewer.demo.DemoA
 
 Extras: `screen` = `login` | `grid` | `fullscreen` | `camera` (phone portrait screen) | `playback` | `settings`; `layout` = a `GridLayoutMode` name (`AUTO`, `GRID_3X3`, `HERO_1_7`, …); `cameras` = channel count; `index` = tile to open; `names` = overlay the camera names (default on).
 
-`scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]` drives this to produce the eight files under `docs/screenshots/` (1080p from the TV AVD, portrait from the phone AVD, each shrunk until it is under 400 KB). The clips are three stock pictures of empty rooms with a slow zoom; to regenerate them from a folder holding `hall.jpg`, `lobby.jpg` and `room.jpg`:
+`scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]` drives this to produce the eight files under `docs/screenshots/` (1080p from the TV AVD, portrait from the phone AVD, each shrunk until it is under 400 KB). The clips are twelve stock pictures of empty rooms and gardens with a slow zoom; to regenerate them from a folder holding one still per camera, `back_garden`, `driveway`, `front_door`, `garage`, `hallway`, `kitchen`, `living_room`, `nursery`, `office`, `patio`, `porch` and `side_gate`, each `.jpg` or `.jpeg`:
 
 ```sh
 scripts/gen-demo-clips.sh /path/to/stills
 ```
 
-The script encodes every clip with the same x264 flags (640x360, 12 fps, Constrained Baseline, one-second GOP), which gives them byte-identical SPS/PPS, so the keyframe pool keeps a single decoder for all tiles exactly as it does with one recorder. Use stock pictures only, never footage from anyone's cameras.
+The script encodes every clip with the same x264 flags (640x360, 12 fps, Constrained Baseline, one-second GOP) and one CRF for all of them, stepped up together until the largest clip is under 300 KB, which gives them byte-identical SPS/PPS (the PPS carries the CRF-derived initial QP, so a per-clip CRF would break this); it checks the parameter sets at the end and fails if they differ. With identical parameter sets the keyframe pool keeps a single decoder for all tiles exactly as it does with one recorder. Use stock pictures only, never footage from anyone's cameras.
 
 ### The real cloud
 

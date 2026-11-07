@@ -87,6 +87,8 @@ class DecoderPolicyTest {
     fun `any hardware failure retries with software, a software failure is the tile's error`() {
         assertThat(DecoderPolicy.afterDecoderFailure(software = false))
             .isEqualTo(DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE)
+        assertThat(DecoderPolicy.afterDecoderFailure(software = true, hardwareTried = false))
+            .isEqualTo(DecoderPolicy.FailureAction.RETRY_WITH_HARDWARE)
         assertThat(DecoderPolicy.afterDecoderFailure(software = true))
             .isEqualTo(DecoderPolicy.FailureAction.TILE_ERROR)
     }

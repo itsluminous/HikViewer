@@ -206,6 +206,44 @@ class TilePlayerFallbackTest {
         }
 
     @Test
+    fun `a software failure on a tile that never tried hardware gets one hardware attempt`() = runTest(dispatcher) {
+        // A grid tile beyond the hero asks for software first; the box's software decoder is
+        // out of instances, its hardware one is free.
+        decoders.startFailures += "fake.sw.video/avc" to codecException(0x80001000.toInt(), false)
+        val p = player()
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        assertThat(decoders.created.map { it.codecName })
+            .containsExactly("fake.sw.video/avc", "fake.hw.video/avc")
+            .inOrder()
+        assertThat(decoders.created[0].released).isTrue()
+        assertThat(decoders.created[1].started).isTrue()
+        decoders.created[1].emitFirstFrame()
+        assertThat(p.state.value).isEqualTo(TileState.Live)
+        p.stop()
+    }
+
+    @Test
+    fun `when software and then hardware both fail the tile is an error, not a loop`() = runTest(dispatcher) {
+        decoders.startFailures += "fake.sw.video/avc" to codecException(9, false, diagnosticInfo = "sw")
+        decoders.startFailures += "fake.hw.video/avc" to codecException(7, false, diagnosticInfo = "hw")
+        decoders.startFailures += "fake.sw.video/avc" to codecException(9, false, diagnosticInfo = "sw2")
+        val p = player()
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        // software, hardware (second chance), software again (hardware's own fallback), then stop.
+        assertThat(decoders.created.map { it.codecName })
+            .containsExactly("fake.sw.video/avc", "fake.hw.video/avc", "fake.sw.video/avc")
+            .inOrder()
+        val error = p.state.value as TileState.Error
+        assertThat(error.message).isEqualTo(TilePlayer.DECODER_ERROR)
+        assertThat(error.detail).contains("diag=sw2")
+        p.stop()
+    }
+
+    @Test
     fun `hardware refusals back off exponentially and a user retry resets the backoff`() = runTest(dispatcher) {
         repeat(4) { decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false) }
         val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 40))
@@ -256,6 +294,9 @@ class TilePlayerFallbackTest {
                 dispatcher = dispatcher,
                 releaser = releaseNow,
             )
+        // Software fails, the one hardware attempt fails, software fails again: a tile error.
+        decoders.startFailures += "fake.sw.video/avc" to codecException(7, transient = false)
+        decoders.startFailures += "fake.hw.video/avc" to codecException(7, transient = false)
         decoders.startFailures += "fake.sw.video/avc" to codecException(7, transient = false)
         p.attachSurface(surface)
         p.mode = TileMode.SW_LIVE

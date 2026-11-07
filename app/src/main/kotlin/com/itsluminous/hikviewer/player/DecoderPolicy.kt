@@ -87,15 +87,29 @@ object DecoderPolicy {
      * shows the error with Retry. The code and the diagnostic text are logged either way and kept
      * for the detail dialog ([describeFailure]).
      */
-    fun afterDecoderFailure(software: Boolean): FailureAction =
-        if (software) FailureAction.TILE_ERROR else FailureAction.RETRY_WITH_SOFTWARE
+    fun afterDecoderFailure(
+        software: Boolean,
+        hardwareTried: Boolean = true,
+    ): FailureAction = when {
+        !software -> FailureAction.RETRY_WITH_SOFTWARE
+        !hardwareTried -> FailureAction.RETRY_WITH_HARDWARE
+        else -> FailureAction.TILE_ERROR
+    }
 
-    /** The two answers to a decoder failure. */
+    /** The answers to a decoder failure. */
     enum class FailureAction {
         /** Build a software decoder at the next keyframe and leave hardware alone for a while. */
         RETRY_WITH_SOFTWARE,
 
-        /** Dim the tile with Retry; nothing cheaper is left to try. */
+        /**
+         * A software decoder failed on a tile that never tried hardware (a grid tile beyond the
+         * hero): try the hardware decoder once before giving up. A box whose software decoder
+         * cannot take another instance may still have a hardware slot free, and a live picture
+         * on hardware beats a dimmed tile.
+         */
+        RETRY_WITH_HARDWARE,
+
+        /** Dim the tile with Retry; nothing is left to try. */
         TILE_ERROR,
     }
 

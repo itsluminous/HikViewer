@@ -474,13 +474,18 @@ class TilePlayer(
             val detail = DecoderPolicy.describeFailure(decoder.codecName, exception)
             lastFailure = detail
             stale = detachDecoderLocked()
-            when (DecoderPolicy.afterDecoderFailure(software)) {
+            // A software decoder that fails while running (not at start) decoded pictures before,
+            // so the codec exists and works here; the second chance on hardware is for a software
+            // decoder that cannot even be started, which afterStartFailure handles.
+            when (DecoderPolicy.afterDecoderFailure(software, hardwareTried = true)) {
                 DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE -> {
                     // The next keyframe rebuilds with software; hardware waits out the backoff.
                     val wait = deferHardwareLocked()
                     Log.w(TAG, "$tag: hardware decoder failed, software for ${wait / MILLIS_PER_SECOND} s: $detail")
                 }
-                DecoderPolicy.FailureAction.TILE_ERROR -> {
+                DecoderPolicy.FailureAction.RETRY_WITH_HARDWARE,
+                DecoderPolicy.FailureAction.TILE_ERROR,
+                -> {
                     Log.w(TAG, "$tag: software decoder failed: $detail")
                     failDecoderLocked(DECODER_ERROR, detail)
                 }
@@ -706,12 +711,20 @@ class TilePlayer(
         paced: Boolean,
     ): Pair<TileDecoder, Boolean>? {
         val detail = DecoderPolicy.describeFailure(name, failed)
-        synchronized(lock) { lastFailure = detail }
-        return when (DecoderPolicy.afterDecoderFailure(software)) {
+        val hardwareTried =
+            synchronized(lock) {
+                lastFailure = detail
+                hardwareRetryAt > 0L
+            }
+        return when (DecoderPolicy.afterDecoderFailure(software, hardwareTried)) {
             DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE -> {
                 val wait = synchronized(lock) { deferHardwareLocked() }
                 Log.w(TAG, "$tag: hardware decoder failed, software for ${wait / MILLIS_PER_SECOND} s: $detail")
                 createDecoder(config, target, software = true, paced = paced)
+            }
+            DecoderPolicy.FailureAction.RETRY_WITH_HARDWARE -> {
+                Log.w(TAG, "$tag: software decoder failed, trying hardware once: $detail")
+                createDecoder(config, target, software = false, paced = paced)
             }
             DecoderPolicy.FailureAction.TILE_ERROR -> {
                 Log.w(TAG, "$tag: software decoder failed: $detail")

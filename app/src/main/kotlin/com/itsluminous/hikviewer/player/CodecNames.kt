@@ -55,23 +55,30 @@ object CodecNames {
      * `KEY_LOW_LATENCY` only then: the key is defined as ignored by decoders that lack the feature,
      * but an Amlogic Android 11 box answered the grid's decoders with "Decoder error" and that
      * unconditional key was the one thing the grid did that fullscreen did not, so it is no longer
-     * sent where the codec has not asked for it. An unknown name reads as unsupported.
+     * sent where the codec has not asked for it. An unknown name reads as unsupported. The
+     * platform's answer is remembered per name: a decoder is built at every keyframe that needs
+     * one, and the codec list does not change while the process lives.
      */
+    fun supportsLowLatency(codecName: String): Boolean =
+        lowLatencyByName.getOrPut(codecName) { supportsLowLatency(codecName, allCodecs()) }
+
+    /** [supportsLowLatency] against an explicit codec list; what the tests call. */
     fun supportsLowLatency(
         codecName: String,
-        codecs: List<MediaCodecInfo> = allCodecs(),
+        codecs: List<MediaCodecInfo>,
     ): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val info = codecs.firstOrNull { it.name == codecName } ?: return false
         return info.supportedTypes.any { type ->
             runCatching {
                 info
-                    .getCapabilitiesForType(
-                        type,
-                    ).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
+                    .getCapabilitiesForType(type)
+                    .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
             }.getOrDefault(false)
         }
     }
+
+    private val lowLatencyByName = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     /**
      * How many hardware decoders of [mimeType] this device runs at once, as [DecoderPolicy] counts

@@ -38,6 +38,12 @@ class PlaybackCoordinator(
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
     /** CPU and memory readings for probing above the static ceiling; [HeadroomProbe.NONE] reads as none, so the budget stays at its ceiling. */
     private val headroom: HeadroomProbe = HeadroomProbe.NONE,
+    /**
+     * Hardware decoders the policy may hand out at once: the codec's own instance limit as
+     * [CodecNames.hardwareSlots] reads it (1 on some Amlogic boxes, 2 on the MiTV), never the
+     * constant alone.
+     */
+    private val hardwareSlots: Int = DecoderPolicy.DEFAULT_MAX_HARDWARE_DECODERS,
 ) {
     private val budget = LiveBudget(capabilities) { Log.i(TAG, it) }
     private val playersFlow = MutableStateFlow<List<TilePlayer>>(emptyList())
@@ -207,7 +213,14 @@ class PlaybackCoordinator(
 
     private fun applyPolicy() {
         val players = playersFlow.value
-        val modes = DecoderPolicy.assign(players.size, heroIndex, budget.liveLimit, hardwareOnly = hardwareOnly)
+        val modes =
+            DecoderPolicy.assign(
+                players.size,
+                heroIndex,
+                budget.liveLimit,
+                maxHardwareDecoders = hardwareSlots,
+                hardwareOnly = hardwareOnly,
+            )
         // Grid tiles trade half a second of latency for even motion; the hero (and so the only
         // tile of a single-camera screen) shows every picture the moment it is decoded. A large
         // grid may also show its software tiles every second picture only (PresentationRate).

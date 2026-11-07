@@ -26,6 +26,12 @@ sealed class TileState {
          * the code against the recorder before deciding whether that is a wrong code or a bad stream.
          */
         val wrongVerificationCode: Boolean = false,
+        /**
+         * The codec's own account of a decoder failure (`codec=... error=... diag=...`), for the
+         * "Decoder detail" dialog a long press on the tile opens; null for stream errors. It is
+         * what a user on a TV we cannot inspect photographs for the bug report.
+         */
+        val detail: String? = null,
     ) : TileState()
 }
 

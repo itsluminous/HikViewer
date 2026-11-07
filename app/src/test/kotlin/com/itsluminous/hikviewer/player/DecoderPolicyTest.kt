@@ -1,11 +1,14 @@
 package com.itsluminous.hikviewer.player
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.player.TileMode.HW_LIVE
 import com.itsluminous.hikviewer.player.TileMode.KEYFRAME
 import com.itsluminous.hikviewer.player.TileMode.SW_LIVE
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 class DecoderPolicyTest {
     @Test
     fun `hero gets hardware, the rest software in display order up to the limit`() {
@@ -79,10 +82,43 @@ class DecoderPolicyTest {
         assertThat(noHero.none { it.isLive }).isTrue()
     }
 
+    /** Round 18: hardware is a preference. Whatever the code, a hardware failure is answered with software. */
     @Test
-    fun `software fallback on transient or error 1100`() {
-        assertThat(DecoderPolicy.shouldFallBackToSoftware(isTransient = true, errorCode = 0)).isTrue()
-        assertThat(DecoderPolicy.shouldFallBackToSoftware(isTransient = false, errorCode = 1100)).isTrue()
-        assertThat(DecoderPolicy.shouldFallBackToSoftware(isTransient = false, errorCode = 2)).isFalse()
+    fun `any hardware failure retries with software, a software failure is the tile's error`() {
+        assertThat(DecoderPolicy.afterDecoderFailure(software = false))
+            .isEqualTo(DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE)
+        assertThat(DecoderPolicy.afterDecoderFailure(software = true))
+            .isEqualTo(DecoderPolicy.FailureAction.TILE_ERROR)
+    }
+
+    @Test
+    fun `hardware slots follow the codec's instance limit, clamped to one and two, two when unknown`() {
+        assertThat(DecoderPolicy.hardwareSlots(1)).isEqualTo(1) // Amlogic 1 GB boxes
+        assertThat(DecoderPolicy.hardwareSlots(2)).isEqualTo(2) // the MiTV's OMX.MS.AVC.Decoder
+        assertThat(DecoderPolicy.hardwareSlots(null)).isEqualTo(2)
+        assertThat(DecoderPolicy.hardwareSlots(0)).isEqualTo(1) // the hero still asks; a refusal falls back
+        assertThat(DecoderPolicy.hardwareSlots(32)).isEqualTo(2) // the platform default when a codec does not say
+        assertThat(DecoderPolicy.hardwareSlots(-1)).isEqualTo(1)
+    }
+
+    @Test
+    fun `a slot count of one still gives the hero hardware and nobody else`() {
+        val modes = DecoderPolicy.assign(tileCount = 4, heroIndex = 0, liveLimit = 4, maxHardwareDecoders = 1)
+        assertThat(modes).containsExactly(HW_LIVE, SW_LIVE, SW_LIVE, SW_LIVE).inOrder()
+    }
+
+    @Test
+    fun `a failure is described with the codec name, code, flags and diagnostic, or the exception`() {
+        val codec = codecException(1100, transient = true, diagnosticInfo = "android.media.MediaCodec.error_1100")
+        assertThat(DecoderPolicy.describeFailure("OMX.MS.AVC.Decoder", codec))
+            .isEqualTo(
+                "codec=OMX.MS.AVC.Decoder error=1100 transient=true recoverable=false " +
+                    "diag=android.media.MediaCodec.error_1100",
+            )
+        assertThat(
+            DecoderPolicy.describeFailure("c2.android.avc.decoder", java.io.IOException("Failed to create codec")),
+        ).isEqualTo("codec=c2.android.avc.decoder error=IOException: Failed to create codec")
+        assertThat(DecoderPolicy.describeFailure("x", IllegalStateException()))
+            .isEqualTo("codec=x error=IllegalStateException: null")
     }
 }

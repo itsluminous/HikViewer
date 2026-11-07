@@ -1,5 +1,7 @@
 package com.itsluminous.hikviewer.player
 
+import android.media.MediaCodec
+
 /** How a tile decodes. */
 enum class TileMode {
     /** Hardware decoder, every frame. The hero tile and single-camera screens. */
@@ -41,7 +43,10 @@ enum class TileMode {
  * viewer looks at one picture closely. Pure function so the matrix of cases is table-tested.
  */
 object DecoderPolicy {
-    /** Hardware decoders proven to coexist on the target TV (the third one fails with error 1100). */
+    /**
+     * Hardware decoders proven to coexist on the target TV (the third one fails with error 1100),
+     * and the most the policy ever uses; [hardwareSlots] lowers it for a SoC that reports fewer.
+     */
     const val DEFAULT_MAX_HARDWARE_DECODERS: Int = 2
 
     /** Mode per tile index, `tileCount` entries. */
@@ -75,14 +80,47 @@ object DecoderPolicy {
     }
 
     /**
-     * True when a codec failure should be answered by retrying with a software decoder: the
-     * platform marks "no more instances" as transient and the target TV reports it as error 1100.
+     * What a tile does after its decoder failed, at start or later: a hardware decoder is a
+     * preference, so any failure of one (whatever the error code: 1100 "no more instances" on the
+     * MiTV, but also the codes an Amlogic box returns for a surface it dislikes) is answered with a
+     * software decoder; a software decoder that fails leaves nothing to fall back to, and the tile
+     * shows the error with Retry. The code and the diagnostic text are logged either way and kept
+     * for the detail dialog ([describeFailure]).
      */
-    fun shouldFallBackToSoftware(
-        isTransient: Boolean,
-        errorCode: Int,
-    ): Boolean = isTransient || errorCode == INSUFFICIENT_RESOURCE_ERROR
+    fun afterDecoderFailure(software: Boolean): FailureAction =
+        if (software) FailureAction.TILE_ERROR else FailureAction.RETRY_WITH_SOFTWARE
 
-    /** `MediaCodec.CodecException.errorCode` the MiTV decoder returns for a third HW instance. */
-    const val INSUFFICIENT_RESOURCE_ERROR: Int = 1100
+    /** The two answers to a decoder failure. */
+    enum class FailureAction {
+        /** Build a software decoder at the next keyframe and leave hardware alone for a while. */
+        RETRY_WITH_SOFTWARE,
+
+        /** Dim the tile with Retry; nothing cheaper is left to try. */
+        TILE_ERROR,
+    }
+
+    /**
+     * How many hardware decoders the policy may hand out: the codec's own
+     * `getMaxSupportedInstances()` ([maxSupportedInstances], null when the platform does not say)
+     * clamped to 1..[DEFAULT_MAX_HARDWARE_DECODERS]. At least one, because the hero and the
+     * single-camera screens want hardware and a refusal falls back to software anyway; at most
+     * two, which is all the MiTV proved and all the policy ever asks for. Unknown reads as two.
+     */
+    fun hardwareSlots(maxSupportedInstances: Int?): Int =
+        (maxSupportedInstances ?: DEFAULT_MAX_HARDWARE_DECODERS).coerceIn(1, DEFAULT_MAX_HARDWARE_DECODERS)
+
+    /**
+     * One line about a decoder failure for the log and the detail dialog: the codec name, the
+     * platform's error code with its transient/recoverable flags and `getDiagnosticInfo()` for a
+     * `MediaCodec.CodecException`, or the exception class and message for anything else.
+     */
+    fun describeFailure(
+        codecName: String,
+        error: Throwable,
+    ): String = if (error is MediaCodec.CodecException) {
+        "codec=$codecName error=${error.errorCode} transient=${error.isTransient} " +
+            "recoverable=${error.isRecoverable} diag=${error.diagnosticInfo}"
+    } else {
+        "codec=$codecName error=${error.javaClass.simpleName}: ${error.message}"
+    }
 }

@@ -51,6 +51,7 @@ class PlaybackCoordinatorTest {
 
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         capabilities: DeviceCapabilities = TestGraph.tvCapabilities,
+        hardwareSlots: Int = DecoderPolicy.DEFAULT_MAX_HARDWARE_DECODERS,
     ) = PlaybackCoordinator(
         opener = { camera, _, onStatus ->
             opened += camera.key
@@ -70,9 +71,28 @@ class PlaybackCoordinatorTest {
                 .completedFuture(null)
         },
         headroom = probe,
+        hardwareSlots = hardwareSlots,
     )
 
     private val pool = NoopKeyframePool()
+
+    /** Round 18: the slot count comes from the codec's capabilities, and a single slot still goes to the hero. */
+    @Test
+    fun `the hardware slot count the factory read is what the policy hands out`() = runTest(dispatcher) {
+        val one = coordinator(hardwareSlots = 1)
+        one.setCameras(cameras(3))
+        one.heroIndex = 1
+        assertThat(one.players.value.map { it.mode })
+            .containsExactly(TileMode.SW_LIVE, TileMode.HW_LIVE, TileMode.SW_LIVE)
+            .inOrder()
+        one.release()
+        // Never produced by DecoderPolicy.hardwareSlots; the clamp's floor of one is what the hero relies on.
+        val none = coordinator(hardwareSlots = 0)
+        none.setCameras(cameras(2))
+        none.heroIndex = 0
+        assertThat(none.players.value.all { it.mode == TileMode.SW_LIVE }).isTrue()
+        none.release()
+    }
 
     @Test
     fun `the headroom probe runs only with tiles beyond the ceiling and its readings lift the budget above it`() =

@@ -29,12 +29,16 @@ import java.util.concurrent.TimeUnit
  * private [TileDecoder] (live modes) or, as thumbnails, to the shared [KeyframeDecoderPool] through
  * the tile's [StillSink]. Decoders are created lazily at the first keyframe that carries parameter
  * sets, and recreated at the next keyframe after a parameter-set change, a stall or a surface
- * change. A hardware codec that refuses to start ("insufficient resources", error 1100 on the
- * MiTV) is replaced by a software one and hardware is tried again at a keyframe after a backoff
- * that doubles with every refusal ([HW_RETRY_MILLIS] … [HW_RETRY_MAX_MILLIS]): on a TV whose
- * hardware slots are taken by another app the retry is cheap once a minute, not a rebuilt decoder
- * every five seconds. The backoff resets when the user retries, the surface changes or the tile
- * is given hardware afresh (the slot is often held by the tile that was the hero a moment ago).
+ * change. A hardware codec that fails, at start ("insufficient resources", error 1100 on the
+ * MiTV, or any other code, exception or diagnostic a vendor decoder produces) or later through
+ * its callback, is replaced by a software one and hardware is tried again at a keyframe after a
+ * backoff that doubles with every failure ([HW_RETRY_MILLIS] … [HW_RETRY_MAX_MILLIS]): on a TV
+ * whose hardware slots are taken by another app the retry is cheap once a minute, not a rebuilt
+ * decoder every five seconds, and a decoder that fails for a reason of its own does not flap. The
+ * backoff resets when the user retries, the surface changes or the tile is given hardware afresh
+ * (the slot is often held by the tile that was the hero a moment ago). Only a software decoder
+ * that fails is a tile error; what the codec said is kept in [lastDecoderError] and shown in the
+ * state ([TileState.Error.detail]) so a user can read it off the screen.
  *
  * Switching between the two live modes (the hero moved: hardware ↔ software) keeps the running
  * decoder until the next keyframe and swaps there, so the picture never goes dark for a GOP. The
@@ -93,6 +97,15 @@ class TilePlayer(
 
     /** For the overlay. */
     val state: StateFlow<TileState> = stateFlow.asStateFlow()
+
+    /**
+     * The last decoder failure as [DecoderPolicy.describeFailure] worded it (codec name, error
+     * code, flags and `getDiagnosticInfo()`), whether it was answered with a software decoder or
+     * with a tile error; null until one happens. The periodic log repeats it and the error state
+     * carries it, so a report from a TV we cannot touch still names the codec and the code.
+     */
+    val lastDecoderError: String? get() = synchronized(lock) { lastFailure }
+    private var lastFailure: String? = null
 
     /**
      * Rendered frames per second, sampled on every [tick] from the live decoder's output callbacks
@@ -437,8 +450,9 @@ class TilePlayer(
             } else {
                 stillGaps.describe().also { stillGaps.reset() }
             }
+        val failure = lastFailure?.let { " lastError[$it]" } ?: ""
         "$tag mode=$mode state=$state units=$unitsReceived unitAge=$unitAge $dec created=$created$stills " +
-            "arrive[$arrive] shown[$shown]"
+            "arrive[$arrive] shown[$shown]$failure"
     }
 
     override fun onFirstFrame(decoder: TileDecoder) {
@@ -456,12 +470,20 @@ class TilePlayer(
         val stale: TileDecoder?
         synchronized(lock) {
             if (this.decoder !== decoder) return
-            Log.w(TAG, "$tag: codec error ${exception.errorCode} transient=${exception.isTransient}")
+            val software = decoderIsSoftware
+            val detail = DecoderPolicy.describeFailure(decoder.codecName, exception)
+            lastFailure = detail
             stale = detachDecoderLocked()
-            if (DecoderPolicy.shouldFallBackToSoftware(exception.isTransient, exception.errorCode)) {
-                deferHardwareLocked()
-            } else {
-                failDecoderLocked("Decoder error")
+            when (DecoderPolicy.afterDecoderFailure(software)) {
+                DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE -> {
+                    // The next keyframe rebuilds with software; hardware waits out the backoff.
+                    val wait = deferHardwareLocked()
+                    Log.w(TAG, "$tag: hardware decoder failed, software for ${wait / MILLIS_PER_SECOND} s: $detail")
+                }
+                DecoderPolicy.FailureAction.TILE_ERROR -> {
+                    Log.w(TAG, "$tag: software decoder failed: $detail")
+                    failDecoderLocked(DECODER_ERROR, detail)
+                }
             }
         }
         stale?.let(::releaseLater)
@@ -625,7 +647,10 @@ class TilePlayer(
     ): Pair<TileDecoder, Boolean>? {
         val name = pickCodec(config.codec.mimeType, software)
         if (name == null) {
-            failDecoder("No ${config.codec} decoder")
+            failDecoder(
+                "No ${config.codec} decoder",
+                "no ${if (software) "software" else "hardware"} ${config.codec.mimeType} decoder",
+            )
             return null
         }
         val d = decoderFactory.create(name, config, target, this, paced = paced)
@@ -638,20 +663,14 @@ class TilePlayer(
             d to software
         } catch (e: MediaCodec.CodecException) {
             d.release()
-            if (!software && DecoderPolicy.shouldFallBackToSoftware(e.isTransient, e.errorCode)) {
-                val wait = synchronized(lock) { deferHardwareLocked() }
-                val seconds = wait / MILLIS_PER_SECOND
-                Log.w(TAG, "$tag: hardware decoder unavailable (${e.errorCode}), software for $seconds s")
-                createDecoder(config, target, software = true, paced = paced)
-            } else {
-                failDecoder("Decoder error")
-                null
-            }
+            afterStartFailure(name, e, config, target, software, paced)
         } catch (e: IOException) {
             d.release()
-            Log.w(TAG, "$tag: cannot create $name", e)
-            failDecoder("Decoder error")
-            null
+            afterStartFailure(name, e, config, target, software, paced)
+        } catch (e: IllegalStateException) {
+            // The codec answered configure() or start() from a state it should not be in.
+            d.release()
+            afterStartFailure(name, e, config, target, software, paced)
         } catch (e: IllegalArgumentException) {
             // `configure` throws this when the surface is unusable: gone, or still held by another
             // codec. On the MiTV the codec released a moment ago can still hold the surface's
@@ -660,18 +679,45 @@ class TilePlayer(
             // is a tile error with Retry. It must never take the process down.
             d.release()
             val attempt = synchronized(lock) { ++configureRefusals }
+            val detail = DecoderPolicy.describeFailure(name, e)
             if (attempt <= CONFIGURE_RETRIES) {
-                Log.w(TAG, "$tag: cannot configure $name (attempt $attempt): ${e.message}; retrying at a keyframe")
+                Log.w(TAG, "$tag: cannot configure (attempt $attempt), retrying at a keyframe: $detail")
             } else {
-                Log.w(TAG, "$tag: cannot configure $name", e)
-                failDecoder("Decoder error")
+                Log.w(TAG, "$tag: cannot configure, giving up: $detail")
+                synchronized(lock) { lastFailure = detail }
+                failDecoder(DECODER_ERROR, detail)
             }
             null
-        } catch (e: IllegalStateException) {
-            d.release()
-            Log.w(TAG, "$tag: codec in a bad state at start", e)
-            failDecoder("Decoder error")
-            null
+        }
+    }
+
+    /**
+     * The decoder [name] did not start with [failed] ([DecoderPolicy.afterDecoderFailure]): a
+     * hardware one is replaced by a software one right away, with hardware deferred for the
+     * backoff whatever the code was, so a decoder that fails at once for a reason of its own
+     * does not flap between the two at every keyframe; a software one is the tile's error.
+     */
+    private fun afterStartFailure(
+        name: String,
+        failed: Throwable,
+        config: CodecConfig,
+        target: Surface,
+        software: Boolean,
+        paced: Boolean,
+    ): Pair<TileDecoder, Boolean>? {
+        val detail = DecoderPolicy.describeFailure(name, failed)
+        synchronized(lock) { lastFailure = detail }
+        return when (DecoderPolicy.afterDecoderFailure(software)) {
+            DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE -> {
+                val wait = synchronized(lock) { deferHardwareLocked() }
+                Log.w(TAG, "$tag: hardware decoder failed, software for ${wait / MILLIS_PER_SECOND} s: $detail")
+                createDecoder(config, target, software = true, paced = paced)
+            }
+            DecoderPolicy.FailureAction.TILE_ERROR -> {
+                Log.w(TAG, "$tag: software decoder failed: $detail")
+                failDecoder(DECODER_ERROR, detail)
+                null
+            }
         }
     }
 
@@ -688,12 +734,18 @@ class TilePlayer(
         hardwareBackoffMillis = HW_RETRY_MILLIS
     }
 
-    private fun failDecoder(message: String) = synchronized(lock) { failDecoderLocked(message) }
+    private fun failDecoder(
+        message: String,
+        detail: String?,
+    ) = synchronized(lock) { failDecoderLocked(message, detail) }
 
     /** A decoder failure a retry cannot fix: stop trying until the mode, surface or stream changes. */
-    private fun failDecoderLocked(message: String) {
+    private fun failDecoderLocked(
+        message: String,
+        detail: String?,
+    ) {
         decoderDisabled = true
-        stateFlow.value = TileState.Error(message)
+        stateFlow.value = TileState.Error(message, detail = detail)
     }
 
     /** Forgets the decoder; the caller releases what comes back, outside the lock. */
@@ -718,6 +770,9 @@ class TilePlayer(
 
         /** `configure` refusals (surface still held by the previous codec) retried before the tile gives up. */
         const val CONFIGURE_RETRIES: Int = 3
+
+        /** The overlay text of a tile whose software decoder failed (the detail carries the codec's words). */
+        const val DECODER_ERROR: String = "Decoder error"
 
         private const val TAG = "TilePlayer"
         private const val FIRST_STILLS_LOGGED = 3

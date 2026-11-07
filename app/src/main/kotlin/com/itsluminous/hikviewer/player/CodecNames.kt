@@ -27,9 +27,9 @@ object CodecNames {
     fun pick(
         mimeType: String,
         software: Boolean,
-        codecs: List<MediaCodecInfo> = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.toList(),
+        codecs: List<MediaCodecInfo> = allCodecs(),
     ): String? {
-        val decoders = codecs.filter { !it.isEncoder && it.supportedTypes.any { t -> t.equals(mimeType, true) } }
+        val decoders = codecs.filter { it.isDecoderFor(mimeType) }
         val (soft, hard) = decoders.partition(::isSoftware)
         if (logged.putIfAbsent(mimeType, true) == null) {
             Log.i(TAG, "$mimeType decoders: hardware=${hard.map { it.name }} software=${soft.map { it.name }}")
@@ -48,6 +48,60 @@ object CodecNames {
         val lower = name.lowercase()
         return lower.startsWith("omx.google.") || lower.startsWith("c2.android.") || lower.contains(".sw.")
     }
+
+    /**
+     * True when the decoder called [codecName] declares `FEATURE_LowLatency` for some type it
+     * decodes (API 30+; the feature and the format key both arrived in R). [TileDecoder] sets
+     * `KEY_LOW_LATENCY` only then: the key is defined as ignored by decoders that lack the feature,
+     * but an Amlogic Android 11 box answered the grid's decoders with "Decoder error" and that
+     * unconditional key was the one thing the grid did that fullscreen did not, so it is no longer
+     * sent where the codec has not asked for it. An unknown name reads as unsupported.
+     */
+    fun supportsLowLatency(
+        codecName: String,
+        codecs: List<MediaCodecInfo> = allCodecs(),
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val info = codecs.firstOrNull { it.name == codecName } ?: return false
+        return info.supportedTypes.any { type ->
+            runCatching {
+                info
+                    .getCapabilitiesForType(
+                        type,
+                    ).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
+            }.getOrDefault(false)
+        }
+    }
+
+    /**
+     * How many hardware decoders of [mimeType] this device runs at once, as [DecoderPolicy] counts
+     * them: the preferred hardware codec's `getMaxSupportedInstances()` clamped to 1..2
+     * ([DecoderPolicy.hardwareSlots]); two when there is no hardware decoder or it does not say
+     * (the MiTV's `OMX.MS.AVC.Decoder` reports 2; Amlogic 1 GB boxes often report 1). Logged once
+     * per type with the codec names, so a TV logcat starts with what the policy is working with.
+     */
+    fun hardwareSlots(
+        mimeType: String,
+        codecs: List<MediaCodecInfo> = allCodecs(),
+    ): Int {
+        val hardware = codecs.firstOrNull { it.isDecoderFor(mimeType) && !isSoftware(it) }
+        val reported =
+            hardware?.let { info ->
+                runCatching { info.getCapabilitiesForType(mimeType).maxSupportedInstances }.getOrNull()
+            }
+        val slots = DecoderPolicy.hardwareSlots(reported)
+        if (slotsLogged.putIfAbsent(mimeType, true) == null) {
+            Log.i(TAG, "$mimeType hardware slots=$slots (${hardware?.name ?: "no hardware decoder"} max=$reported)")
+        }
+        return slots
+    }
+
+    private fun MediaCodecInfo.isDecoderFor(mimeType: String): Boolean =
+        !isEncoder && supportedTypes.any { it.equals(mimeType, true) }
+
+    private fun allCodecs(): List<MediaCodecInfo> = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.toList()
+
+    private val slotsLogged = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     private const val TAG = "CodecNames"
 }

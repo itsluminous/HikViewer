@@ -3,7 +3,6 @@
 
 package com.itsluminous.hikviewer.player
 
-import android.media.MediaCodec
 import android.view.Surface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -112,38 +111,6 @@ class TilePlayerTest {
         assertThat(p.state.value).isEqualTo(TileState.Live)
         p.stop()
         assertThat(d.released).isTrue()
-    }
-
-    @Test
-    fun `hardware mode asks for a hardware codec and falls back to software on error 1100`() = runTest(dispatcher) {
-        decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false)
-        val p = player()
-        p.attachSurface(surface)
-        p.paced = false // a single-camera screen
-        p.mode = TileMode.HW_LIVE
-        run(p)
-        assertThat(
-            decoders.created.map { it.codecName },
-        ).containsExactly("fake.hw.video/avc", "fake.sw.video/avc").inOrder()
-        assertThat(decoders.created[0].released).isTrue()
-        assertThat(decoders.created[0].renderSlotNanos).isEqualTo(0L)
-        assertThat(decoders.created[1].started).isTrue()
-        // The fallback keeps the screen's role: no jitter buffer, no 15 Hz slot, on software too.
-        assertThat(decoders.created[1].renderSlotNanos).isEqualTo(0L)
-        assertThat(decoders.created[1].pacedRequested).isFalse()
-        p.stop()
-    }
-
-    @Test
-    fun `a non-transient start failure is an error state`() = runTest(dispatcher) {
-        decoders.startFailures += "fake.hw.video/avc" to codecException(7, transient = false)
-        val p = player()
-        p.attachSurface(surface)
-        p.mode = TileMode.HW_LIVE
-        run(p)
-        assertThat(decoders.created).hasSize(1)
-        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
-        p.stop()
     }
 
     @Test
@@ -335,40 +302,6 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `hardware refusals back off exponentially and a user retry resets the backoff`() = runTest(dispatcher) {
-        repeat(4) { decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false) }
-        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 40))
-        p.attachSurface(surface)
-        p.mode = TileMode.HW_LIVE
-        p.start(this)
-
-        fun hardwareAttempts() = decoders.created.count { it.codecName.startsWith("fake.hw") }
-
-        fun advanceTo(millis: Long) {
-            now = millis
-            dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * (FRAMES + 1))
-            dispatcher.scheduler.runCurrent()
-        }
-        advanceTo(0)
-        assertThat(hardwareAttempts()).isEqualTo(1) // refused at once, software took over
-        advanceTo(TilePlayer.HW_RETRY_MILLIS - 1)
-        assertThat(hardwareAttempts()).isEqualTo(1)
-        advanceTo(TilePlayer.HW_RETRY_MILLIS)
-        assertThat(hardwareAttempts()).isEqualTo(2) // 5 s later: tried again, refused again
-        advanceTo(TilePlayer.HW_RETRY_MILLIS + TilePlayer.HW_RETRY_MILLIS * 2 - 1)
-        assertThat(hardwareAttempts()).isEqualTo(2) // the second wait is 10 s, not 5
-        advanceTo(TilePlayer.HW_RETRY_MILLIS + TilePlayer.HW_RETRY_MILLIS * 2)
-        assertThat(hardwareAttempts()).isEqualTo(3)
-        advanceTo(now + TilePlayer.HW_RETRY_MILLIS * 4 - 1)
-        assertThat(hardwareAttempts()).isEqualTo(3) // 20 s
-        p.retry(this) // the user's Retry starts over at 5 s
-        advanceTo(now)
-        assertThat(hardwareAttempts()).isEqualTo(4)
-        assertThat(decoders.created.last().codecName).isEqualTo("fake.sw.video/avc")
-        p.stop()
-    }
-
-    @Test
     fun `live to live mode change keeps the decoder until the next keyframe, then swaps`() = runTest(dispatcher) {
         val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
         p.attachSurface(surface)
@@ -416,68 +349,6 @@ class TilePlayerTest {
             assertThat(decoders.created).hasSize(2)
             p.stop()
         }
-
-    @Test
-    fun `retry forgets a decoder failure and reopens the stream`() = runTest(dispatcher) {
-        var opens = 0
-        val p =
-            TilePlayer(
-                camera,
-                opener = { _, _, onStatus ->
-                    opens++
-                    onStatus(StreamStatus.Streaming)
-                    SyntheticStream.flow(paced = false).take(FRAMES)
-                },
-                pool = pool,
-                pickCodec = decoders::pickCodec,
-                decoderFactory = decoders.factory,
-                dispatcher = dispatcher,
-                releaser = releaseNow,
-            )
-        decoders.startFailures += "fake.sw.video/avc" to codecException(7, transient = false)
-        p.attachSurface(surface)
-        p.mode = TileMode.SW_LIVE
-        run(p)
-        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
-        p.retry(this)
-        dispatcher.scheduler.advanceUntilIdle()
-        assertThat(opens).isEqualTo(2)
-        assertThat(decoders.created.last().started).isTrue()
-        assertThat(p.state.value).isEqualTo(TileState.Connecting)
-        p.stop()
-    }
-
-    @Test
-    fun `a configure failure is retried at keyframes, then a tile error, never a crash`() = runTest(dispatcher) {
-        // The surface's BufferQueue can stay connected to the codec released a moment ago (MiTV,
-        // nativeWindowConnect -22); the first refusals are retried, a lasting one dims the tile.
-        repeat(TilePlayer.CONFIGURE_RETRIES + 1) {
-            decoders.startFailures += "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
-        }
-        val p = player(stream = SyntheticStream.flow(paced = false).take(FRAMES * 3))
-        p.attachSurface(surface)
-        p.mode = TileMode.SW_LIVE
-        run(p)
-        assertThat(decoders.created).hasSize(TilePlayer.CONFIGURE_RETRIES + 1)
-        assertThat(decoders.created.all { it.released }).isTrue()
-        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
-        p.stop()
-    }
-
-    @Test
-    fun `a configure failure that clears up is forgotten`() = runTest(dispatcher) {
-        decoders.startFailures += "fake.sw.video/avc" to IllegalArgumentException("BufferQueue already connected")
-        val p = player(stream = SyntheticStream.flow(paced = false).take(FRAMES * 2))
-        p.attachSurface(surface)
-        p.mode = TileMode.SW_LIVE
-        run(p)
-        // First attempt refused and released, the second (next keyframe) runs.
-        assertThat(decoders.created).hasSize(2)
-        assertThat(decoders.created.first().released).isTrue()
-        assertThat(decoders.created.last().started).isTrue()
-        assertThat(p.state.value).isNotEqualTo(TileState.Error("Decoder error"))
-        p.stop()
-    }
 
     @Test
     fun `surface loss releases the decoder on the spot and waits for releases still in flight`() = runTest(dispatcher) {
@@ -536,50 +407,6 @@ class TilePlayerTest {
     }
 
     @Test
-    fun `codec error with fallback switches to software, without fallback shows an error`() = runTest(dispatcher) {
-        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 2))
-        p.attachSurface(surface)
-        p.mode = TileMode.HW_LIVE
-        p.start(this)
-        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
-        dispatcher.scheduler.runCurrent()
-        val hw = decoders.created.single()
-        hw.listener.onError(hw, codecException(1100, transient = true))
-        assertThat(hw.released).isTrue()
-        dispatcher.scheduler.advanceUntilIdle()
-        val sw = decoders.created.last()
-        assertThat(sw.codecName).isEqualTo("fake.sw.video/avc")
-        sw.listener.onError(sw, codecException(3, transient = false))
-        assertThat(p.state.value).isEqualTo(TileState.Error("Decoder error"))
-        p.stop()
-    }
-
-    @Test
-    fun `hardware is tried again at a keyframe once the cooldown passed`() = runTest(dispatcher) {
-        decoders.startFailures += "fake.hw.video/avc" to codecException(1100, transient = false)
-        val p = player(stream = SyntheticStream.flow(paced = true).take(FRAMES * 4))
-        p.attachSurface(surface)
-        p.mode = TileMode.HW_LIVE
-        p.start(this)
-        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
-        dispatcher.scheduler.runCurrent()
-        assertThat(decoders.created.map { it.codecName })
-            .containsExactly("fake.hw.video/avc", "fake.sw.video/avc")
-            .inOrder()
-        // Before the cooldown: the software decoder keeps running.
-        dispatcher.scheduler.advanceTimeBy(SyntheticStream.FRAME_PERIOD_MILLIS * 3)
-        dispatcher.scheduler.runCurrent()
-        assertThat(decoders.created).hasSize(2)
-        // After the cooldown the next keyframe rebuilds with hardware, which now succeeds.
-        now = TilePlayer.HW_RETRY_MILLIS
-        dispatcher.scheduler.advanceUntilIdle()
-        assertThat(decoders.created.last().codecName).isEqualTo("fake.hw.video/avc")
-        assertThat(decoders.created.last().started).isTrue()
-        assertThat(decoders.created[1].released).isTrue()
-        p.stop()
-    }
-
-    @Test
     fun `terminal stream errors map to tile errors`() = runTest(dispatcher) {
         val cases =
             listOf(
@@ -615,25 +442,7 @@ class TilePlayerTest {
         p.stop()
     }
 
-    private fun codecException(
-        code: Int,
-        transient: Boolean,
-    ): MediaCodec.CodecException {
-        val e = Shadow.newInstanceOf(MediaCodec.CodecException::class.java)
-        org.robolectric.util.ReflectionHelpers
-            .setField(e, "mErrorCode", code)
-        org.robolectric.util.ReflectionHelpers.setField(
-            e,
-            "mActionCode",
-            if (transient) ACTION_TRANSIENT else 0,
-        )
-        return e
-    }
-
     private companion object {
         const val FRAMES = 20
-
-        // MediaCodec.CodecException.ACTION_TRANSIENT (hidden constant).
-        const val ACTION_TRANSIENT = 1
     }
 }

@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.player
 
+import android.media.MediaFormat
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import kotlinx.coroutines.CoroutineDispatcher
@@ -23,7 +24,14 @@ class PlaybackFactory(
     private val releaser: (TileDecoder) -> Future<*> = DecoderReleaser::release,
     /** One [HeadroomProbe] per coordinator; the default never lets the budget above its ceiling. */
     private val headroomFactory: () -> HeadroomProbe = { HeadroomProbe.NONE },
+    /**
+     * Hardware decoders the device runs at once for the live streams' codec; read from the codec
+     * list the first time a coordinator is built (which logs it once) and reused after.
+     */
+    hardwareSlots: () -> Int = { CodecNames.hardwareSlots(MediaFormat.MIMETYPE_VIDEO_AVC) },
 ) {
+    private val hardwareSlots: Int by lazy(hardwareSlots)
+
     /** A coordinator for [opener] on [scope]. */
     fun create(
         opener: StreamOpener,
@@ -42,6 +50,7 @@ class PlaybackFactory(
         dispatcher = dispatcher,
         releaser = releaser,
         headroom = headroomFactory(),
+        hardwareSlots = hardwareSlots,
     )
 
     /**

@@ -51,6 +51,11 @@ open class TileDecoder(
     private val sizeHint: Pair<Int, Int> = DEFAULT_SIZE_HINT,
     /** The jitter buffer, or null to feed every picture the moment it arrives. */
     private val pacer: FramePacer? = null,
+    /**
+     * Whether the named codec declares `FEATURE_LowLatency`, which decides whether the format asks
+     * for low latency ([inputFormat]). The platform lookup by default; tests pass a constant.
+     */
+    private val supportsLowLatency: (String) -> Boolean = CodecNames::supportsLowLatency,
 ) {
     /** Codec events, delivered on the decoder's own thread. */
     interface Listener {
@@ -169,10 +174,7 @@ open class TileDecoder(
 
     /** Configures and starts the codec. Throws `MediaCodec.CodecException`/`IOException` on failure. */
     open fun start() {
-        val format = MediaFormat.createVideoFormat(config.codec.mimeType, sizeHint.first, sizeHint.second)
-        config.csd.forEachIndexed { i, bytes -> format.setByteBuffer("csd-$i", ByteBuffer.wrap(bytes)) }
-        // Ask for low latency where the platform supports it (API 30+); older decoders ignore the key.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+        val format = inputFormat(config, sizeHint, lowLatency = supportsLowLatency(codecName))
         val c = MediaCodec.createByCodecName(codecName)
         // Owned from this point on: a configure() that fails (error 1100 on the MiTV when both
         // hardware instances are busy) must still be followed by release(), or the codec stays
@@ -411,6 +413,27 @@ open class TileDecoder(
     companion object {
         /** Drop the oldest frame beyond this many queued; keeps latency bounded when the CPU lags. */
         const val MAX_PENDING: Int = 30
+
+        /**
+         * The format the codec is configured with: the stream's mime type and parameter sets
+         * (`csd-N`), a size hint, and `KEY_LOW_LATENCY` only when [lowLatency] (the codec declares
+         * the feature, API 30+). The key is documented as ignored by decoders without the feature,
+         * but an Amlogic Android 11 TV failed the grid's decoders while fullscreen worked, and the
+         * unconditional key was one of the two things the grid did differently; see
+         * [CodecNames.supportsLowLatency]. Pure, so the two cases are unit-tested.
+         */
+        fun inputFormat(
+            config: CodecConfig,
+            sizeHint: Pair<Int, Int> = DEFAULT_SIZE_HINT,
+            lowLatency: Boolean,
+        ): MediaFormat {
+            val format = MediaFormat.createVideoFormat(config.codec.mimeType, sizeHint.first, sizeHint.second)
+            config.csd.forEachIndexed { i, bytes -> format.setByteBuffer("csd-$i", ByteBuffer.wrap(bytes)) }
+            if (lowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+            }
+            return format
+        }
 
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val RECENT = 24

@@ -246,8 +246,10 @@ class PhoneNavigationTest {
         onView(tile(1)).perform(click())
         val sideways = resumedActivity()
         assert(sideways is PhoneCameraActivity && !sideways.isUpright) { "expected the landscape camera screen" }
-        // Shown for the first seconds, then gone.
-        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+        // Shown for the first seconds, then gone. The test graph's idle time is one second, and on a
+        // slow CI emulator the rotation plus the launch can eat it before this line runs, so the
+        // opening state is checked by the Robolectric test with an injected clock; here only the
+        // hide is asserted.
         onView(withId(R.id.help)).check(matches(withText(R.string.phone_help_landscape)))
         waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS + 700)
         onView(withId(R.id.controls)).check(matches(not(isDisplayed())))

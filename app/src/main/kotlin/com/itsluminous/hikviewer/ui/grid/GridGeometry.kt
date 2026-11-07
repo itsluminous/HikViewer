@@ -34,24 +34,17 @@ data class GridShape(
  * Pure layout maths for [CameraGridLayout]: which tile goes in which cell, and where a cell is in
  * pixels. Separated from the `ViewGroup` so every layout can be asserted on the JVM.
  *
- * A fixed grid is drawn with its own columns and rows on a screen of its orientation, and turned
- * as the counterpart of the same capacity (see [dimensions] and the table on [GridLayoutMode]):
- * a turned phone shows 2 x 3 as 3 x 2 and 1 x 4 as 2 x 2. In portrait AUTO resolves to the
- * smallest portrait shape that holds every tile (two columns from three cameras), in landscape
- * to 3 x 3, 4 x 3 or 4 x 4; a landscape shape stored on a phone held upright is drawn as AUTO
- * ([GridLayoutMode.effective]), so the grid upright is never wider than two columns.
+ * The mode decides the shape; the orientation only decides what AUTO means. A fixed grid is drawn
+ * with its own columns and rows (a phone keeps a layout per orientation, so a portrait shape is
+ * only ever asked for upright and a landscape shape only turned, see [GridLayoutMode]). AUTO
+ * resolves upright to the smallest portrait shape that holds every tile (two columns from three
+ * cameras) and turned to 3 x 3, 4 x 3 or 4 x 4.
  *
- * A 1 + N layout ([GridLayoutMode.isHero]) is a square `(k+1) x (k+1)` grid whose hero spans the
- * top-left `k x k` cells; the small tiles fill the right column top to bottom, then the bottom
- * row left to right (row-major order, like the fixed grids). In portrait (phones) the grid is two
- * columns wide and as tall as needed, with the hero spanning the full width (2 x 2 cells) and
- * the small tiles two per row beneath it.
- *
- * The two shapes of a 1 + N layout hold different counts, and the shape decides what is shown:
- * an odd N fills the square grid and leaves one portrait cell empty; an even N fills the portrait
- * rows and, in landscape, gets the square grid of the odd layout one tile smaller, so its last
- * tile (the last position of the arrangement) has no cell and is hidden until the phone is
- * upright again. Both orientations read the same arrangement, so the hidden tile keeps its place.
+ * An odd 1 + N layout is a square `(k+1) x (k+1)` grid whose hero spans the top-left `k x k`
+ * cells; the small tiles fill the right column top to bottom, then the bottom row left to right
+ * (row-major order, like the fixed grids). An even 1 + N layout ([GridLayoutMode.isPortraitHero])
+ * is the phone's upright shape: two columns and as many rows as needed, the hero spanning the
+ * full width (2 x 2 cells) and the small tiles two per row beneath it, so no cell is empty.
  */
 object GridGeometry {
     /** Cells for [tileCount] tiles in [mode]. Tiles beyond the shape's capacity are not placed. */
@@ -60,31 +53,11 @@ object GridGeometry {
         tileCount: Int,
         portrait: Boolean = false,
     ): GridShape = when {
-        portrait && mode.isHero -> portraitHero(mode)
+        mode.isPortraitHero -> portraitHero(mode)
         mode.isHero -> heroShape(mode.heroSpan + 1, mode.heroSpan + 1, mode.heroSpan)
         else -> {
-            val (columns, rows) = dimensions(mode.resolve(tileCount, portrait), portrait)
-            fixedShape(columns, rows)
-        }
-    }
-
-    /**
-     * Columns and rows the fixed [mode] is drawn with on a screen that is [portrait] or not: its
-     * own when the shape belongs to that orientation ([GridLayoutMode.isPortraitShape]), otherwise
-     * the transposition, except that 1 x 4 turned is 2 x 2 (four tiles of 16:9 instead of a row of
-     * four slivers). The capacity never changes, so the arrangement is one list for both. A
-     * landscape shape is never asked for upright: [shape] resolves it to AUTO there first.
-     */
-    fun dimensions(
-        mode: GridLayoutMode,
-        portrait: Boolean,
-    ): Pair<Int, Int> {
-        require(mode.isFixed) { "$mode is not a fixed grid" }
-        require(mode.isPortraitShape || !portrait) { "$mode is drawn as AUTO upright" }
-        return when {
-            mode.isPortraitShape == portrait -> mode.columns to mode.rows
-            mode == GridLayoutMode.GRID_1X4 -> 2 to 2
-            else -> mode.rows to mode.columns
+            val fixed = mode.resolve(tileCount, portrait)
+            fixedShape(fixed.columns, fixed.rows)
         }
     }
 
@@ -114,12 +87,9 @@ object GridGeometry {
         rows: Int,
     ): GridShape = GridShape(columns, rows, (0 until columns * rows).map { Cell(it % columns, it / columns) })
 
-    /** Two columns, full-width hero, companions two per row; an odd N leaves the last cell empty, an even N none. */
-    private fun portraitHero(mode: GridLayoutMode): GridShape {
-        val rows = PORTRAIT_HERO_SPAN + ceilDiv(mode.heroCompanions, PORTRAIT_COLUMNS)
-        val shape = heroShape(PORTRAIT_COLUMNS, rows, PORTRAIT_HERO_SPAN)
-        return shape.copy(cells = shape.cells.take(mode.capacity))
-    }
+    /** Two columns, a full-width hero and the companions two per row: an even N fills every cell. */
+    private fun portraitHero(mode: GridLayoutMode): GridShape =
+        heroShape(PORTRAIT_COLUMNS, PORTRAIT_HERO_SPAN + mode.heroCompanions / PORTRAIT_COLUMNS, PORTRAIT_HERO_SPAN)
 
     /** Hero of [heroSpan] x [heroSpan] cells top-left; the other cells row by row. */
     private fun heroShape(
@@ -136,11 +106,6 @@ object GridGeometry {
         }
         return GridShape(columns, rows, cells)
     }
-
-    private fun ceilDiv(
-        a: Int,
-        b: Int,
-    ): Int = (a + b - 1) / b
 
     private const val PORTRAIT_COLUMNS = GridLayoutMode.PORTRAIT_COLUMNS
     private const val PORTRAIT_HERO_SPAN = 2

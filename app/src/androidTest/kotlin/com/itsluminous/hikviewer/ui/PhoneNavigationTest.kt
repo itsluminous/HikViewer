@@ -301,38 +301,49 @@ class PhoneNavigationTest {
         GeneralSwipeAction(Swipe.FAST, GeneralLocation.TOP_RIGHT, GeneralLocation.TOP_LEFT, Press.FINGER)
 
     /**
-     * Upright, the Layout menu offers the portrait shapes; 2 x 3 picked there is drawn 3 x 2 when
-     * the phone is turned and 2 x 3 again when it is upright, every tile keeping its camera.
+     * A phone keeps a layout per orientation. 2 x 3 picked upright is the upright layout; turned,
+     * the grid follows the sideways layout (AUTO until one is picked: 3 x 3 for six cameras), a
+     * 1 + 5 picked there stays sideways, and upright again it is 2 x 3 as before.
      */
     @Test
-    fun aTwoColumnLayoutTurnsIntoItsCounterpartAndTheTilesKeepTheirCameras() {
+    fun eachOrientationKeepsItsOwnLayoutAcrossRotations() {
         onView(withId(R.id.layout_button)).perform(click())
         onView(withText(R.string.layout_3x3)).check(doesNotExist()) // the TV's grids are not for a phone upright
         onView(withText(R.string.layout_2x3)).perform(click())
         waitFor(POPUP_DISMISS_MILLIS)
-        assertGrid(columns = 2, rows = 3)
+        assertGrid(GridLayoutMode.GRID_2X3, columns = 2, rows = 3)
         (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
+        assert(app.graph.arrangementStore.lastLayoutPortrait == GridLayoutMode.GRID_2X3) { "upright is 2 x 3" }
+        assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.AUTO) { "sideways is untouched" }
 
         // The suite locks the grid upright (see loggedInGraph); this test is about turning it.
         scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         rotate(ROTATION_LANDSCAPE)
-        assertGrid(columns = 3, rows = 2)
-        assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.GRID_2X3) { "the layout is still 2 x 3" }
+        assertGrid(GridLayoutMode.AUTO, columns = 3, rows = 3)
         (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
+        onView(withId(R.id.layout_button)).perform(click())
+        onView(withText(R.string.layout_2x3)).check(doesNotExist()) // the portrait shapes are not for a turned phone
+        onView(withText(R.string.layout_1_5)).perform(click())
+        waitFor(POPUP_DISMISS_MILLIS)
+        assertGrid(GridLayoutMode.HERO_1_5, columns = 3, rows = 3)
+        assert(app.graph.arrangementStore.lastLayout == GridLayoutMode.HERO_1_5) { "sideways is 1 + 5" }
+        assert(app.graph.arrangementStore.lastLayoutPortrait == GridLayoutMode.GRID_2X3) { "upright is still 2 x 3" }
 
         rotate(ROTATION_PORTRAIT)
-        assertGrid(columns = 2, rows = 3)
+        assertGrid(GridLayoutMode.GRID_2X3, columns = 2, rows = 3)
         (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
     }
 
     /** The resumed grid's shape (the Activity is recreated by a rotation, so the scenario's reference is stale). */
     private fun assertGrid(
+        mode: GridLayoutMode,
         columns: Int,
         rows: Int,
     ) {
         val activity = resumedActivity()
         assert(activity is GridActivity) { "expected the grid, got $activity" }
         val grid = activity.findViewById<CameraGridLayout>(R.id.grid)
+        assert(grid.mode == mode) { "grid is ${grid.mode}, expected $mode" }
         assert(grid.shape.columns == columns && grid.shape.rows == rows) {
             "grid is ${grid.shape.columns} x ${grid.shape.rows}, expected $columns x $rows"
         }

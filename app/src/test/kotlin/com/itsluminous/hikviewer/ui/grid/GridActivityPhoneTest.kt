@@ -156,64 +156,92 @@ class GridActivityPhoneTest {
         }
     }
 
-    /** 1 + 6 holds seven tiles upright; turned it is drawn as 1 + 5 and the seventh tile waits, unseen, in the arrangement. */
+    /**
+     * A phone keeps a layout per orientation (round 17). Upright the grid follows the portrait key,
+     * turned the landscape key, each defaulting to AUTO; a pick in one orientation never changes
+     * the other, and each layout keeps its own arrangement.
+     */
     @Test
-    fun `turning the phone evicts the last tile of an even hero layout and turning back restores it`() {
+    fun `turning the phone switches to the layout stored for that orientation and back`() {
         val serial = FakeCloudServices.SERIAL
         app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
-        app.graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_6
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
-            scenario.grid { a, grid ->
-                assertThat(grid.shape.columns).isEqualTo(2)
-                assertThat(grid.shape.capacity).isEqualTo(7)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7).inOrder()
-                assertThat(
-                    a
-                        .viewModels<GridViewModel>()
-                        .value.playback.players.value,
-                ).hasSize(7)
-            }
+            pickTwoByThreeUprightAndMoveATile(scenario)
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
             scenario.grid { a, grid ->
-                assertThat(grid.shape.columns).isEqualTo(3) // the 1 + 5 grid
+                // Turned: the landscape key is still AUTO, 3 x 3 for eight cameras, in Settings order.
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.AUTO)
+                assertThat(grid.shape.columns).isEqualTo(3)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7, 8).inOrder()
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                val menu = layoutDialog()
+                assertThat(menu.titles()).containsExactly("Auto", "3 × 3", "1 + 5", "1 + 7").inOrder()
+                assertThat(menu.checkedTitle()).isEqualTo("Auto")
+                menu.pick(menu.titles().indexOf("1 + 5"))
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.HERO_1_5)
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_2X3)
+            }
+            scenario.grid { a, grid ->
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.HERO_1_5)
                 assertThat(grid.shape.capacity).isEqualTo(6)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder() // its own arrangement
                 assertThat(
                     a
                         .viewModels<GridViewModel>()
                         .value.playback.players.value,
                 ).hasSize(6)
-                // The arrangement still has every camera; the seventh is only without a cell.
-                a.viewModels<GridViewModel>().value.moveTile(0, 1)
-                assertThat(app.graph.arrangementStore.order(GridLayoutMode.HERO_1_6))
-                    .containsExactlyElementsIn(listOf(2, 1, 3, 4, 5, 6, 7, 8).map { "$serial/$it" })
-                    .inOrder()
             }
             RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
             scenario.recreate()
             scenario.grid { a, grid ->
-                assertThat(grid.shape.capacity).isEqualTo(7)
-                assertThat(shownChannels(grid)).containsExactly(2, 1, 3, 4, 5, 6, 7).inOrder()
-                assertThat(
-                    a
-                        .viewModels<GridViewModel>()
-                        .value.playback.players.value,
-                ).hasSize(7)
+                // Upright again: 2 x 3 with the move made in it; the sideways pick changed nothing here.
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_2X3)
+                assertThat(grid.shape.columns).isEqualTo(2)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(layoutDialog().checkedTitle()).isEqualTo("2 × 3")
             }
         }
     }
 
+    /** Upright on AUTO (2 x 4 for eight cameras), picks 2 x 3 from the menu and swaps its first and last tiles. */
+    private fun pickTwoByThreeUprightAndMoveATile(scenario: ActivityScenario<GridActivity>) {
+        scenario.grid { a, grid ->
+            assertThat(grid.shape.columns).isEqualTo(2)
+            assertThat(grid.shape.rows).isEqualTo(4)
+            a.findViewById<View>(R.id.layout_button).performClick()
+            ShadowLooper.idleMainLooper()
+            val menu = layoutDialog()
+            assertThat(menu.checkedTitle()).isEqualTo("Auto")
+            menu.pick(menu.titles().indexOf("2 × 3"))
+            assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_2X3)
+            assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+        }
+        scenario.grid { a, grid ->
+            assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_2X3)
+            assertThat(grid.shape.columns).isEqualTo(2)
+            assertThat(grid.shape.rows).isEqualTo(3)
+            assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+            a.viewModels<GridViewModel>().value.moveTile(0, 5)
+            assertThat(shownChannels(grid)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
+        }
+    }
+
     /**
-     * Round 16 regression: upright, a fresh install draws two columns, and so does an install whose
-     * stored layout is the TV's 4 x 3 (every phone upgraded from 0.1, which had no portrait shapes;
-     * it used to transpose to 3 x 4, three narrow columns). The row count follows the camera count.
+     * The landscape key never reaches an upright phone: whatever 0.1 or a sideways session left
+     * there (3 x 3, 4 x 3, 4 x 4, a 1 + 7), upright is the portrait key, AUTO by default, so the
+     * grid is two columns and the row count follows the camera count. Turned, the stored shape is back.
      */
     @Test
-    fun `upright, a fresh store and a stored 4 x 3 both draw two columns`() {
+    fun `upright, a fresh store and any stored landscape layout draw the portrait auto shape`() {
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { _, grid ->
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.AUTO)
                 assertThat(grid.shape.columns).isEqualTo(2) // 6 cameras: AUTO upright is 2 x 3
                 assertThat(grid.shape.rows).isEqualTo(3)
             }
@@ -221,23 +249,21 @@ class GridActivityPhoneTest {
         app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X3
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, grid ->
-                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_4X3)
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.AUTO)
                 assertThat(grid.shape.columns).isEqualTo(2)
                 assertThat(grid.shape.rows).isEqualTo(3)
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
-                // The stored name is untouched: turned, the phone gets its 4 x 3 back.
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
                 val menu = layoutDialog()
-                val titles = menu.titles()
-                assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
-                assertThat(menu.checkedTitle()).isNull() // drawn as AUTO, but AUTO is not what is stored
+                assertThat(menu.titles()).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
+                assertThat(menu.checkedTitle()).isEqualTo("Auto")
                 menu.dismiss()
             }
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
             scenario.grid { a, grid ->
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_4X3)
                 assertThat(grid.shape.columns).isEqualTo(4)
                 assertThat(grid.shape.rows).isEqualTo(3)
                 a.findViewById<View>(R.id.layout_button).performClick()
@@ -249,14 +275,14 @@ class GridActivityPhoneTest {
         }
     }
 
-    /** The user's account: 14 cameras upright are 2 x 7 whatever 0.1 left stored, 3 x 3 included. */
+    /** The user's account: 14 cameras upright are 2 x 7 whatever the landscape key holds, 3 x 3 included. */
     @Test
-    fun `fourteen cameras upright are two columns of seven, also with a stored landscape shape`() {
+    fun `fourteen cameras upright are two columns of seven whatever the landscape layout is`() {
         val many = FakeCloudServices(cameraCount = 14, signalCount = 14)
         app.graph = TestGraph.create(app, many, topBarAutoHideMillis = 300)
         kotlinx.coroutines.runBlocking { app.graph.account.login("a", "secret", Region.INDIA) }
         app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
-        listOf(GridLayoutMode.AUTO, GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.GRID_4X4)
+        listOf(GridLayoutMode.AUTO, GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.HERO_1_7)
             .forEach { stored ->
                 app.graph.arrangementStore.lastLayout = stored
                 ActivityScenario.launch(GridActivity::class.java).use { scenario ->
@@ -285,7 +311,8 @@ class GridActivityPhoneTest {
                 assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
                 assertThat(menu.checkedTitle()).isEqualTo("Auto") // nothing stored yet: AUTO is in force
                 menu.pick(titles.indexOf("1 × 3"))
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_1X3)
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_1X3)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
             }
             scenario.grid { _, grid ->
                 assertThat(grid.shape.columns).isEqualTo(1)
@@ -295,83 +322,23 @@ class GridActivityPhoneTest {
             RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
             scenario.recreate()
             scenario.grid { a, grid ->
-                assertThat(grid.shape.columns).isEqualTo(3) // 1 x 3 turned is 3 x 1
-                assertThat(grid.shape.rows).isEqualTo(1)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3).inOrder()
+                assertThat(grid.shape.columns).isEqualTo(3) // the landscape key: AUTO, 3 x 3 for six
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
                 val menu = layoutDialog()
-                val titles = menu.titles()
-                assertThat(titles).containsExactly("Auto", "3 × 3", "1 + 5").inOrder()
-                // 1 x 3 is a portrait shape, kept turned but not in the turned list: nothing is marked.
-                assertThat(menu.checkedTitle()).isNull()
+                assertThat(menu.titles()).containsExactly("Auto", "3 × 3", "1 + 5").inOrder()
+                assertThat(menu.checkedTitle()).isEqualTo("Auto")
             }
         }
     }
 
-    /** 2 x 3 upright is 3 x 2 turned: the same six tiles with the same cameras, and a move made sideways shows upright. */
-    @Test
-    fun `a two-column layout turns into its counterpart and the tiles keep their cameras`() {
-        val serial = FakeCloudServices.SERIAL
-        app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
-        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_2X3
-        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
-            scenario.grid { a, grid ->
-                assertThat(grid.shape.columns).isEqualTo(2)
-                assertThat(grid.shape.rows).isEqualTo(3)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
-                assertThat(
-                    a
-                        .viewModels<GridViewModel>()
-                        .value.playback.players.value,
-                ).hasSize(6)
-            }
-            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
-            scenario.recreate()
-            scenario.grid { a, grid ->
-                assertThat(grid.shape.columns).isEqualTo(3)
-                assertThat(grid.shape.rows).isEqualTo(2)
-                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_2X3)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
-                assertThat(
-                    a
-                        .viewModels<GridViewModel>()
-                        .value.playback.players.value,
-                ).hasSize(6)
-                a.viewModels<GridViewModel>().value.moveTile(0, 5)
-                assertThat(app.graph.arrangementStore.order(GridLayoutMode.GRID_2X3))
-                    .containsExactlyElementsIn(listOf(6, 2, 3, 4, 5, 1, 7, 8).map { "$serial/$it" })
-                    .inOrder()
-            }
-            RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
-            scenario.recreate()
-            scenario.grid { _, grid ->
-                assertThat(grid.shape.columns).isEqualTo(2)
-                assertThat(grid.shape.rows).isEqualTo(3)
-                assertThat(shownChannels(grid)).containsExactly(6, 2, 3, 4, 5, 1).inOrder()
-            }
-        }
-    }
-
-    /** The TV's 4 x 3 kept from a turned session is drawn as AUTO upright (2 x 4 for eight cameras), every tile with its camera. */
-    @Test
-    fun `a landscape shape restored upright is drawn as the two-column auto shape`() {
-        val serial = FakeCloudServices.SERIAL
-        app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
-        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X3
-        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
-            scenario.grid { _, grid ->
-                assertThat(grid.shape.columns).isEqualTo(2)
-                assertThat(grid.shape.rows).isEqualTo(4)
-                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7, 8).inOrder()
-            }
-        }
-    }
-
-    /** The phone's Layout list marks the layout in force: the stored one, AUTO when AUTO is stored. */
+    /** The phone's Layout list marks the layout in force for this orientation: the stored one, AUTO when AUTO is stored. */
     @Test
     fun `the layout list checks the stored layout and auto when auto is stored`() {
-        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_2X2
+        app.graph.arrangementStore.lastLayoutPortrait = GridLayoutMode.GRID_2X2
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_3X3 // the other orientation's: not this list's
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { a, _ ->
                 a.findViewById<View>(R.id.layout_button).performClick()
@@ -379,10 +346,34 @@ class GridActivityPhoneTest {
                 val menu = layoutDialog()
                 assertThat(menu.checkedTitle()).isEqualTo("2 × 2")
                 menu.pick(0) // Auto
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.AUTO)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_3X3)
                 a.findViewById<View>(R.id.layout_button).performClick()
                 ShadowLooper.idleMainLooper()
                 assertThat(layoutDialog().checkedTitle()).isEqualTo("Auto")
+            }
+        }
+    }
+
+    /** The camera screen is told which orientation's grid sent the index, so it counts in the same arrangement. */
+    @Test
+    fun `a tap tells the camera screen the grid was upright`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                grid.getChildAt(1).performClick()
+                val next = shadowOf(a).nextStartedActivity
+                assertThat(next.getBooleanExtra(PhoneCameraActivity.EXTRA_PORTRAIT_GRID, false)).isTrue()
+                a.onTileAction(2, TileAction.PLAYBACK)
+                ShadowLooper.idleMainLooper()
+                val playback = shadowOf(a).nextStartedActivity
+                assertThat(playback.getBooleanExtra(PhoneCameraActivity.EXTRA_PORTRAIT_GRID, false)).isTrue()
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.grid { a, grid ->
+                grid.getChildAt(1).performClick()
+                val next = shadowOf(a).nextStartedActivity
+                assertThat(next.getBooleanExtra(PhoneCameraActivity.EXTRA_PORTRAIT_GRID, true)).isFalse()
             }
         }
     }

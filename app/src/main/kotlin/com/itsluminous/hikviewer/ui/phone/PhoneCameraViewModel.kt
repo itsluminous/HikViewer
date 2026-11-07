@@ -52,6 +52,8 @@ class PhoneCameraViewModel(
     arrangement: GridArrangementStore,
     startIndex: Int,
     private val factory: PlaybackFactory,
+    /** True when the grid that sent [startIndex] was upright: the index counts in its portrait layout. */
+    portraitGrid: Boolean = false,
     /** True to open on recorded footage rather than the live stream. */
     startInPlayback: Boolean = false,
     private val today: () -> LocalDate = { LocalDate.now() },
@@ -69,6 +71,7 @@ class PhoneCameraViewModel(
                     .orEmpty(),
                 settings,
                 arrangement,
+                portraitGrid,
             ),
             startIndex,
         )

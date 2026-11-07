@@ -144,33 +144,56 @@ class GridViewModelTest {
         vm.playback.release()
     }
 
+    /**
+     * A phone keeps a layout per orientation: the flag picks which of the store's two keys
+     * [GridViewModel.applySettings] reads and [GridViewModel.setLayout] writes, each layout
+     * bringing its own arrangement, so 1 + 6 upright and 4 x 3 turned are two grids.
+     */
     @Test
-    fun `an even 1+N layout shows every tile upright and evicts the last one turned, keeping the arrangement`() =
+    fun `the portrait flag picks the store key that is read and written, each layout with its own arrangement`() =
         runTest(dispatcher) {
             graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
             val serial = FakeCloudServices.SERIAL
-            graph.arrangementStore.lastLayout = GridLayoutMode.HERO_1_6
+            graph.arrangementStore.lastLayoutPortrait = GridLayoutMode.HERO_1_6
             graph.arrangementStore.setOrder(GridLayoutMode.HERO_1_6, listOf("$serial/3", "$serial/1", "$serial/2"))
+            graph.arrangementStore.setOrder(GridLayoutMode.GRID_4X3, listOf("$serial/5"))
             val vm = viewModel()
             vm.portrait = true
             vm.load()
             dispatcher.scheduler.advanceUntilIdle()
-            // Upright: the hero and three rows of two, seven streams.
+            // Upright: the portrait key's 1 + 6 with its arrangement, seven streams, the hero on hardware.
+            assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.HERO_1_6)
             assertThat(streamed(vm)).containsExactly(3, 1, 2, 4, 5, 6, 7).inOrder()
             assertThat(vm.playback.heroIndex).isEqualTo(0)
-            // Turned: the square 1 + 5 grid has no cell for the seventh tile; its stream closes.
+            // Turned: the landscape key, still AUTO, resolves to 4 x 3 for twelve cameras, its own order.
             vm.portrait = false
             vm.applySettings()
-            assertThat(streamed(vm)).containsExactly(3, 1, 2, 4, 5, 6).inOrder()
-            // A move while turned edits the same list: position 6 (channel 7) is still there, unseen.
+            assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.AUTO)
+            assertThat(streamed(vm)).hasSize(12)
+            assertThat(streamed(vm).first()).isEqualTo(1) // AUTO has no arrangement: Settings order
+            assertThat(vm.playback.heroIndex).isNull()
+            // A pick while turned writes the landscape key only; its arrangement comes with it.
+            vm.setLayout(GridLayoutMode.GRID_4X3)
+            assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
+            assertThat(graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.HERO_1_6)
+            assertThat(streamed(vm).first()).isEqualTo(5)
+            // A move while turned edits 4 x 3, never 1 + 6.
             vm.moveTile(0, 1)
-            assertThat(graph.arrangementStore.order(GridLayoutMode.HERO_1_6)!!.take(7))
-                .containsExactlyElementsIn(listOf(1, 3, 2, 4, 5, 6, 7).map { "$serial/$it" })
+            assertThat(graph.arrangementStore.order(GridLayoutMode.GRID_4X3)!!.take(2))
+                .containsExactly("$serial/1", "$serial/5")
                 .inOrder()
-            // Upright again: the seventh tile is back where it was.
+            assertThat(graph.arrangementStore.order(GridLayoutMode.HERO_1_6))
+                .containsExactly("$serial/3", "$serial/1", "$serial/2")
+                .inOrder()
+            // Upright again: 1 + 6 exactly as it was left.
             vm.portrait = true
             vm.applySettings()
-            assertThat(streamed(vm)).containsExactly(1, 3, 2, 4, 5, 6, 7).inOrder()
+            assertThat(ready(vm).layout).isEqualTo(GridLayoutMode.HERO_1_6)
+            assertThat(streamed(vm)).containsExactly(3, 1, 2, 4, 5, 6, 7).inOrder()
+            vm.setLayout(GridLayoutMode.GRID_2X3)
+            assertThat(graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_2X3)
+            assertThat(graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
+            assertThat(streamed(vm)).hasSize(6)
             vm.playback.release()
         }
 

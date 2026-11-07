@@ -109,7 +109,8 @@ class GridActivity : AppCompatActivity() {
         binding = ActivityGridBinding.inflate(layoutInflater)
         setContentView(binding.root)
         television = FormFactor.isTelevision(this)
-        portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        // A TV is never "upright": it has one layout, the landscape one, whatever it reports.
+        portrait = !television && resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         binding.grid.portrait = portrait
         viewModel.portrait = portrait
         move = TileMoveController(binding.grid, binding.moveHint, viewModel)
@@ -351,7 +352,7 @@ class GridActivity : AppCompatActivity() {
         if (television) {
             fullscreen.launch(FullscreenActivity.intent(this, index))
         } else {
-            fullscreen.launch(PhoneCameraActivity.intent(this, index))
+            fullscreen.launch(PhoneCameraActivity.intent(this, index, portraitGrid = portrait))
         }
     }
 
@@ -386,24 +387,24 @@ class GridActivity : AppCompatActivity() {
         if (television) {
             startActivity(PlaybackActivity.intent(this, camera.key))
         } else {
-            fullscreen.launch(PhoneCameraActivity.intent(this, position, playback = true))
+            fullscreen.launch(PhoneCameraActivity.intent(this, position, portraitGrid = portrait, playback = true))
         }
     }
 
     /**
      * Layouts worth offering for the cameras on screen (see [GridLayoutMode.available]); AUTO is
      * always there, and a phone held upright gets the portrait shapes (1 x N, 2 x N) and the even
-     * 1 + N layouts that fill its two columns instead of the TV's grids. The entry in force (the
-     * stored layout, AUTO when AUTO is stored) is checked and the D-pad starts on it; see
-     * [LayoutPickerDialog] for why this is a list dialog and not a `PopupMenu`.
+     * 1 + N layouts that fill its two columns instead of the TV's grids. The entry in force (this
+     * orientation's stored layout, AUTO when AUTO is stored) is checked and the D-pad starts on
+     * it; see [LayoutPickerDialog] for why this is a list dialog and not a `PopupMenu`.
      */
     private fun showLayoutMenu(anchor: View) {
         val cameras = (viewModel.state.value as? GridUiState.Ready)?.cameras?.size ?: 0
-        val current = AppGraph.of(this).arrangementStore.lastLayout
+        val current = AppGraph.of(this).arrangementStore.layout(portrait)
         picker =
             LayoutPickerDialog.show(
                 this,
-                GridLayoutMode.available(cameras, portraitPhone = !television && portrait),
+                GridLayoutMode.available(cameras, portraitPhone = portrait),
                 current,
                 onPick = { mode -> viewModel.setLayout(mode) },
                 // The dialog is its own window; once it is gone the bar's button takes focus back,

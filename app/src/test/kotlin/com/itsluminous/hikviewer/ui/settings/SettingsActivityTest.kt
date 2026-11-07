@@ -90,7 +90,9 @@ class SettingsActivityTest {
                 a.findViewById<SwitchCompat>(R.id.show_names).isChecked = true
                 a.findViewById<SwitchCompat>(R.id.show_fps).isChecked = true
                 ShadowLooper.idleMainLooper()
-                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_1X3)
+                // Upright, the spinner edits the portrait layout; the sideways one is untouched.
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_1X3)
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
                 assertThat(app.graph.settingsStore.fullscreenQuality).isEqualTo(StreamQuality.MAIN)
                 assertThat(app.graph.settingsStore.showCameraNames).isTrue()
                 assertThat(app.graph.settingsStore.showFrameRate).isTrue()
@@ -114,6 +116,7 @@ class SettingsActivityTest {
                 layoutSpinner.setSelection(1)
                 ShadowLooper.idleMainLooper()
                 assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_3X3)
+                assertThat(app.graph.arrangementStore.lastLayoutPortrait).isEqualTo(GridLayoutMode.AUTO)
             }
         }
     }

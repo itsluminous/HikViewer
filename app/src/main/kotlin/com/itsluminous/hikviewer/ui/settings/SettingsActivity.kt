@@ -68,18 +68,22 @@ class SettingsActivity : AppCompatActivity() {
         bindLogout()
     }
 
-    /** Same filtered list as the grid's Layout menu; a stored layout the list hides is still shown as selected. */
+    /**
+     * Same filtered list as the grid's Layout menu for the orientation this screen is held in, and
+     * it edits that orientation's layout (a phone keeps one per orientation); a stored layout the
+     * list hides is still shown as selected.
+     */
     private fun bindLayout() {
         val visibleCount = editor.items.count { it.visible }
-        val current = arrangement.lastLayout
         val portraitPhone =
             !FormFactor.isTelevision(this) &&
                 resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val current = arrangement.layout(portraitPhone)
         val modes =
             (GridLayoutMode.available(visibleCount, portraitPhone) + current).distinct().sortedBy { it.ordinal }
         binding.layoutSpinner.adapter = spinnerAdapter(modes.map { getString(it.labelRes) })
         binding.layoutSpinner.setSelection(modes.indexOf(current))
-        binding.layoutSpinner.onItemSelected { arrangement.lastLayout = modes[it] }
+        binding.layoutSpinner.onItemSelected { arrangement.setLayout(portraitPhone, modes[it]) }
     }
 
     private fun bindCameraList() {

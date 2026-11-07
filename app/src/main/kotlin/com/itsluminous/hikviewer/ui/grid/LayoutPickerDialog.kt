@@ -13,8 +13,8 @@ import com.itsluminous.hikviewer.R
  * list the tile menu's Change uses ([CameraPickerDialog]) gives both. Picking an entry closes the
  * dialog and hands the layout to [onPick]; Back closes it with nothing chosen.
  *
- * [current] is the stored layout. When it is not in the list (a landscape shape stored on a phone
- * held upright, drawn as AUTO there and not offered), nothing is checked.
+ * [current] is the layout stored for the screen's orientation. When it is not in the list (a
+ * 4 x 3 kept while the cameras shrank to six, which the list no longer offers), nothing is checked.
  */
 object LayoutPickerDialog {
     /** Shows the list; [onDismiss] runs however the dialog closes (focus goes back to the bar). */

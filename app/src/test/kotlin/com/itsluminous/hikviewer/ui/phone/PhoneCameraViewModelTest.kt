@@ -11,6 +11,7 @@ import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.playback.PlaybackPhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -69,12 +70,14 @@ class PhoneCameraViewModelTest {
     private fun TestScope.viewModel(
         start: Int = 1,
         playback: Boolean = false,
+        portraitGrid: Boolean = false,
     ) = PhoneCameraViewModel(
         graph.account,
         graph.settingsStore,
         graph.arrangementStore,
         start,
         graph.playbackFactory,
+        portraitGrid = portraitGrid,
         startInPlayback = playback,
         today = { today },
         io = dispatcher,
@@ -148,6 +151,21 @@ class PhoneCameraViewModelTest {
         assertThat(vm.camera!!.channelNo).isEqualTo(2)
         vm.onStop()
         vm.live.release()
+    }
+
+    /** An upright grid counts its positions in the portrait layout's arrangement, which this screen must share. */
+    @Test
+    fun `an upright grid's index counts in the portrait layout's arrangement`() = runTest(dispatcher) {
+        val serial = FakeCloudServices.SERIAL
+        graph.arrangementStore.lastLayoutPortrait = GridLayoutMode.GRID_2X2
+        graph.arrangementStore.setOrder(GridLayoutMode.GRID_2X2, listOf("$serial/3", "$serial/1", "$serial/2"))
+        graph.arrangementStore.setOrder(GridLayoutMode.AUTO, listOf("$serial/2", "$serial/1", "$serial/3"))
+        val upright = viewModel(start = 0, portraitGrid = true)
+        assertThat(upright.cameras.map { it.channelNo }).containsExactly(3, 1, 2).inOrder()
+        upright.live.release()
+        val turned = viewModel(start = 0)
+        assertThat(turned.cameras.map { it.channelNo }).containsExactly(2, 1, 3).inOrder()
+        turned.live.release()
     }
 
     @Test

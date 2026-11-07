@@ -54,12 +54,14 @@ class GridGeometryTest {
             val right = (0 until heroSpan).map { Cell(heroSpan, it) }
             val below = (0..heroSpan).map { Cell(it, heroSpan) }
             assertThat(shape.cells.drop(1)).containsExactlyElementsIn(right + below).inOrder()
-            assertThat(mode.landscapeCapacity).isEqualTo(capacity)
+            // The shape is the layout's own: the orientation flag only matters to AUTO.
+            assertThat(GridGeometry.shape(mode, tileCount = 40, portrait = true)).isEqualTo(shape)
         }
     }
 
+    /** The even layouts are the phone's upright heroes: two columns, a full-width hero, no empty cell, whatever the flag says. */
     @Test
-    fun `each even 1+N layout fills the portrait rows and takes the next smaller square grid turned`() {
+    fun `each even 1+N layout fills two columns with a full-width hero and no empty cell`() {
         val even =
             listOf(
                 GridLayoutMode.HERO_1_6,
@@ -72,26 +74,26 @@ class GridGeometryTest {
         assertThat(GridLayoutMode.heroModes.filter { it.isPortraitHero }).containsExactlyElementsIn(even).inOrder()
         even.forEach { mode ->
             val n = mode.heroCompanions
-            val upright = GridGeometry.shape(mode, tileCount = 40, portrait = true)
-            assertThat(upright.columns).isEqualTo(2)
-            assertThat(upright.rows).isEqualTo(2 + n / 2)
-            assertThat(upright.capacity).isEqualTo(n + 1)
+            val shape = GridGeometry.shape(mode, tileCount = 40, portrait = true)
+            assertThat(shape.columns).isEqualTo(2)
+            assertThat(shape.rows).isEqualTo(2 + n / 2)
+            assertThat(shape.capacity).isEqualTo(n + 1)
+            assertThat(mode.capacity).isEqualTo(n + 1)
+            assertThat(mode.heroSpan).isEqualTo(0) // no square grid: the hero is the two columns' width
+            assertThat(shape.cells.first()).isEqualTo(Cell(0, 0, 2, 2))
             // Every cell is a tile, apart from the three extra cells the hero spans.
-            assertThat(upright.capacity).isEqualTo(upright.columns * upright.rows - 3)
-            assertThat(upright.cells.last()).isEqualTo(Cell(1, upright.rows - 1)) // no empty cell
-            val turned = GridGeometry.shape(mode, tileCount = 40, portrait = false)
-            val k = n / 2 - 1
-            assertThat(mode.heroSpan).isEqualTo(k)
-            assertThat(turned.columns).isEqualTo(k + 1)
-            assertThat(turned.rows).isEqualTo(k + 1)
-            assertThat(turned.capacity).isEqualTo(n) // one tile fewer: the last one is evicted
-            assertThat(mode.landscapeCapacity).isEqualTo(n)
-            assertThat(turned.cells.first()).isEqualTo(Cell(0, 0, k, k))
+            assertThat(shape.capacity).isEqualTo(shape.columns * shape.rows - 3)
+            assertThat(shape.cells.last()).isEqualTo(Cell(1, shape.rows - 1)) // no empty cell
+            assertThat(shape.cells.drop(1))
+                .containsExactlyElementsIn(
+                    (2 until shape.rows).flatMap { row -> listOf(Cell(0, row), Cell(1, row)) },
+                ).inOrder()
+            // An even layout is only ever the upright layout, so the shape does not depend on the flag.
+            assertThat(GridGeometry.shape(mode, tileCount = 40, portrait = false)).isEqualTo(shape)
         }
-        // An odd layout upright leaves the last cell empty, which is why phones get the even ones.
-        val oddUpright = GridGeometry.shape(GridLayoutMode.HERO_1_5, 6, portrait = true)
-        assertThat(oddUpright.capacity).isEqualTo(6)
-        assertThat(oddUpright.rows * oddUpright.columns - 3).isEqualTo(7)
+        // An odd layout in two columns would leave the last cell empty (6 tiles, 7 cells), which is why phones get the even ones.
+        assertThat(GridLayoutMode.HERO_1_5.capacity).isEqualTo(6)
+        assertThat(2 * (2 + (5 + 1) / 2) - 3).isEqualTo(7)
     }
 
     @Test
@@ -101,18 +103,18 @@ class GridGeometryTest {
     }
 
     @Test
-    fun `portrait uses two columns and a full-width hero`() {
+    fun `portrait auto uses two columns and the even heroes a full-width hero`() {
         val fixed = GridGeometry.shape(GridLayoutMode.AUTO, 5, portrait = true)
         assertThat(fixed.columns).isEqualTo(2)
         assertThat(fixed.rows).isEqualTo(3)
         assertThat(fixed.cells[4]).isEqualTo(Cell(0, 2))
-        val hero = GridGeometry.shape(GridLayoutMode.HERO_1_5, 5, portrait = true)
+        val hero = GridGeometry.shape(GridLayoutMode.HERO_1_6, 6, portrait = true)
         assertThat(hero.columns).isEqualTo(2)
         assertThat(hero.rows).isEqualTo(5)
-        assertThat(hero.capacity).isEqualTo(6)
+        assertThat(hero.capacity).isEqualTo(7)
         assertThat(hero.cells.first()).isEqualTo(Cell(0, 0, 2, 2))
         assertThat(hero.cells[1]).isEqualTo(Cell(0, 2))
-        assertThat(GridGeometry.shape(GridLayoutMode.HERO_1_7, 8, portrait = true).rows).isEqualTo(6)
+        assertThat(GridGeometry.shape(GridLayoutMode.HERO_1_8, 8, portrait = true).rows).isEqualTo(6)
         assertThat(GridGeometry.shape(GridLayoutMode.AUTO, 0, portrait = true)).isEqualTo(
             GridGeometry.shape(GridLayoutMode.GRID_1X2, 0, portrait = true),
         )
@@ -149,7 +151,11 @@ class GridGeometryTest {
             .containsNoneOf(GridLayoutMode.GRID_1X3, GridLayoutMode.GRID_1X4)
         // A landscape screen never resolves AUTO to a portrait shape, nor the other way round.
         assertThat(GridLayoutMode.AUTO.resolve(5).isPortraitShape).isFalse()
-        assertThat(GridLayoutMode.GRID_2X3.resolve(40, portrait = false)).isEqualTo(GridLayoutMode.GRID_2X3)
+        // Only AUTO resolves: every other layout is itself whatever the flag says.
+        GridLayoutMode.entries.filter { it != GridLayoutMode.AUTO }.forEach { mode ->
+            assertThat(mode.resolve(40, portrait = false)).isEqualTo(mode)
+            assertThat(mode.resolve(40, portrait = true)).isEqualTo(mode)
+        }
     }
 
     @Test
@@ -187,77 +193,36 @@ class GridGeometryTest {
         assertThat(GridLayoutMode.entries.filter { it.isFixed && !it.isPortraitShape })
             .containsExactly(GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.GRID_4X4)
             .inOrder()
-    }
-
-    /** The table on [GridLayoutMode]: a turned shape is its transposition, 1 x 4 excepted, and keeps its capacity. */
-    @Test
-    fun `turning a fixed shape gives its counterpart of the same capacity`() {
-        val turned =
-            mapOf(
-                GridLayoutMode.GRID_1X2 to (2 to 1),
-                GridLayoutMode.GRID_1X3 to (3 to 1),
-                GridLayoutMode.GRID_1X4 to (2 to 2),
-                GridLayoutMode.GRID_2X2 to (2 to 2),
-                GridLayoutMode.GRID_2X3 to (3 to 2),
-                GridLayoutMode.GRID_2X4 to (4 to 2),
-                GridLayoutMode.GRID_2X5 to (5 to 2),
-                GridLayoutMode.GRID_2X6 to (6 to 2),
-                GridLayoutMode.GRID_2X7 to (7 to 2),
-                GridLayoutMode.GRID_2X8 to (8 to 2),
-            )
-        turned.forEach { (mode, dims) ->
-            assertThat(GridGeometry.dimensions(mode, portrait = false)).isEqualTo(dims)
-            assertThat(GridGeometry.dimensions(mode, portrait = true)).isEqualTo(mode.columns to mode.rows)
-            val shape = GridGeometry.shape(mode, 40, portrait = false)
-            assertThat(shape.columns to shape.rows).isEqualTo(dims)
-            assertThat(shape.capacity).isEqualTo(mode.capacity)
-        }
-        // Every portrait shape keeps its capacity in both orientations, so one arrangement serves both.
-        GridLayoutMode.entries.filter { it.isPortraitShape }.forEach { mode ->
-            assertThat(GridGeometry.shape(mode, 40, portrait = true).capacity)
-                .isEqualTo(GridGeometry.shape(mode, 40, portrait = false).capacity)
-        }
-        GridLayoutMode.entries.filter { it.isFixed && !it.isPortraitShape }.forEach { mode ->
-            assertThat(GridGeometry.dimensions(mode, portrait = false)).isEqualTo(mode.columns to mode.rows)
-            assertThat(runCatching { GridGeometry.dimensions(mode, portrait = true) }.isFailure).isTrue()
-        }
-        assertThat(runCatching { GridGeometry.dimensions(GridLayoutMode.AUTO, true) }.isFailure).isTrue()
-        assertThat(runCatching { GridGeometry.dimensions(GridLayoutMode.HERO_1_5, true) }.isFailure).isTrue()
+        // The portrait layouts (what the upright menu offers and the portrait key holds): those shapes and the even heroes.
+        assertThat(GridLayoutMode.entries.filter { it.isPortrait })
+            .containsExactlyElementsIn(expected.keys + GridLayoutMode.heroModes.filter { it.isPortraitHero })
+        assertThat(GridLayoutMode.AUTO.isPortrait).isFalse()
     }
 
     /**
-     * Round 16: a stored 4 x 3 (version 0.1 had no portrait shapes, so every upgraded phone had one)
-     * drew 3 x 4 upright: three columns of tiles too narrow to watch. Upright, the landscape shapes
-     * are AUTO: two columns from three cameras, as many rows as the cameras need.
+     * A layout belongs to one orientation and is drawn with its own columns and rows: 2 x 3 is two
+     * columns and three rows, 4 x 3 four and three, whatever the flag says. There is no
+     * transposition and nothing is hidden; a phone turned shows the layout stored for the other
+     * orientation instead (round 17, replacing the round-16 rule that drew a stored 4 x 3 as AUTO).
      */
     @Test
-    fun `a landscape shape held upright is drawn as auto, two columns and ceil(n over 2) rows`() {
-        val landscape = listOf(GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.GRID_4X4)
-        landscape.forEach { mode ->
-            assertThat(mode.effective(portrait = true)).isEqualTo(GridLayoutMode.AUTO)
-            assertThat(mode.effective(portrait = false)).isEqualTo(mode)
-            for (cameras in 3..16) {
-                assertThat(mode.resolve(cameras, portrait = true))
-                    .isEqualTo(GridLayoutMode.AUTO.resolve(cameras, portrait = true))
-                val shape = GridGeometry.shape(mode, cameras, portrait = true)
-                assertThat(shape.columns).isEqualTo(2)
-                assertThat(shape.rows).isEqualTo((cameras + 1) / 2)
-                assertThat(shape.capacity).isAtLeast(cameras)
+    fun `a fixed shape is drawn with its own columns and rows whatever the orientation flag`() {
+        GridLayoutMode.entries.filter { it.isFixed }.forEach { mode ->
+            listOf(true, false).forEach { portrait ->
+                val shape = GridGeometry.shape(mode, 40, portrait)
+                assertThat(shape.columns).isEqualTo(mode.columns)
+                assertThat(shape.rows).isEqualTo(mode.rows)
+                assertThat(shape.capacity).isEqualTo(mode.capacity)
             }
-            // Turned, the shape is its own; the stored name is kept so its arrangement survives the turn.
-            assertThat(GridGeometry.shape(mode, 40, portrait = false).columns).isEqualTo(mode.columns)
         }
-        assertThat(GridGeometry.shape(GridLayoutMode.GRID_4X3, 14, portrait = true).rows).isEqualTo(7)
-        assertThat(GridGeometry.shape(GridLayoutMode.GRID_4X3, 12, portrait = true).rows).isEqualTo(6)
-        // The portrait shapes, AUTO and the 1 + N layouts are not touched by the rule.
-        GridLayoutMode.entries.filter { !it.isFixed || it.isPortraitShape }.forEach { mode ->
-            assertThat(mode.effective(portrait = true)).isEqualTo(mode)
-        }
-        // Upright, nothing ever draws more than two columns.
-        GridLayoutMode.entries.forEach { mode ->
-            for (cameras in 0..40) {
-                assertThat(GridGeometry.shape(mode, cameras, portrait = true).columns).isAtMost(2)
-            }
+        assertThat(GridGeometry.shape(GridLayoutMode.GRID_2X3, 6, portrait = false).columns).isEqualTo(2)
+        assertThat(GridGeometry.shape(GridLayoutMode.GRID_4X3, 12, portrait = true).columns).isEqualTo(4)
+        // AUTO is the one entry the flag decides: two columns upright, the TV's grids turned.
+        for (cameras in 3..16) {
+            val upright = GridGeometry.shape(GridLayoutMode.AUTO, cameras, portrait = true)
+            assertThat(upright.columns).isEqualTo(2)
+            assertThat(upright.rows).isEqualTo((cameras + 1) / 2)
+            assertThat(GridGeometry.shape(GridLayoutMode.AUTO, cameras, portrait = false).columns).isAtLeast(3)
         }
     }
 

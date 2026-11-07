@@ -77,6 +77,7 @@ class PhoneCameraActivity : AppCompatActivity() {
                 graph.arrangementStore,
                 intent.getIntExtra(FullscreenActivity.EXTRA_INDEX, 0),
                 graph.playbackFactory,
+                portraitGrid = intent.getBooleanExtra(EXTRA_PORTRAIT_GRID, false),
                 startInPlayback = intent.getBooleanExtra(EXTRA_PLAYBACK, false),
             ) { vm ->
                 graph.playbackFactory.create(
@@ -259,16 +260,25 @@ class PhoneCameraActivity : AppCompatActivity() {
         const val EXTRA_PLAYBACK: String = "playback"
 
         /**
-         * Intent to open camera [index] (grid position): live with its timeline, or, with [playback],
-         * on its recorded footage. Both follow the phone's orientation; the TV's
+         * Boolean: the grid that sent [FullscreenActivity.EXTRA_INDEX] was upright, so the index
+         * counts in its portrait layout's arrangement (a phone keeps a layout per orientation).
+         */
+        const val EXTRA_PORTRAIT_GRID: String = "portraitGrid"
+
+        /**
+         * Intent to open camera [index] (a position in the grid, which was upright when
+         * [portraitGrid]): live with its timeline, or, with [playback], on its recorded footage.
+         * Both follow the phone's orientation; the TV's
          * [com.itsluminous.hikviewer.ui.playback.PlaybackActivity] is never used on a phone.
          */
         fun intent(
             context: Context,
             index: Int,
+            portraitGrid: Boolean = false,
             playback: Boolean = false,
         ): Intent = Intent(context, PhoneCameraActivity::class.java)
             .putExtra(FullscreenActivity.EXTRA_INDEX, index)
+            .putExtra(EXTRA_PORTRAIT_GRID, portraitGrid)
             .putExtra(EXTRA_PLAYBACK, playback)
     }
 }

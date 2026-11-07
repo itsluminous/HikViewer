@@ -82,9 +82,10 @@ class GridViewModel(
     var focusedIndex: Int = 0
 
     /**
-     * True while the screen is a phone held upright, where the grid is two columns. Decides how
-     * many tiles the layout shows (an even 1 + N layout holds one more upright than turned, see
-     * [GridGeometry]) and so how many streams are opened; set by the Activity before [load].
+     * True while the screen is a phone held upright. Picks which of the store's two last layouts
+     * is read and written (a phone keeps one per orientation; a TV is never upright and always
+     * uses the landscape one) and how AUTO resolves, and so how many streams are opened; set by
+     * the Activity before [load].
      */
     var portrait: Boolean = false
 
@@ -104,13 +105,13 @@ class GridViewModel(
     }
 
     /**
-     * Re-reads settings (last layout, visible cameras, that layout's arrangement, live-camera count)
-     * and reconfigures the tiles.
+     * Re-reads settings (this orientation's last layout, visible cameras, that layout's
+     * arrangement) and reconfigures the tiles.
      */
     fun applySettings() {
         val inv = inventory ?: return
-        val layout = arrangement.lastLayout
-        val cameras = CameraOrder.arranged(inv.cameras, settings, arrangement)
+        val layout = arrangement.layout(portrait)
+        val cameras = CameraOrder.arranged(inv.cameras, settings, arrangement, portrait)
         val hero = if (cameras.isEmpty()) null else 0
         val needsCode = inv.needsVerificationCode && !codeAccepted(inv)
         stateFlow.value =
@@ -124,7 +125,6 @@ class GridViewModel(
             )
         // Only the tiles the layout has room for get a stream: a 1 + 5 layout of a 16-camera account
         // used to open 16 relay connections and run 16 decrypt pipelines for 6 pictures on screen.
-        // The shape, not the layout, knows the count: a turned phone shows one tile less of 1 + 6.
         val shown = cameras.take(GridGeometry.shape(layout, cameras.size, portrait).capacity)
         // Always Automatic: the device-derived ceiling with probing above it. An explicit count used
         // to be a setting (0.1) and let a TV be slowed down; the API stays, the UI no longer offers it.
@@ -134,9 +134,9 @@ class GridViewModel(
         if (visible && !needsCode) playback.start()
     }
 
-    /** Switches the layout and persists it; the layout's own arrangement comes back with it. */
+    /** Switches this orientation's layout and persists it; the layout's own arrangement comes back with it. */
     fun setLayout(mode: GridLayoutMode) {
-        arrangement.lastLayout = mode
+        arrangement.setLayout(portrait, mode)
         applySettings()
     }
 

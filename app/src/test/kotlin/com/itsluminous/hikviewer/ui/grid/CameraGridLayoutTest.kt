@@ -177,7 +177,7 @@ class CameraGridLayoutTest {
         GridLayoutMode.values().forEach { mode ->
             grid.removeAllViews()
             grid.order = null
-            val tiles = fillTiles(16, mode)
+            val tiles = fillTiles(MOST_TILES, mode)
             tiles.forEachIndexed { i, tile -> tile.framesFlowing = i % 2 == 0 }
             val shown = shownTiles()
             assertThat(shown).hasSize(grid.shape.cells.size)
@@ -199,7 +199,7 @@ class CameraGridLayoutTest {
         GridLayoutMode.values().forEach { mode ->
             grid.removeAllViews()
             grid.order = null
-            fillTiles(16, mode)
+            fillTiles(MOST_TILES, mode)
             val shown = shownTiles()
             assertThat(shown.first().requestFocus()).isTrue()
             var moves = 0
@@ -348,5 +348,10 @@ class CameraGridLayoutTest {
         grid.focusAutoHideMillis = 1_000
         assertThat(tiles[3].focusBorderVisible).isTrue()
         assertThat(tiles[3].isFocused).isTrue()
+    }
+
+    private companion object {
+        /** Enough tiles for the biggest layout, 1 + 16 (17 tiles). */
+        const val MOST_TILES = 17
     }
 }

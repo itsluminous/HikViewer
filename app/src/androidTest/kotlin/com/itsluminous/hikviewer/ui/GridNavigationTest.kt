@@ -14,6 +14,7 @@ import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressKey
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.PositionAssertions.isCompletelyAbove
+import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.Visibility
@@ -35,6 +36,8 @@ import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.PlaybackFactory
+import com.itsluminous.hikviewer.player.TilePlayer
+import com.itsluminous.hikviewer.player.TileState
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.grid.CameraGridLayout
 import com.itsluminous.hikviewer.ui.grid.CameraTileView
@@ -466,6 +469,47 @@ class GridNavigationTest {
                     .order(GridLayoutMode.AUTO)
                     ?.sortedBy { it.substringAfter('/').toInt() },
         )
+    }
+
+    /**
+     * Round 18: a tile whose software decoder failed answers a long OK with the "Decoder detail"
+     * dialog, and a single OK closes it. The message is selectable (a phone copies it into a bug
+     * report), and a selectable text is focusable, so the dialog has to hand the D-pad to its OK
+     * button itself or the first OK press lands on the text and the remote user is stuck reading.
+     */
+    @Test
+    fun longOkOnADecoderErrorTileShowsTheDetailAndOkClosesIt() {
+        val detail = "codec=c2.test.avc.decoder error=-38 transient=false recoverable=false diag=error_neg_38"
+        // Once pictures flow the player's state is Live and stays there, so the error bound below is not overwritten.
+        waitForFramesFlowing(0)
+        scenario.onActivity { a ->
+            val tile = a.findViewById<CameraGridLayout>(R.id.grid).childAtPosition(0) as CameraTileView
+            tile.bind(TileState.Error(TilePlayer.DECODER_ERROR, detail = detail))
+        }
+        onView(tile(0)).check(matches(hasFocus()))
+        longOk()
+        onView(withText(R.string.tile_decoder_detail_title)).inRoot(isDialog()).check(matches(isDisplayed()))
+        onView(withText(detail)).inRoot(isDialog()).check(matches(isDisplayed()))
+        onView(withText(android.R.string.ok)).inRoot(isDialog()).check(matches(hasFocus()))
+        ok()
+        waitFor(POPUP_DISMISS_MILLIS)
+        onView(withText(detail)).check(doesNotExist())
+        onView(tile(0)).check(matches(hasFocus()))
+    }
+
+    /** Waits until the tile at [position] reports pictures reaching the screen. */
+    private fun waitForFramesFlowing(position: Int) {
+        val deadline = android.os.SystemClock.uptimeMillis() + STATUS_TIMEOUT_MILLIS
+        var flowing = false
+        while (android.os.SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity { a ->
+                val tile = a.findViewById<CameraGridLayout>(R.id.grid).childAtPosition(position) as? CameraTileView
+                flowing = tile?.framesFlowing == true
+            }
+            if (flowing) return
+            waitFor(STATUS_POLL_MILLIS)
+        }
+        throw AssertionError("tile $position never showed a picture")
     }
 
     /** Waits until the top bar's status reads [expected]: the decoders need a moment to flow after a reassignment. */

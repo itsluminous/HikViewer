@@ -261,6 +261,9 @@ class CameraTileView
                     .setMessage(detail)
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
+            // Selectable after show(): a selectable TextView is focusable, and the dialog gave its
+            // initial focus to the OK button while the message was still plain text, so on a TV the
+            // first OK press closes the dialog instead of landing on the text (GridNavigationTest).
             dialog.findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
             return true
         }

@@ -8,11 +8,13 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,12 +52,15 @@ class SettingsActivityTest {
         }
     }
 
-    private fun ActivityScenario<SettingsActivity>.rows(block: (SettingsActivity, LinearLayout) -> Unit) {
+    private fun ActivityScenario<SettingsActivity>.rows(block: (SettingsActivity, RecyclerView) -> Unit) {
         ShadowLooper.idleMainLooper()
         onActivity { a -> block(a, a.findViewById(R.id.camera_list)) }
     }
 
-    private fun LinearLayout.handle(i: Int): View = getChildAt(i).findViewById(R.id.handle)
+    private fun RecyclerView.handle(i: Int): View = getChildAt(i).findViewById(R.id.handle)
+
+    private fun RecyclerView.names(): List<String> =
+        (0 until childCount).map { getChildAt(it).findViewById<TextView>(R.id.name).text.toString() }
 
     @Test
     fun `lists every camera, signal ones ticked first, and shows the version`() {
@@ -142,10 +147,19 @@ class SettingsActivityTest {
         }
     }
 
+    /** The TV flow, unchanged by the phone's drag handle: no drag handle on a TV, the text handle at the row's end. */
     @Test
+    @Config(qualifiers = "television")
     fun `OK picks up a row, DOWN moves it, OK drops and saves the order`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
-            scenario.rows { _, list ->
+            scenario.rows { a, list ->
+                assertThat(a.findViewById<TextView>(R.id.cameras_help).text.toString())
+                    .isEqualTo("OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.")
+                (0 until list.childCount).forEach { i ->
+                    assertThat(list.getChildAt(i).findViewById<View>(R.id.drag_handle).visibility).isEqualTo(View.GONE)
+                    assertThat(list.handle(i).visibility).isEqualTo(View.VISIBLE)
+                    assertThat(list.handle(i).isFocusable).isTrue()
+                }
                 list.handle(0).performClick()
                 assertThat(list.getChildAt(0).findViewById<View>(R.id.moving).visibility).isEqualTo(View.VISIBLE)
                 val down = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)
@@ -167,11 +181,72 @@ class SettingsActivityTest {
                     app.graph.settingsStore.visibleCameraKeys,
                 ).containsExactly("$serial/2", "$serial/3", "$serial/1").inOrder()
                 assertThat(list.getChildAt(2).findViewById<View>(R.id.moving).visibility).isEqualTo(View.GONE)
+                assertThat(
+                    list.names(),
+                ).containsExactly("Camera 2", "Camera 3", "Camera 1", "Camera 4", "Camera 5").inOrder()
                 // UP/DOWN on a row that is not picked up is ordinary navigation.
                 assertThat(list.handle(0).dispatchKeyEvent(down)).isFalse()
             }
         }
     }
+
+    /**
+     * A phone has no D-pad: each row starts with a drag handle and the text handle is gone. A drag
+     * (what ItemTouchHelper reports as the row passing its neighbours, then letting go) reorders
+     * the rows and persists the order through the same store write as the TV's drop; the checkbox
+     * still toggles visibility.
+     */
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `on a phone every row has a drag handle, no buttons, and a drag reorders and persists`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, list ->
+                assertThat(a.findViewById<TextView>(R.id.cameras_help).text.toString())
+                    .isEqualTo("Hold the handle to drag a camera into place. Untick to hide.")
+                assertThat(list.childCount).isEqualTo(5)
+                (0 until list.childCount).forEach { i ->
+                    val row = list.getChildAt(i)
+                    val handle = row.findViewById<ImageView>(R.id.drag_handle)
+                    assertThat(handle.visibility).isEqualTo(View.VISIBLE)
+                    assertThat(handle.drawable).isNotNull()
+                    assertThat(handle.contentDescription.toString()).isEqualTo("Drag to reorder")
+                    assertThat((row as ViewGroup).getChildAt(0)).isSameInstanceAs(handle) // on the left
+                    assertThat(list.handle(i).visibility).isEqualTo(View.GONE)
+                    assertThat(row.findViewById<View>(R.id.moving).visibility).isEqualTo(View.GONE)
+                }
+                val callback = dragCallback(list)
+                assertThat(callback.isLongPressDragEnabled).isFalse()
+                assertThat(callback.isItemViewSwipeEnabled).isFalse()
+                val first = list.findViewHolderForAdapterPosition(0)!!
+                val second = list.findViewHolderForAdapterPosition(1)!!
+                assertThat(callback.getMovementFlags(list, first))
+                    .isEqualTo(
+                        ItemTouchHelper.Callback.makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0),
+                    )
+                // The finger carries row 0 past row 1: moved at once, persisted only on the drop.
+                assertThat(callback.onMove(list, first, second)).isTrue()
+                ShadowLooper.idleMainLooper()
+                assertThat(
+                    list.names(),
+                ).containsExactly("Camera 2", "Camera 1", "Camera 3", "Camera 4", "Camera 5").inOrder()
+                assertThat(app.graph.settingsStore.visibleCameraKeys).isNull()
+                callback.clearView(list, first)
+                assertThat(app.graph.settingsStore.visibleCameraKeys)
+                    .containsExactly("$serial/2", "$serial/1", "$serial/3")
+                    .inOrder()
+                // The checkbox is untouched by the drag machinery.
+                list.getChildAt(0).findViewById<CheckBox>(R.id.check).performClick()
+                assertThat(
+                    app.graph.settingsStore.visibleCameraKeys,
+                ).containsExactly("$serial/1", "$serial/3").inOrder()
+            }
+        }
+    }
+
+    /** The drag rules the phone's ItemTouchHelper follows. */
+    private fun dragCallback(list: RecyclerView): ItemTouchHelper.Callback =
+        (list.adapter as CameraRowAdapter).dragCallback
 
     @Test
     fun `change encryption password verifies before storing`() {
@@ -415,7 +490,7 @@ class SettingsActivityTest {
                         R.id.change_code,
                     ).map { a.findViewById<View>(it) } +
                         (0 until list.childCount).flatMap { i ->
-                            listOf(R.id.check, R.id.name, R.id.signal, R.id.handle)
+                            listOf(R.id.drag_handle, R.id.check, R.id.name, R.id.signal)
                                 .map { list.getChildAt(i).findViewById<View>(it) }
                         }
                 views.forEach { view ->

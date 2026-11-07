@@ -14,7 +14,9 @@ data class CameraChoice(
 /**
  * The reorderable visible-camera list behind the settings screen, kept free of Views so the
  * pick-up / move / drop rules are unit-tested. Rows are every camera of the account: the chosen
- * ones first in their saved order, then the rest in channel order, unticked.
+ * ones first in their saved order, then the rest in channel order, unticked. A TV reorders with
+ * pick-up / [moveBy] / drop on the D-pad; a phone drags a row with its finger ([move]), one step
+ * at a time as it passes the neighbouring rows.
  */
 class CameraOrderEditor(
     all: List<Camera>,
@@ -58,6 +60,18 @@ class CameraOrderEditor(
         rows.add(to, rows.removeAt(from))
         pickedUp = to
         return to
+    }
+
+    /**
+     * A finger drag passing a neighbour (phones): row [from] takes position [to]. Nothing is
+     * picked up; the drop that follows persists. Unchanged for an index outside the list.
+     */
+    fun move(
+        from: Int,
+        to: Int,
+    ) {
+        if (from == to || from !in rows.indices || to !in rows.indices) return
+        rows.add(to, rows.removeAt(from))
     }
 
     /** Keys of the ticked rows in display order, what [com.itsluminous.hikviewer.data.SettingsStore] stores. */

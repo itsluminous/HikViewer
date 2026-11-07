@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.ParcelFileDescriptor
 import android.view.View
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -17,10 +18,12 @@ import androidx.test.espresso.action.Swipe
 import androidx.test.espresso.action.Tap
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.longClick
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.action.ViewActions.swipeLeft
 import androidx.test.espresso.action.ViewActions.swipeRight
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.hasDescendant
 import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
@@ -334,6 +337,52 @@ class PhoneNavigationTest {
         (1..6).forEach { onView(tile(it - 1)).check(matches(tileNamed("Camera $it"))) }
     }
 
+    /**
+     * Settings on a phone: each camera row starts with a drag handle. A finger that presses the
+     * first row's handle and slides it down past the second row swaps the two, and letting go
+     * persists the new order, which the grid then follows.
+     */
+    @Test
+    fun draggingACameraRowByItsHandleReordersAndPersists() {
+        onView(withId(R.id.settings_button)).perform(click())
+        onView(withId(R.id.camera_list)).perform(scrollTo())
+        onView(cameraRow(0)).check(matches(hasDescendant(withText("Camera 1"))))
+        onView(cameraRow(1)).check(matches(hasDescendant(withText("Camera 2"))))
+        onView(allOf(withId(R.id.drag_handle), isDescendantOfA(cameraRow(0)))).check(matches(isDisplayed()))
+        onView(allOf(withId(R.id.handle), isDescendantOfA(cameraRow(0)))).check(matches(not(isDisplayed())))
+        onView(allOf(withId(R.id.drag_handle), isDescendantOfA(cameraRow(0)))).perform(dragDownOneRow())
+        waitFor(DROP_SETTLE_MILLIS)
+        onView(cameraRow(0)).check(matches(hasDescendant(withText("Camera 2"))))
+        onView(cameraRow(1)).check(matches(hasDescendant(withText("Camera 1"))))
+        val serial = FakeCloudServices.SERIAL
+        val keys = app.graph.settingsStore.visibleCameraKeys
+        assert(keys?.take(3) == listOf("$serial/2", "$serial/1", "$serial/3")) { "stored order is $keys" }
+        // Back to the grid: the first tile is the camera that was dragged to the top.
+        pressBack()
+        onView(tile(0)).check(matches(tileNamed("Camera 2")))
+        onView(tile(1)).check(matches(tileNamed("Camera 1")))
+    }
+
+    /** A slow swipe from the handle's centre to a point one row and a half below it: past the next row's middle. */
+    private fun dragDownOneRow(): ViewAction = GeneralSwipeAction(
+        Swipe.SLOW,
+        GeneralLocation.CENTER,
+        { view -> GeneralLocation.CENTER.calculateCoordinates(view).also { it[1] += view.height * 1.5f } },
+        Press.FINGER,
+    )
+
+    /** The camera row at [position] of Settings' list. */
+    private fun cameraRow(position: Int): Matcher<View> = object : TypeSafeMatcher<View>() {
+        override fun describeTo(description: Description) {
+            description.appendText("camera row $position")
+        }
+
+        override fun matchesSafely(item: View): Boolean {
+            val list = item.parent as? RecyclerView ?: return false
+            return list.id == R.id.camera_list && list.getChildAdapterPosition(item) == position
+        }
+    }
+
     /** The resumed grid's shape (the Activity is recreated by a rotation, so the scenario's reference is stale). */
     private fun assertGrid(
         mode: GridLayoutMode,
@@ -404,5 +453,8 @@ class PhoneNavigationTest {
 
         /** `GestureDetector` confirms a single tap once the double-tap timeout (300 ms) has passed. */
         const val TAP_CONFIRM_MILLIS = 450L
+
+        /** ItemTouchHelper's drop animation back into the row's cell. */
+        const val DROP_SETTLE_MILLIS = 600L
     }
 }

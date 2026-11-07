@@ -109,18 +109,24 @@
                 android:text="@string/settings_cameras" />
 
             <TextView
+                android:id="@+id/cameras_help"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/settings_cameras_help"
                 android:textColor="#B0F2F4F7"
                 android:textSize="13sp" />
 
-            <LinearLayout
+            <!-- Every row is laid out (AllRowsRecyclerView: no recycling inside the ScrollView, the
+                 list is as tall as its rows); a RecyclerView only so a phone can drag rows with
+                 ItemTouchHelper. -->
+            <com.itsluminous.hikviewer.ui.settings.AllRowsRecyclerView
                 android:id="@+id/camera_list"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:orientation="vertical" />
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
             <!-- The button is the whole section, so it carries the section tag itself. -->
             <Button

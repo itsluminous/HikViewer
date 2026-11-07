@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:minHeight="48dp"
     android:orientation="horizontal">
+
+    <!-- Phones only: hold this to drag the row into place (ItemTouchHelper). A TV has no finger,
+         so it keeps the text handle at the row's end and this stays gone. -->
+    <ImageView
+        android:id="@+id/drag_handle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:contentDescription="@string/settings_drag_handle"
+        android:padding="12dp"
+        android:src="@drawable/ic_drag_handle"
+        android:visibility="gone"
+        app:tint="@color/on_background" />
 
     <CheckBox
         android:id="@+id/check"

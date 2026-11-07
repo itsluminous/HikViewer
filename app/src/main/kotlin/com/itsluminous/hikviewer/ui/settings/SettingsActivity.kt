@@ -3,8 +3,6 @@ package com.itsluminous.hikviewer.ui.settings
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
-import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -19,7 +17,6 @@ import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
-import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.KeepScreenOn
@@ -34,10 +31,10 @@ import kotlinx.coroutines.launch
  * cameras, visible cameras and order, encryption password, about (version, source address, donation),
  * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
- * the grid re-reads the store when this screen returns. The camera list is a plain `LinearLayout`
- * of rows (at most a few dozen cameras) whose "move" handle implements pick-up / UP-DOWN / drop;
- * the rows belong to the [SettingsViewModel] so a rotation keeps them, and they are excluded
- * from view state saving because their shared ids would otherwise restore into one another.
+ * the grid re-reads the store when this screen returns. The camera list is a `RecyclerView` of
+ * rows (at most a few dozen cameras, all laid out) reordered with the D-pad on a TV and a drag
+ * handle on a phone ([CameraRowAdapter]); the rows belong to the [SettingsViewModel] so a
+ * rotation keeps them.
  */
 class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
@@ -86,58 +83,18 @@ class SettingsActivity : AppCompatActivity() {
         binding.layoutSpinner.onItemSelected { arrangement.setLayout(portraitPhone, modes[it]) }
     }
 
+    /**
+     * The camera rows ([CameraRowAdapter]): on a TV each row ends in the D-pad handle (OK picks
+     * up, UP/DOWN move, OK drops), on a phone it starts with a drag handle to hold and drag. The
+     * help line says which. The rows belong to the [SettingsViewModel], so a rotation keeps them;
+     * a RecyclerView never saves its rows' view state, so their shared ids cannot restore into one
+     * another (the round-7 bug).
+     */
     private fun bindCameraList() {
-        val list = binding.cameraList
-        list.removeAllViews()
-        editor.items.forEachIndexed { index, choice ->
-            val row = ItemCameraChoiceBinding.inflate(LayoutInflater.from(this), list, false)
-            row.check.isChecked = choice.visible
-            row.name.text = choice.camera.name
-            row.signal.setText(
-                if (choice.camera.hasSignal) R.string.settings_camera_signal else R.string.settings_camera_no_signal,
-            )
-            row.check.setOnCheckedChangeListener { _, _ ->
-                viewModel.toggleVisible(index)
-                bindLayout()
-            }
-            row.handle.setOnClickListener {
-                val moving = viewModel.togglePickUp(index)
-                row.moving.visibility = if (moving) View.VISIBLE else View.GONE
-                if (!moving) rebuildList(focusHandleAt = index)
-            }
-            row.handle.setOnKeyListener { _, keyCode, event -> onHandleKey(keyCode, event) }
-            // Every row shares the same child ids, so a saved hierarchy state would restore the
-            // last row's checkbox into all of them; the ViewModel is the state that survives.
-            row.root.isSaveFromParentEnabled = false
-            list.addView(row.root)
-        }
-    }
-
-    private fun onHandleKey(
-        keyCode: Int,
-        event: KeyEvent,
-    ): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN || editor.pickedUp == null) return false
-        val delta =
-            when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_UP -> -1
-                KeyEvent.KEYCODE_DPAD_DOWN -> 1
-                else -> return false
-            }
-        val to = viewModel.moveBy(delta) ?: return true
-        rebuildList(focusHandleAt = to, moving = true)
-        return true
-    }
-
-    private fun rebuildList(
-        focusHandleAt: Int,
-        moving: Boolean = false,
-    ) {
-        bindCameraList()
-        val row = binding.cameraList.getChildAt(focusHandleAt) ?: return
-        val rowBinding = ItemCameraChoiceBinding.bind(row)
-        rowBinding.moving.visibility = if (moving) View.VISIBLE else View.GONE
-        rowBinding.handle.requestFocus()
+        val touch = !FormFactor.isTelevision(this)
+        binding.camerasHelp.setText(if (touch) R.string.settings_cameras_help_phone else R.string.settings_cameras_help)
+        binding.cameraList.itemAnimator = null
+        binding.cameraList.adapter = CameraRowAdapter(viewModel, touch, onVisibilityChanged = ::bindLayout)
     }
 
     private fun bindQuality() {

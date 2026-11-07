@@ -45,6 +45,15 @@ class SettingsViewModel(
     /** Moves the picked-up row by [delta]; see [CameraOrderEditor.moveBy]. */
     fun moveBy(delta: Int): Int? = editor.moveBy(delta)
 
+    /** A finger drag passed a neighbour: row [from] is now at [to]; see [CameraOrderEditor.move]. Not persisted yet. */
+    fun moveRow(
+        from: Int,
+        to: Int,
+    ) = editor.move(from, to)
+
+    /** The dragged row was let go: the order is persisted, the same write as a D-pad drop. */
+    fun dropRow() = save()
+
     private fun save() {
         settings.visibleCameraKeys = editor.visibleKeys()
     }

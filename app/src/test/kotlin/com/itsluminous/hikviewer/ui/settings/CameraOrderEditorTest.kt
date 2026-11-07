@@ -54,6 +54,25 @@ class CameraOrderEditorTest {
         assertThat(editor.pickedUp).isEqualTo(4)
     }
 
+    /** A finger drag moves rows without a pick-up, one neighbour at a time, and leaves the pick-up state alone. */
+    @Test
+    fun `move takes a row to a position directly`() {
+        val editor = CameraOrderEditor(cams, null)
+        editor.move(0, 1)
+        assertThat(editor.items.map { it.camera.channelNo }).containsExactly(2, 1, 3, 5, 4).inOrder()
+        editor.move(1, 2)
+        assertThat(editor.items.map { it.camera.channelNo }).containsExactly(2, 3, 1, 5, 4).inOrder()
+        editor.move(4, 0)
+        assertThat(editor.items.map { it.camera.channelNo }).containsExactly(4, 2, 3, 1, 5).inOrder()
+        assertThat(editor.visibleKeys()).containsExactly("S/2", "S/3", "S/1", "S/5").inOrder()
+        assertThat(editor.pickedUp).isNull()
+        // Out of range or in place: nothing happens.
+        editor.move(0, 0)
+        editor.move(-1, 2)
+        editor.move(2, 5)
+        assertThat(editor.items.map { it.camera.channelNo }).containsExactly(4, 2, 3, 1, 5).inOrder()
+    }
+
     @Test
     fun `picking up another row switches the picked row`() {
         val editor = CameraOrderEditor(cams, null)

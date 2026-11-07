@@ -98,6 +98,8 @@
     <string name="settings_layout">Grid layout</string>
     <string name="settings_cameras">Visible cameras and order</string>
     <string name="settings_cameras_help">OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.</string>
+    <string name="settings_cameras_help_phone">Hold the handle to drag a camera into place. Untick to hide.</string>
+    <string name="settings_drag_handle">Drag to reorder</string>
     <string name="settings_quality">Fullscreen quality</string>
     <string name="settings_quality_main">Main stream (HEVC, needs a hardware decoder)</string>
     <string name="settings_overlays">Tile overlays</string>

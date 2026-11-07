@@ -36,9 +36,10 @@ data class GridShape(
  *
  * A fixed grid is drawn with its own columns and rows on a screen of its orientation, and turned
  * as the counterpart of the same capacity (see [dimensions] and the table on [GridLayoutMode]):
- * a portrait phone shows 4 x 3 as 3 x 4, a turned one shows 2 x 3 as 3 x 2 and 1 x 4 as 2 x 2. In
- * portrait AUTO resolves to the smallest portrait shape that holds every tile, in landscape to
- * 3 x 3, 4 x 3 or 4 x 4.
+ * a turned phone shows 2 x 3 as 3 x 2 and 1 x 4 as 2 x 2. In portrait AUTO resolves to the
+ * smallest portrait shape that holds every tile (two columns from three cameras), in landscape
+ * to 3 x 3, 4 x 3 or 4 x 4; a landscape shape stored on a phone held upright is drawn as AUTO
+ * ([GridLayoutMode.effective]), so the grid upright is never wider than two columns.
  *
  * A 1 + N layout ([GridLayoutMode.isHero]) is a square `(k+1) x (k+1)` grid whose hero spans the
  * top-left `k x k` cells; the small tiles fill the right column top to bottom, then the bottom
@@ -71,13 +72,15 @@ object GridGeometry {
      * Columns and rows the fixed [mode] is drawn with on a screen that is [portrait] or not: its
      * own when the shape belongs to that orientation ([GridLayoutMode.isPortraitShape]), otherwise
      * the transposition, except that 1 x 4 turned is 2 x 2 (four tiles of 16:9 instead of a row of
-     * four slivers). The capacity never changes, so the arrangement is one list for both.
+     * four slivers). The capacity never changes, so the arrangement is one list for both. A
+     * landscape shape is never asked for upright: [shape] resolves it to AUTO there first.
      */
     fun dimensions(
         mode: GridLayoutMode,
         portrait: Boolean,
     ): Pair<Int, Int> {
         require(mode.isFixed) { "$mode is not a fixed grid" }
+        require(mode.isPortraitShape || !portrait) { "$mode is drawn as AUTO upright" }
         return when {
             mode.isPortraitShape == portrait -> mode.columns to mode.rows
             mode == GridLayoutMode.GRID_1X4 -> 2 to 2

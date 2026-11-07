@@ -202,6 +202,69 @@ class GridActivityPhoneTest {
         }
     }
 
+    /**
+     * Round 16 regression: upright, a fresh install draws two columns, and so does an install whose
+     * stored layout is the TV's 4 x 3 (every phone upgraded from 0.1, which had no portrait shapes;
+     * it used to transpose to 3 x 4, three narrow columns). The row count follows the camera count.
+     */
+    @Test
+    fun `upright, a fresh store and a stored 4 x 3 both draw two columns`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { _, grid ->
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.AUTO)
+                assertThat(grid.shape.columns).isEqualTo(2) // 6 cameras: AUTO upright is 2 x 3
+                assertThat(grid.shape.rows).isEqualTo(3)
+            }
+        }
+        app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X3
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                assertThat(grid.mode).isEqualTo(GridLayoutMode.GRID_4X3)
+                assertThat(grid.shape.columns).isEqualTo(2)
+                assertThat(grid.shape.rows).isEqualTo(3)
+                assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6).inOrder()
+                // The stored name is untouched: turned, the phone gets its 4 x 3 back.
+                assertThat(app.graph.arrangementStore.lastLayout).isEqualTo(GridLayoutMode.GRID_4X3)
+                a.findViewById<View>(R.id.layout_button).performClick()
+                ShadowLooper.idleMainLooper()
+                val menu =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                        .menu
+                val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                assertThat(titles).containsNoneOf("3 × 3", "4 × 3", "4 × 4")
+            }
+            RuntimeEnvironment.setQualifiers("w640dp-h360dp-land-xhdpi")
+            scenario.recreate()
+            scenario.grid { _, grid ->
+                assertThat(grid.shape.columns).isEqualTo(4)
+                assertThat(grid.shape.rows).isEqualTo(3)
+            }
+        }
+    }
+
+    /** The user's account: 14 cameras upright are 2 x 7 whatever 0.1 left stored, 3 x 3 included. */
+    @Test
+    fun `fourteen cameras upright are two columns of seven, also with a stored landscape shape`() {
+        val many = FakeCloudServices(cameraCount = 14, signalCount = 14)
+        app.graph = TestGraph.create(app, many, topBarAutoHideMillis = 300)
+        kotlinx.coroutines.runBlocking { app.graph.account.login("a", "secret", Region.INDIA) }
+        app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        listOf(GridLayoutMode.AUTO, GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.GRID_4X4)
+            .forEach { stored ->
+                app.graph.arrangementStore.lastLayout = stored
+                ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+                    scenario.grid { a, grid ->
+                        assertThat(grid.shape.columns).isEqualTo(2)
+                        assertThat(grid.shape.rows).isEqualTo(7)
+                        assertThat(shownChannels(grid)).hasSize(14)
+                        val vm = a.viewModels<GridViewModel>().value
+                        assertThat(vm.playback.players.value).hasSize(14)
+                    }
+                }
+            }
+    }
+
     /** Upright, the layout menu lists the portrait shapes and the even heroes, never the TV's grids; turned, the reverse. */
     @Test
     fun `the layout menu offers the portrait shapes upright and the landscape shapes turned`() {
@@ -288,15 +351,15 @@ class GridActivityPhoneTest {
         }
     }
 
-    /** The TV's 4 x 3 kept from a turned session is drawn 3 x 4 upright, every tile still with its camera. */
+    /** The TV's 4 x 3 kept from a turned session is drawn as AUTO upright (2 x 4 for eight cameras), every tile with its camera. */
     @Test
-    fun `a landscape shape restored upright is drawn transposed`() {
+    fun `a landscape shape restored upright is drawn as the two-column auto shape`() {
         val serial = FakeCloudServices.SERIAL
         app.graph.settingsStore.visibleCameraKeys = (1..8).map { "$serial/$it" }
         app.graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X3
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->
             scenario.grid { _, grid ->
-                assertThat(grid.shape.columns).isEqualTo(3)
+                assertThat(grid.shape.columns).isEqualTo(2)
                 assertThat(grid.shape.rows).isEqualTo(4)
                 assertThat(shownChannels(grid)).containsExactly(1, 2, 3, 4, 5, 6, 7, 8).inOrder()
             }

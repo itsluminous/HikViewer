@@ -25,10 +25,11 @@ import com.itsluminous.hikviewer.R
  * The fixed grids come in two families. The landscape shapes (3 x 3, 4 x 3, 4 x 4) are the TV's
  * and a turned phone's; the portrait shapes ([isPortraitShape]: one column 1 x 2, 1 x 3, 1 x 4 and
  * two columns 2 x 2 up to 2 x 8) are a phone held upright, where a tile a third of the screen wide
- * is too small to watch. Each is a concrete layout with its own arrangement whatever the
- * orientation; rotating the phone draws it as its counterpart of the same capacity, so every tile
- * keeps its camera and the persisted arrangement key does not change. The mapping (columns x rows
- * as shown on screen):
+ * is too small to watch. A portrait shape is a concrete layout with its own arrangement whatever
+ * the orientation; turning the phone draws it as its counterpart of the same capacity, so every
+ * tile keeps its camera and the persisted arrangement key does not change. A landscape shape held
+ * upright is drawn as AUTO ([effective]), never as three or four narrow columns. The mapping
+ * (columns x rows as shown on screen):
  *
  * | Layout | Upright | Turned |
  * |---|---|---|
@@ -36,12 +37,10 @@ import com.itsluminous.hikviewer.R
  * | 1 x 3 | 1 x 3 | 3 x 1 |
  * | 1 x 4 | 1 x 4 | 2 x 2 (nearer 16:9 tiles than 4 x 1) |
  * | 2 x N (N = 2..8) | 2 x N | N x 2 |
- * | 3 x 3 | 3 x 3 | 3 x 3 |
- * | 4 x 3 | 3 x 4 | 4 x 3 |
- * | 4 x 4 | 4 x 4 | 4 x 4 |
+ * | 3 x 3, 4 x 3, 4 x 4 | as AUTO: 2 x ceil(n / 2) | 3 x 3, 4 x 3, 4 x 4 |
  *
- * Every row but 1 x 4 is a transposition, computed by [GridGeometry]; the labels name the shape
- * in its own orientation.
+ * Every portrait row but 1 x 4 is a transposition, computed by [GridGeometry]; the labels name
+ * the shape in its own orientation.
  *
  * [available] lists the entries worth offering for a camera count: a 1 + N layout only when all
  * of its `N + 1` tiles would show a camera and its parity suits the screen (even for a phone held
@@ -160,20 +159,35 @@ enum class GridLayoutMode(
     val landscapeCapacity: Int get() = if (isHero) 2 * heroSpan + 2 else capacity
 
     /**
-     * Resolves AUTO to a fixed shape for [tileCount]; other modes return themselves. Turned (the
-     * default), 3 x 3 up to 9 tiles, 4 x 3 up to 12 and 4 x 4 above; [portrait], the smallest
-     * portrait shape that holds every tile: one column for one or two cameras, two columns from
-     * three up, 2 x 8 above sixteen.
+     * The layout a screen that is [portrait] or not actually follows: this one, except that a
+     * landscape shape (3 x 3, 4 x 3, 4 x 4) on a phone held upright is [AUTO]. Those shapes are
+     * the TV's and a turned phone's; the upright menu never offers them, but one can be stored
+     * (chosen sideways, or left by version 0.1, which had no portrait shapes) and transposed it
+     * would draw three or four columns of tiles too narrow to watch. Drawn as AUTO instead, the
+     * grid is two columns wide whatever is stored, and the stored name keeps its arrangement for
+     * when the phone is turned back.
+     */
+    fun effective(portrait: Boolean): GridLayoutMode = if (portrait && isFixed && !isPortraitShape) AUTO else this
+
+    /**
+     * Resolves AUTO to a fixed shape for [tileCount]; other modes return themselves, except the
+     * landscape shapes [portrait], which are AUTO there (see [effective]). Turned (the default),
+     * 3 x 3 up to 9 tiles, 4 x 3 up to 12 and 4 x 4 above; [portrait], the smallest portrait
+     * shape that holds every tile: one column for one or two cameras, two columns from three up
+     * (2 x ceil(n / 2)), 2 x 8 above sixteen.
      */
     fun resolve(
         tileCount: Int,
         portrait: Boolean = false,
-    ): GridLayoutMode = when {
-        this != AUTO -> this
-        portrait -> autoPortraitShapes.firstOrNull { it.capacity >= tileCount } ?: autoPortraitShapes.last()
-        tileCount <= GRID_3X3.capacity -> GRID_3X3
-        tileCount <= GRID_4X3.capacity -> GRID_4X3
-        else -> GRID_4X4
+    ): GridLayoutMode {
+        val mode = effective(portrait)
+        return when {
+            mode != AUTO -> mode
+            portrait -> autoPortraitShapes.firstOrNull { it.capacity >= tileCount } ?: autoPortraitShapes.last()
+            tileCount <= GRID_3X3.capacity -> GRID_3X3
+            tileCount <= GRID_4X3.capacity -> GRID_4X3
+            else -> GRID_4X4
+        }
     }
 
     /** Pickers. */

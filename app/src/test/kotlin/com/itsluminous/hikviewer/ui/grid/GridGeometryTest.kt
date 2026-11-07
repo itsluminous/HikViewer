@@ -212,26 +212,53 @@ class GridGeometryTest {
             assertThat(shape.columns to shape.rows).isEqualTo(dims)
             assertThat(shape.capacity).isEqualTo(mode.capacity)
         }
-        val upright =
-            mapOf(
-                GridLayoutMode.GRID_3X3 to (3 to 3),
-                GridLayoutMode.GRID_4X3 to (3 to 4),
-                GridLayoutMode.GRID_4X4 to (4 to 4),
-            )
-        upright.forEach { (mode, dims) ->
-            assertThat(GridGeometry.dimensions(mode, portrait = true)).isEqualTo(dims)
-            assertThat(GridGeometry.dimensions(mode, portrait = false)).isEqualTo(mode.columns to mode.rows)
-            val shape = GridGeometry.shape(mode, 40, portrait = true)
-            assertThat(shape.columns to shape.rows).isEqualTo(dims)
-            assertThat(shape.capacity).isEqualTo(mode.capacity)
-        }
-        // Every fixed shape keeps its capacity in both orientations, so one arrangement serves both.
-        GridLayoutMode.entries.filter { it.isFixed }.forEach { mode ->
+        // Every portrait shape keeps its capacity in both orientations, so one arrangement serves both.
+        GridLayoutMode.entries.filter { it.isPortraitShape }.forEach { mode ->
             assertThat(GridGeometry.shape(mode, 40, portrait = true).capacity)
                 .isEqualTo(GridGeometry.shape(mode, 40, portrait = false).capacity)
         }
+        GridLayoutMode.entries.filter { it.isFixed && !it.isPortraitShape }.forEach { mode ->
+            assertThat(GridGeometry.dimensions(mode, portrait = false)).isEqualTo(mode.columns to mode.rows)
+            assertThat(runCatching { GridGeometry.dimensions(mode, portrait = true) }.isFailure).isTrue()
+        }
         assertThat(runCatching { GridGeometry.dimensions(GridLayoutMode.AUTO, true) }.isFailure).isTrue()
         assertThat(runCatching { GridGeometry.dimensions(GridLayoutMode.HERO_1_5, true) }.isFailure).isTrue()
+    }
+
+    /**
+     * Round 16: a stored 4 x 3 (version 0.1 had no portrait shapes, so every upgraded phone had one)
+     * drew 3 x 4 upright: three columns of tiles too narrow to watch. Upright, the landscape shapes
+     * are AUTO: two columns from three cameras, as many rows as the cameras need.
+     */
+    @Test
+    fun `a landscape shape held upright is drawn as auto, two columns and ceil(n over 2) rows`() {
+        val landscape = listOf(GridLayoutMode.GRID_3X3, GridLayoutMode.GRID_4X3, GridLayoutMode.GRID_4X4)
+        landscape.forEach { mode ->
+            assertThat(mode.effective(portrait = true)).isEqualTo(GridLayoutMode.AUTO)
+            assertThat(mode.effective(portrait = false)).isEqualTo(mode)
+            for (cameras in 3..16) {
+                assertThat(mode.resolve(cameras, portrait = true))
+                    .isEqualTo(GridLayoutMode.AUTO.resolve(cameras, portrait = true))
+                val shape = GridGeometry.shape(mode, cameras, portrait = true)
+                assertThat(shape.columns).isEqualTo(2)
+                assertThat(shape.rows).isEqualTo((cameras + 1) / 2)
+                assertThat(shape.capacity).isAtLeast(cameras)
+            }
+            // Turned, the shape is its own; the stored name is kept so its arrangement survives the turn.
+            assertThat(GridGeometry.shape(mode, 40, portrait = false).columns).isEqualTo(mode.columns)
+        }
+        assertThat(GridGeometry.shape(GridLayoutMode.GRID_4X3, 14, portrait = true).rows).isEqualTo(7)
+        assertThat(GridGeometry.shape(GridLayoutMode.GRID_4X3, 12, portrait = true).rows).isEqualTo(6)
+        // The portrait shapes, AUTO and the 1 + N layouts are not touched by the rule.
+        GridLayoutMode.entries.filter { !it.isFixed || it.isPortraitShape }.forEach { mode ->
+            assertThat(mode.effective(portrait = true)).isEqualTo(mode)
+        }
+        // Upright, nothing ever draws more than two columns.
+        GridLayoutMode.entries.forEach { mode ->
+            for (cameras in 0..40) {
+                assertThat(GridGeometry.shape(mode, cameras, portrait = true).columns).isAtMost(2)
+            }
+        }
     }
 
     @Test

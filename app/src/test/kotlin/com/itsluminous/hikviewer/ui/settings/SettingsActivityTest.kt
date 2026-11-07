@@ -433,41 +433,75 @@ class SettingsActivityTest {
         return listOf(this) + children
     }
 
-    /** A TV has no browser or UPI app: the address is text to read, Donate opens the QR screen. */
+    /** A TV has neither a browser nor a UPI app: both About buttons open the QR screen, each with its own code and text. */
     @Test
     @Config(qualifiers = "television")
-    fun `About shows the GitHub address as unfocusable text and Donate opens the QR screen`() {
+    fun `on a television View Source and Donate open the QR screens`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                val source = a.findViewById<TextView>(R.id.source_url)
-                assertThat(source.text.toString()).isEqualTo("https://github.com/itsluminous/HikViewer")
-                assertThat(source).isNotInstanceOf(Button::class.java)
-                assertThat(source.isFocusable).isFalse()
-                assertThat(source.isTextSelectable).isFalse()
-                assertThat(source.hasOnClickListeners()).isFalse()
+                // The plain-text address row is gone: the address is only ever the button's doing.
+                assertThat(
+                    a
+                        .findViewById<ViewGroup>(R.id.column)
+                        .allViews()
+                        .filterIsInstance<TextView>()
+                        .none { it !is Button && it.text.toString() == "https://github.com/itsluminous/HikViewer" },
+                ).isTrue()
+                val source = a.findViewById<Button>(R.id.view_source)
+                assertThat(source.text.toString()).isEqualTo("View Source")
+                assertThat(source.isFocusable).isTrue()
+                source.performClick()
+                val qr = shadowOf(a).nextStartedActivity
+                assertThat(qr.component?.className).isEqualTo(QrActivity::class.java.name)
+                assertThat(qr.getIntExtra(QrActivity.EXTRA_IMAGE, 0)).isEqualTo(R.drawable.github_qr)
+                assertThat(qr.getIntExtra(QrActivity.EXTRA_CAPTION, 0)).isEqualTo(R.string.settings_source_url)
+                assertThat(qr.getIntExtra(QrActivity.EXTRA_TEXT, 0)).isEqualTo(0)
                 val donate = a.findViewById<Button>(R.id.donate)
                 assertThat(donate.text.toString()).isEqualTo("Donate via UPI")
                 assertThat(donate.isFocusable).isTrue()
                 donate.performClick()
-                val next = shadowOf(a).nextStartedActivity
-                assertThat(next.component?.className).isEqualTo(DonateActivity::class.java.name)
-                assertThat(next.action).isNotEqualTo(Intent.ACTION_VIEW)
+                val upi = shadowOf(a).nextStartedActivity
+                assertThat(upi.component?.className).isEqualTo(QrActivity::class.java.name)
+                assertThat(upi.getIntExtra(QrActivity.EXTRA_IMAGE, 0)).isEqualTo(R.drawable.upi_qr)
+                assertThat(upi.getIntExtra(QrActivity.EXTRA_CAPTION, 0)).isEqualTo(0)
+                assertThat(upi.getIntExtra(QrActivity.EXTRA_TEXT, 0)).isEqualTo(R.string.upi_id)
                 assertThat(shadowOf(a).nextStartedActivity).isNull()
                 assertThat(ShadowDialog.getLatestDialog()).isNull()
             }
         }
     }
 
-    /** On a phone the address can be copied: selectable text, still no link to tap. */
+    /** A phone opens the links themselves: the address in the browser, the payment URI in the UPI app. */
     @Test
-    fun `on a phone the GitHub address is selectable text`() {
+    fun `on a phone View Source and Donate start ACTION_VIEW with the exact URIs`() {
         shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                val source = a.findViewById<TextView>(R.id.source_url)
-                assertThat(source.isTextSelectable).isTrue()
-                assertThat(source.hasOnClickListeners()).isFalse()
-                assertThat(source.text.toString()).isEqualTo("https://github.com/itsluminous/HikViewer")
+                a.findViewById<Button>(R.id.view_source).performClick()
+                val source = shadowOf(a).nextStartedActivity
+                assertThat(source.action).isEqualTo(Intent.ACTION_VIEW)
+                assertThat(source.dataString).isEqualTo("https://github.com/itsluminous/HikViewer")
+                a.findViewById<Button>(R.id.donate).performClick()
+                val upi = shadowOf(a).nextStartedActivity
+                assertThat(upi.action).isEqualTo(Intent.ACTION_VIEW)
+                assertThat(upi.dataString).isEqualTo("upi://pay?pa=electricprakash@axisb")
+                assertThat(shadowOf(a).nextStartedActivity).isNull()
+            }
+        }
+    }
+
+    /** A phone without a UPI app: the ACTION_VIEW is refused, so the UPI QR screen opens instead of a crash. */
+    @Test
+    fun `on a phone without a UPI app Donate falls back to the QR screen`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                shadowOf(app).checkActivities(true) // Robolectric now refuses an intent no activity resolves
+                a.findViewById<Button>(R.id.donate).performClick()
+                val next = shadowOf(a).nextStartedActivity
+                assertThat(next.component?.className).isEqualTo(QrActivity::class.java.name)
+                assertThat(next.getIntExtra(QrActivity.EXTRA_IMAGE, 0)).isEqualTo(R.drawable.upi_qr)
+                assertThat(a.isFinishing).isFalse()
             }
         }
     }

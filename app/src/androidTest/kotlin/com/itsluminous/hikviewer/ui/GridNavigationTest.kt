@@ -13,6 +13,7 @@ import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.pressKey
 import androidx.test.espresso.action.ViewActions.scrollTo
+import androidx.test.espresso.assertion.PositionAssertions.isCompletelyAbove
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.Visibility
@@ -39,7 +40,7 @@ import com.itsluminous.hikviewer.ui.grid.CameraGridLayout
 import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridActivity
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
-import com.itsluminous.hikviewer.ui.settings.DonateActivity
+import com.itsluminous.hikviewer.ui.settings.QrActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.CoreMatchers.not
@@ -314,24 +315,33 @@ class GridNavigationTest {
         assert(!app.graph.account.isLoggedIn)
     }
 
-    /** Donate with the remote: focus the row, OK opens the QR screen fullscreen, Back is Settings again. */
+    /**
+     * About with the remote: View Source opens the GitHub QR screen with the address above the
+     * code, Back is Settings again; Donate opens the UPI QR screen with the UPI id under it.
+     */
     @Test
-    fun settingsDonateOpensTheQrScreenAndBackReturnsToSettings() {
+    fun settingsAboutButtonsOpenTheQrScreensAndBackReturnsToSettings() {
         dpad(KeyEvent.KEYCODE_DPAD_UP)
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
         onView(withId(R.id.settings_button)).check(matches(hasFocus()))
         ok()
-        onView(withId(R.id.source_url))
-            .perform(scrollTo())
-            .check(matches(withText("https://github.com/itsluminous/HikViewer")))
+        onView(withId(R.id.view_source)).perform(scrollTo(), takeFocus()).check(matches(hasFocus()))
+        ok()
+        onView(withId(R.id.qr)).check(matches(allOf(isDisplayed(), hasDrawable())))
+        onView(withId(R.id.caption))
+            .check(matches(allOf(isDisplayed(), withText("https://github.com/itsluminous/HikViewer"))))
+        onView(withId(R.id.caption)).check(isCompletelyAbove(withId(R.id.qr)))
+        onView(withId(R.id.text)).check(matches(not(isDisplayed())))
+        assert(resumedActivity() is QrActivity) { "expected QrActivity on top, got ${resumedActivity()}" }
+        pressBack()
+        onView(withId(R.id.view_source)).check(matches(isDisplayed()))
+        assert(resumedActivity() is SettingsActivity) { "expected SettingsActivity on top, got ${resumedActivity()}" }
         onView(withId(R.id.donate)).perform(scrollTo(), takeFocus()).check(matches(hasFocus()))
         ok()
-        onView(withId(R.id.qr)).check(matches(isDisplayed()))
-        onView(withId(R.id.qr)).check(matches(hasDrawable()))
-        onView(withId(R.id.upi_id)).check(matches(allOf(isDisplayed(), withText("electricprakash@axisb"))))
-        assert(resumedActivity() is DonateActivity) { "expected DonateActivity on top, got ${resumedActivity()}" }
+        onView(withId(R.id.qr)).check(matches(allOf(isDisplayed(), hasDrawable())))
+        onView(withId(R.id.text)).check(matches(allOf(isDisplayed(), withText("electricprakash@axisb"))))
+        onView(withId(R.id.caption)).check(matches(not(isDisplayed())))
         pressBack()
-        onView(withId(R.id.donate)).check(matches(isDisplayed()))
         assert(resumedActivity() is SettingsActivity) { "expected SettingsActivity on top, got ${resumedActivity()}" }
     }
 

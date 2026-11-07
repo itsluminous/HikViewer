@@ -57,11 +57,11 @@
         <activity
             android:name=".ui.settings.SettingsActivity"
             android:exported="false" />
-        <!-- The UPI QR code on black; follows the device's orientation so a phone can hold it either way. -->
+        <!-- A QR code on black (UPI, GitHub); follows the device's orientation so a phone can hold it either way. -->
         <activity
-            android:name=".ui.settings.DonateActivity"
+            android:name=".ui.settings.QrActivity"
             android:exported="false"
-            android:theme="@style/Theme.HikViewer.Donate" />
+            android:theme="@style/Theme.HikViewer.Qr" />
         <activity
             android:name=".ui.playback.PlaybackActivity"
             android:exported="false"

@@ -150,19 +150,19 @@
                 android:textColor="@color/on_background"
                 tools:text="HikViewer 0.1.0" />
 
-            <!-- The source address as plain text: a TV has no browser to open it, so the user reads
-                 it off the screen. Not focusable (a focusable TextView would join the D-pad walk);
-                 SettingsActivity makes it selectable on phones for copying. -->
-            <TextView
-                android:id="@+id/source_url"
-                android:layout_width="wrap_content"
+            <!-- View Source and Donate: on a phone they open the address and the UPI app; a TV
+                 has neither a browser nor a UPI app, so there they open QrActivity with the code
+                 fullscreen (SettingsActivity decides by FormFactor). -->
+            <Button
+                android:id="@+id/view_source"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:focusable="false"
-                android:text="@string/settings_source_url"
+                android:layout_marginTop="8dp"
+                android:text="@string/settings_view_source"
+                android:textAllCaps="false"
                 android:textColor="@color/on_background" />
 
-            <!-- Donate opens DonateActivity: the QR code fullscreen, since a TV has no UPI app. -->
             <Button
                 android:id="@+id/donate"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"

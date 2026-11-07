@@ -1,5 +1,6 @@
 package com.itsluminous.hikviewer.ui.settings
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
@@ -9,6 +10,7 @@ import android.widget.ArrayAdapter
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.devices.VerificationCode
@@ -28,7 +30,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Settings, top to bottom: grid layout, tile overlays, fullscreen quality, screen (phones), live
- * cameras, visible cameras and order, encryption password, about (version, source address, donation),
+ * cameras, visible cameras and order, encryption password, about (version, View Source, Donate),
  * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
  * the grid re-reads the store when this screen returns. The camera list is a `RecyclerView` of
@@ -140,15 +142,42 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * About: the version line, the source address as plain text (a TV has no browser to open it;
-     * on a phone it is selectable for copying, which also makes it focusable, so a TV keeps it
-     * out of the D-pad walk) and the Donate row, which opens [DonateActivity] with the UPI QR code.
+     * About: the version line and two buttons that depend on the device. On a phone, View Source
+     * opens the GitHub address in the browser and Donate opens the UPI app with the payment URI;
+     * a phone without a UPI app gets the UPI QR screen instead. On a TV, which has neither a
+     * browser nor a UPI app, both open [QrActivity]: the GitHub code with the address above it,
+     * the UPI code with the UPI id under it, for a phone to scan or to type.
      */
     private fun bindAbout() {
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
         binding.about.text = getString(R.string.settings_about_version, version)
-        binding.sourceUrl.setTextIsSelectable(!FormFactor.isTelevision(this))
-        binding.donate.setOnClickListener { startActivity(Intent(this, DonateActivity::class.java)) }
+        val television = FormFactor.isTelevision(this)
+        binding.viewSource.setOnClickListener {
+            if (television) {
+                startActivity(QrActivity.source(this))
+            } else {
+                openOrShowQr(getString(R.string.settings_source_url), QrActivity.source(this))
+            }
+        }
+        binding.donate.setOnClickListener {
+            if (television) {
+                startActivity(QrActivity.donate(this))
+            } else {
+                openOrShowQr(getString(R.string.upi_pay_uri), QrActivity.donate(this))
+            }
+        }
+    }
+
+    /** ACTION_VIEW on [uri]; when no app handles it (a phone without a UPI app), [fallback] shows the QR code instead. */
+    private fun openOrShowQr(
+        uri: String,
+        fallback: Intent,
+    ) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            startActivity(fallback)
+        }
     }
 
     private fun bindLogout() {

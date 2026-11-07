@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A QR code fills what the screen allows (fitCenter keeps its aspect; the bitmaps live in
+     drawable-nodpi so no density scaling blurs the modules), a caption above and a text under it
+     (QrActivity shows the ones its intent names), and the way out. The black comes from
+     Theme.HikViewer.Qr's window background, so the QR contrast is the picture's own and nothing is
+     painted twice. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="16dp"
+    tools:context=".ui.settings.QrActivity">
+
+    <TextView
+        android:id="@+id/caption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="22sp"
+        android:visibility="gone"
+        tools:text="https://github.com/itsluminous/HikViewer"
+        tools:visibility="visible" />
+
+    <ImageView
+        android:id="@+id/qr"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scaleType="fitCenter"
+        tools:ignore="ContentDescription"
+        tools:src="@drawable/upi_qr" />
+
+    <TextView
+        android:id="@+id/text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="22sp"
+        android:visibility="gone"
+        tools:text="electricprakash@axisb"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/qr_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/donate_hint"
+        android:textColor="@color/on_background"
+        android:textSize="14sp" />
+</LinearLayout>

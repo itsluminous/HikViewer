@@ -2,7 +2,6 @@ package com.itsluminous.hikviewer.ui.settings
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -428,55 +427,41 @@ class SettingsActivityTest {
         return listOf(this) + children
     }
 
+    /** A TV has no browser or UPI app: the address is text to read, Donate opens the QR screen. */
     @Test
     @Config(qualifiers = "television")
-    fun `the About rows are focusable and open the GitHub page and the UPI link with ACTION_VIEW`() {
+    fun `About shows the GitHub address as unfocusable text and Donate opens the QR screen`() {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                val source = a.findViewById<Button>(R.id.source_code)
+                val source = a.findViewById<TextView>(R.id.source_url)
+                assertThat(source.text.toString()).isEqualTo("https://github.com/itsluminous/HikViewer")
+                assertThat(source).isNotInstanceOf(Button::class.java)
+                assertThat(source.isFocusable).isFalse()
+                assertThat(source.isTextSelectable).isFalse()
+                assertThat(source.hasOnClickListeners()).isFalse()
                 val donate = a.findViewById<Button>(R.id.donate)
-                assertThat(source.text.toString()).isEqualTo("Source code on GitHub")
                 assertThat(donate.text.toString()).isEqualTo("Donate via UPI")
-                assertThat(source.isFocusable).isTrue()
                 assertThat(donate.isFocusable).isTrue()
-                source.performClick()
-                val github = shadowOf(a).nextStartedActivity
-                assertThat(github.action).isEqualTo(Intent.ACTION_VIEW)
-                assertThat(github.data).isEqualTo(Uri.parse("https://github.com/itsluminous/HikViewer"))
                 donate.performClick()
-                val upi = shadowOf(a).nextStartedActivity
-                assertThat(upi.action).isEqualTo(Intent.ACTION_VIEW)
-                assertThat(upi.data).isEqualTo(Uri.parse("upi://pay?pa=electricprakash@axisb&cn=HikViewer"))
+                val next = shadowOf(a).nextStartedActivity
+                assertThat(next.component?.className).isEqualTo(DonateActivity::class.java.name)
+                assertThat(next.action).isNotEqualTo(Intent.ACTION_VIEW)
+                assertThat(shadowOf(a).nextStartedActivity).isNull()
                 assertThat(ShadowDialog.getLatestDialog()).isNull()
             }
         }
     }
 
-    /** A TV with no browser and no UPI app: no crash, a dialog with the address as selectable text. */
+    /** On a phone the address can be copied: selectable text, still no link to tap. */
     @Test
-    @Config(qualifiers = "television")
-    fun `without a handler each About row shows the address in a dialog instead of crashing`() {
+    fun `on a phone the GitHub address is selectable text`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.rows { a, _ ->
-                shadowOf(app).checkActivities(true) // nothing resolves ACTION_VIEW, so startActivity throws
-                a.findViewById<View>(R.id.source_code).performClick()
-                ShadowLooper.idleMainLooper()
-                val github = ShadowDialog.getLatestDialog() as AlertDialog
-                val githubText = github.findViewById<TextView>(android.R.id.message)!!
-                assertThat(githubText.text.toString()).contains("https://github.com/itsluminous/HikViewer")
-                assertThat(githubText.isTextSelectable).isTrue()
-                github.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-                ShadowLooper.idleMainLooper()
-                a.findViewById<View>(R.id.donate).performClick()
-                ShadowLooper.idleMainLooper()
-                val upi = ShadowDialog.getLatestDialog() as AlertDialog
-                assertThat(upi).isNotSameInstanceAs(github)
-                val upiText = upi.findViewById<TextView>(android.R.id.message)!!
-                assertThat(upiText.text.toString()).contains("electricprakash@axisb")
-                assertThat(upiText.text.toString()).doesNotContain("upi://")
-                assertThat(upiText.isTextSelectable).isTrue()
-                assertThat(shadowOf(a).nextStartedActivity).isNull()
-                assertThat(a.isFinishing).isFalse()
+                val source = a.findViewById<TextView>(R.id.source_url)
+                assertThat(source.isTextSelectable).isTrue()
+                assertThat(source.hasOnClickListeners()).isFalse()
+                assertThat(source.text.toString()).isEqualTo("https://github.com/itsluminous/HikViewer")
             }
         }
     }

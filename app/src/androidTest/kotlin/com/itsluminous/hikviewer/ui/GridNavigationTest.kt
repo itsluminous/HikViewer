@@ -1,7 +1,9 @@
 package com.itsluminous.hikviewer.ui
 
+import android.app.Activity
 import android.view.KeyEvent
 import android.view.View
+import android.widget.ImageView
 import androidx.activity.viewModels
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -24,6 +26,8 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.itsluminous.hikviewer.EspressoApp
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
@@ -37,6 +41,8 @@ import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridActivity
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import com.itsluminous.hikviewer.ui.grid.GridViewModel
+import com.itsluminous.hikviewer.ui.settings.DonateActivity
+import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.Description
 import org.hamcrest.Matcher
@@ -307,6 +313,43 @@ class GridNavigationTest {
         ).perform(click())
         onView(withId(R.id.account)).check(matches(isDisplayed()))
         assert(!app.graph.account.isLoggedIn)
+    }
+
+    /** Donate with the remote: focus the row, OK opens the QR screen fullscreen, Back is Settings again. */
+    @Test
+    fun settingsDonateOpensTheQrScreenAndBackReturnsToSettings() {
+        dpad(KeyEvent.KEYCODE_DPAD_UP)
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        onView(withId(R.id.settings_button)).check(matches(hasFocus()))
+        ok()
+        onView(withId(R.id.source_url))
+            .perform(scrollTo())
+            .check(matches(withText("https://github.com/itsluminous/HikViewer")))
+        onView(withId(R.id.donate)).perform(scrollTo(), takeFocus()).check(matches(hasFocus()))
+        ok()
+        onView(withId(R.id.qr)).check(matches(isDisplayed()))
+        onView(withId(R.id.qr)).check(matches(hasDrawable()))
+        onView(withId(R.id.upi_id)).check(matches(allOf(isDisplayed(), withText("electricprakash@axisb"))))
+        assert(resumedActivity() is DonateActivity) { "expected DonateActivity on top, got ${resumedActivity()}" }
+        pressBack()
+        onView(withId(R.id.donate)).check(matches(isDisplayed()))
+        assert(resumedActivity() is SettingsActivity) { "expected SettingsActivity on top, got ${resumedActivity()}" }
+    }
+
+    private fun hasDrawable(): Matcher<View> = object : TypeSafeMatcher<View>() {
+        override fun describeTo(description: Description) {
+            description.appendText("an ImageView with a drawable")
+        }
+
+        override fun matchesSafely(item: View): Boolean = (item as? ImageView)?.drawable != null
+    }
+
+    private fun resumedActivity(): Activity? {
+        var top: Activity? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            top = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull()
+        }
+        return top
     }
 
     @Test

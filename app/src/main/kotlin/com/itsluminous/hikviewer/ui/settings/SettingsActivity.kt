@@ -1,6 +1,5 @@
 package com.itsluminous.hikviewer.ui.settings
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
@@ -9,11 +8,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.devices.VerificationCode
@@ -35,7 +32,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Settings, top to bottom: grid layout, tile overlays, fullscreen quality, screen (phones), live
- * cameras, visible cameras and order, encryption password, about (version, source code, donation),
+ * cameras, visible cameras and order, encryption password, about (version, source address, donation),
  * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
  * the grid re-reads the store when this screen returns. The camera list is a plain `LinearLayout`
@@ -214,45 +211,15 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * About: the version line and two link rows. Each row fires `ACTION_VIEW` on its address; a TV
-     * usually has neither a browser nor a UPI app, so [ActivityNotFoundException] is caught and the
-     * address is shown as selectable text in a dialog instead, for the user to type on a phone.
+     * About: the version line, the source address as plain text (a TV has no browser to open it;
+     * on a phone it is selectable for copying, which also makes it focusable, so a TV keeps it
+     * out of the D-pad walk) and the Donate row, which opens [DonateActivity] with the UPI QR code.
      */
     private fun bindAbout() {
         val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
         binding.about.text = getString(R.string.settings_about_version, version)
-        val sourceUrl = getString(R.string.url_source_code)
-        binding.sourceCode.setOnClickListener {
-            openLink(sourceUrl, R.string.settings_source_code, R.string.settings_open_link_failed, sourceUrl)
-        }
-        binding.donate.setOnClickListener {
-            openLink(
-                getString(R.string.url_donate_upi),
-                R.string.settings_donate,
-                R.string.settings_donate_failed,
-                getString(R.string.upi_id),
-            )
-        }
-    }
-
-    private fun openLink(
-        uri: String,
-        titleRes: Int,
-        failedRes: Int,
-        fallbackText: String,
-    ) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()))
-        } catch (_: ActivityNotFoundException) {
-            val dialog =
-                AlertDialog
-                    .Builder(this)
-                    .setTitle(titleRes)
-                    .setMessage(getString(failedRes) + "\n\n" + fallbackText)
-                    .setPositiveButton(R.string.code_ok, null)
-                    .show()
-            dialog.findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
-        }
+        binding.sourceUrl.setTextIsSelectable(!FormFactor.isTelevision(this))
+        binding.donate.setOnClickListener { startActivity(Intent(this, DonateActivity::class.java)) }
     }
 
     private fun bindLogout() {

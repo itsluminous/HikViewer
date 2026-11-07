@@ -57,6 +57,7 @@ class PhoneCameraActivity : AppCompatActivity() {
     private var playerJob: Job? = null
     private var boundPlayer: TilePlayer? = null
     private var gestureStartedOnPicture = false
+    private var gestureStartedOnControls = false
 
     /** Landscape only: the controls overlay (bar, buttons, help) hides after the grid's idle time. */
     private var landscapeControls: InactivityTimer? = null
@@ -141,14 +142,15 @@ class PhoneCameraActivity : AppCompatActivity() {
     /**
      * Swipes and taps count only on the picture, so a drag along the bar or a press on a button
      * never switches camera or toggles the overlay. A touch on the shown overlay (sideways) is the
-     * user working the controls: it restarts their timer.
+     * user working the controls: every event of it restarts their timer, so a slow scrub along the
+     * bar never has the bar vanish under the finger, and the idle time starts when it lifts.
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-            val onControls = controlsShown && hits(binding.controls, ev)
-            gestureStartedOnPicture = !onControls && ev.y < binding.videoFrame.bottom
-            if (onControls) landscapeControls?.onUserActivity()
+            gestureStartedOnControls = controlsShown && hits(binding.controls, ev)
+            gestureStartedOnPicture = !gestureStartedOnControls && ev.y < binding.videoFrame.bottom
         }
+        if (gestureStartedOnControls) landscapeControls?.onUserActivity()
         if (gestureStartedOnPicture) gestures.onTouchEvent(ev)
         return super.dispatchTouchEvent(ev)
     }

@@ -472,6 +472,52 @@ class PhoneCameraActivityTest {
         }
     }
 
+    /**
+     * A slow scrub along the bar that lasts longer than the idle time: the overlay stays up under
+     * the finger for the whole drag and hides the idle time after it lifts, not in the middle.
+     */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `sideways a drag along the bar longer than the idle time keeps the controls up until it ends`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() && scenario.bar().segments.size == 2 }
+            scenario.onActivity { a ->
+                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
+                val (barX, barY) = centreInWindow(bar)
+                val y = barY.toFloat()
+                val t0 = android.os.SystemClock.uptimeMillis()
+                a.dispatchTouchEvent(MotionEvent.obtain(t0, t0, MotionEvent.ACTION_DOWN, barX.toFloat(), y, 0))
+                // Four moves, each 0.6 of the idle time apart: 2.4 idle times in all, no two events that far apart.
+                repeat(4) { i ->
+                    ShadowLooper.idleMainLooper(IDLE_MILLIS * 6 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    val t = android.os.SystemClock.uptimeMillis()
+                    val x = barX + (i + 1) * bar.width / 10f
+                    a.dispatchTouchEvent(MotionEvent.obtain(t0, t, MotionEvent.ACTION_MOVE, x, y, 0))
+                    assertThat(a.controlsShown).isTrue()
+                }
+                val t1 = android.os.SystemClock.uptimeMillis()
+                val endX = barX + 4 * bar.width / 10f
+                a.dispatchTouchEvent(MotionEvent.obtain(t0, t1, MotionEvent.ACTION_UP, endX, y, 0))
+                // The finger has lifted: still up for most of the idle time, gone once it has passed.
+                ShadowLooper.idleMainLooper(IDLE_MILLIS * 6 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isTrue()
+                ShadowLooper.idleMainLooper(IDLE_MILLIS * 5 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isFalse()
+                // The drag was a scrub, not a camera switch.
+                assertThat(
+                    a
+                        .viewModels<PhoneCameraViewModel>()
+                        .value.index.value,
+                ).isEqualTo(1)
+            }
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+            }
+        }
+    }
+
     /** Upright, the controls have their own half of the screen: no timer, and a tap on the picture changes nothing. */
     @Test
     fun `upright the controls never hide and a tap on the picture is nothing`() {

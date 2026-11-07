@@ -192,19 +192,21 @@ enum class GridLayoutMode(
          * The entries worth offering when [cameraCount] cameras are visible, in declaration
          * order. [portraitPhone] picks the portrait shapes and the even 1 + N layouts (which fill
          * the two-column portrait grid) over the landscape shapes and the odd ones (which fill the
-         * square landscape grid of a TV or a turned phone).
+         * square landscape grid of a TV or a turned phone). A fixed grid is offered when it is not
+         * bigger than the smallest of its family that holds every camera; two shapes of that size
+         * (1 x 4 and 2 x 2 for four cameras) are both offered, since AUTO itself picks 2 x 2 there.
          */
         fun available(
             cameraCount: Int,
             portraitPhone: Boolean = false,
         ): List<GridLayoutMode> {
             val family = entries.filter { it.isFixed && it.isPortraitShape == portraitPhone }
-            val smallestFit = family.firstOrNull { it.capacity >= cameraCount }
+            val largestOffered = family.firstOrNull { it.capacity >= cameraCount }?.capacity ?: Int.MAX_VALUE
             return entries.filter { mode ->
                 when {
                     mode == AUTO -> true
                     mode.isHero -> mode.capacity <= cameraCount && mode.isPortraitHero == portraitPhone
-                    else -> mode in family && (mode.capacity < cameraCount || mode == smallestFit)
+                    else -> mode in family && mode.capacity <= largestOffered
                 }
             }
         }

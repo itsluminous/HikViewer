@@ -313,6 +313,28 @@ class GridGeometryTest {
         assertThat(GridLayoutMode.available(3, portraitPhone = true))
             .containsExactly(GridLayoutMode.AUTO, GridLayoutMode.GRID_1X2, GridLayoutMode.GRID_1X3)
             .inOrder()
+        // Four cameras: 1 x 4 and 2 x 2 both hold exactly four, and AUTO picks 2 x 2, so both are offered.
+        assertThat(GridLayoutMode.available(4, portraitPhone = true))
+            .containsExactly(
+                GridLayoutMode.AUTO,
+                GridLayoutMode.GRID_1X2,
+                GridLayoutMode.GRID_1X3,
+                GridLayoutMode.GRID_1X4,
+                GridLayoutMode.GRID_2X2,
+            ).inOrder()
+        // Whatever AUTO resolves to is a layout the menu lets the user pin by hand, in both orientations;
+        // the one exception is three cameras upright, where AUTO prefers 2 x 2 (one cell empty, as before
+        // this round) to the 1 x 3 stack while the menu, which never offers an empty cell, has 1 x 3.
+        for (count in 0..40) {
+            if (count != 3) {
+                assertThat(GridLayoutMode.available(count, portraitPhone = true))
+                    .contains(GridLayoutMode.AUTO.resolve(count, portrait = true))
+            }
+            assertThat(GridLayoutMode.available(count, portraitPhone = false))
+                .contains(GridLayoutMode.AUTO.resolve(count, portrait = false))
+        }
+        assertThat(GridLayoutMode.AUTO.resolve(3, portrait = true)).isEqualTo(GridLayoutMode.GRID_2X2)
+        assertThat(GridLayoutMode.available(3, portraitPhone = true)).doesNotContain(GridLayoutMode.GRID_2X2)
         assertThat(GridLayoutMode.available(5, portraitPhone = true))
             .containsExactly(
                 GridLayoutMode.AUTO,

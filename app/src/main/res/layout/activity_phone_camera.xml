@@ -33,7 +33,7 @@
             tools:visibility="visible" />
     </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
 
-    <!-- Bottom: the day's timeline and transport controls. -->
+    <!-- Bottom: the camera's name, the day's timeline and transport controls (shared with landscape). -->
     <LinearLayout
         android:id="@+id/controls"
         android:layout_width="match_parent"
@@ -53,78 +53,9 @@
             android:textSize="18sp"
             tools:text="Front gate" />
 
-        <TextView
-            android:id="@+id/time_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center"
-            android:textColor="@color/on_background"
-            android:textSize="28sp"
-            tools:text="17:13:51" />
-
-        <com.itsluminous.hikviewer.ui.playback.TimeBarView
-            android:id="@+id/time_bar"
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:layout_marginTop="8dp"
-            android:contentDescription="@string/playback_bar_description" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/day_back"
-                style="@style/Widget.HikViewer.BarButton"
-                android:layout_marginStart="0dp"
-                android:contentDescription="@string/phone_day_back"
-                android:text="@string/phone_arrow_back" />
-
-            <TextView
-                android:id="@+id/date_chip"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:textColor="@color/on_background"
-                android:textSize="16sp"
-                tools:text="2026-11-04" />
-
-            <Button
-                android:id="@+id/day_forward"
-                style="@style/Widget.HikViewer.BarButton"
-                android:contentDescription="@string/phone_day_forward"
-                android:text="@string/phone_arrow_forward" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/speed_button"
-                style="@style/Widget.HikViewer.BarButton"
-                android:layout_marginStart="0dp"
-                android:minWidth="72dp"
-                tools:text="1x" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <Button
-                android:id="@+id/live_button"
-                style="@style/Widget.HikViewer.BarButton"
-                android:text="@string/phone_live_button" />
-        </LinearLayout>
+        <include
+            android:id="@+id/transport"
+            layout="@layout/phone_camera_transport" />
 
         <TextView
             android:id="@+id/help"

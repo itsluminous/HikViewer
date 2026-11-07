@@ -46,7 +46,8 @@ class PhoneCameraActivityTest {
     @Before
     fun setUp() {
         shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
-        app.graph = TestGraph.create(app, cloud, topBarAutoHideMillis = 300)
+        // Longer than GestureDetector's 300 ms tap confirmation, so a hide never races a tap in the tests below.
+        app.graph = TestGraph.create(app, cloud, topBarAutoHideMillis = IDLE_MILLIS)
         kotlinx.coroutines.runBlocking {
             app.graph.account.login("a", "secret", Region.INDIA)
             app.graph.account.loadInventory()
@@ -71,7 +72,7 @@ class PhoneCameraActivityTest {
         ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
             awaitUi { account.searched.isNotEmpty() && account.opened.isNotEmpty() }
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.isUpright).isTrue()
                 assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
                 a.assertNoLiveText()
                 assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isFalse()
@@ -233,9 +234,11 @@ class PhoneCameraActivityTest {
             scenario.recreate()
             awaitUi { account.playbackOpened.size >= 2 } // the same engine reopened at its position
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isFalse()
-                assertThat(a.findViewById<View?>(R.id.time_bar)).isNull()
-                assertThat(a.findViewById<View?>(R.id.speed_button)).isNull()
+                assertThat(a.isUpright).isFalse()
+                // The same transport, now an overlay on the picture, at the same position.
+                assertThat(a.controlsShown).isTrue()
+                assertThat(a.findViewById<TimeBarView>(R.id.time_bar).highlighted).isTrue()
+                assertThat(a.findViewById<View>(R.id.speed_button).isEnabled).isTrue()
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.index.value).isEqualTo(1)
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
@@ -260,7 +263,7 @@ class PhoneCameraActivityTest {
             scenario.recreate()
             awaitUi { account.playbackOpened.size > openedSideways }
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.isUpright).isTrue()
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
                 assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
@@ -283,7 +286,7 @@ class PhoneCameraActivityTest {
             awaitUi { account.playbackOpened.isNotEmpty() }
             val lateEvening = LocalDate.now().atTime(23, 55) // 5 min before the last segment's end
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.isUpright).isTrue()
                 assertThat(a.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
                 assertThat(a.resources.configuration.orientation).isEqualTo(Configuration.ORIENTATION_PORTRAIT)
                 val vm = a.viewModels<PhoneCameraViewModel>().value
@@ -307,7 +310,7 @@ class PhoneCameraActivityTest {
             scenario.recreate()
             awaitUi { account.playbackOpened.size >= 2 }
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.isUpright).isFalse()
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.index.value).isEqualTo(1)
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
@@ -322,7 +325,7 @@ class PhoneCameraActivityTest {
             RuntimeEnvironment.setQualifiers("w360dp-h640dp-port-xhdpi")
             scenario.recreate()
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isTrue()
+                assertThat(a.isUpright).isTrue()
                 assertThat(a.text(R.id.camera_name)).isEqualTo("Camera 2")
                 assertThat(a.text(R.id.speed_button)).isEqualTo("+2x")
                 assertThat(a.text(R.id.time_label)).startsWith("23:5")
@@ -339,7 +342,7 @@ class PhoneCameraActivityTest {
         ActivityScenario.launch<PhoneCameraActivity>(intent).use { scenario ->
             awaitUi { account.playbackOpened.isNotEmpty() }
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.isUpright).isFalse()
                 assertThat(a.resources.configuration.orientation).isEqualTo(Configuration.ORIENTATION_LANDSCAPE)
                 val vm = a.viewModels<PhoneCameraViewModel>().value
                 assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
@@ -354,27 +357,162 @@ class PhoneCameraActivityTest {
         }
     }
 
+    /**
+     * Sideways, the controls overlay is shown for the idle time when the screen opens and hides
+     * after it, and swiping the picture still switches camera while it is up.
+     */
     @Test
     @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
-    fun `opened sideways it is the picture alone, live, and swiping still switches camera`() {
+    fun `opened sideways the controls show for the idle time, then hide, and swiping switches camera`() {
         ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 0)).use { scenario ->
             awaitUi { account.opened.isNotEmpty() }
             scenario.onActivity { a ->
-                assertThat(a.hasTimeline).isFalse()
+                assertThat(a.isUpright).isFalse()
                 a.assertNoLiveText()
+                assertThat(a.controlsShown).isTrue()
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.VISIBLE)
                 assertThat(a.findViewById<View>(R.id.help).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.text(R.id.help)).contains("tap the picture")
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isFalse()
                 val frame = a.findViewById<View>(R.id.video_frame)
-                a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height / 2f)
+                a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height * 0.3f)
                 ShadowLooper.idleMainLooper()
                 assertThat(
                     a
                         .viewModels<PhoneCameraViewModel>()
                         .value.index.value,
                 ).isEqualTo(1)
-                // The help line hides after the idle time, like the TV's fullscreen hint.
-                ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS)
-                assertThat(a.findViewById<View>(R.id.help).visibility).isNotEqualTo(View.VISIBLE)
+                // The overlay hides after the idle time (1 s in this graph), like the TV's fullscreen hint.
+                ShadowLooper.idleMainLooper(IDLE_MILLIS + 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isFalse()
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isNotEqualTo(View.VISIBLE)
+                // Swiping still works with the controls away.
+                a.swipe(fromX = frame.width * 0.9f, toX = frame.width * 0.1f, y = frame.height * 0.9f)
+                ShadowLooper.idleMainLooper()
+                assertThat(
+                    a
+                        .viewModels<PhoneCameraViewModel>()
+                        .value.index.value,
+                ).isEqualTo(2)
+                assertThat(a.controlsShown).isFalse() // a fling is not a tap
             }
         }
+    }
+
+    /** A tap on the picture brings the hidden controls back; a tap while they are up puts them away at once. */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `sideways a tap on the picture toggles the controls`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 0)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() }
+            scenario.onActivity { a ->
+                ShadowLooper.idleMainLooper(IDLE_MILLIS + 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isFalse()
+                val frame = a.findViewById<View>(R.id.video_frame)
+                a.tap(frame.width / 2f, frame.height * 0.3f)
+                assertThat(a.controlsShown).isTrue()
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.VISIBLE)
+                a.tap(frame.width / 2f, frame.height * 0.3f)
+                assertThat(a.controlsShown).isFalse()
+                a.tap(frame.width / 2f, frame.height * 0.3f)
+                assertThat(a.controlsShown).isTrue()
+                // Left alone, they hide again after the idle time.
+                ShadowLooper.idleMainLooper(IDLE_MILLIS + 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isFalse()
+            }
+        }
+    }
+
+    /**
+     * Working the controls keeps them up: a touch on the overlay restarts the timer and is never a
+     * swipe, and a tap on the bar scrubs into the footage from sideways just as upright does.
+     */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `sideways a touch on the controls restarts their timer and the bar scrubs into footage`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() && scenario.bar().segments.size == 2 }
+            scenario.onActivity { a ->
+                assertThat(a.controlsShown).isTrue()
+                ShadowLooper.idleMainLooper(IDLE_MILLIS * 6 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                val controls = a.findViewById<View>(R.id.controls)
+                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
+                // A drag across the overlay (its help line): on the controls, so no camera switch, and the timer restarts.
+                val y = centreInWindow(a.findViewById(R.id.help)).second.toFloat()
+                a.swipe(fromX = controls.width * 0.9f, toX = controls.width * 0.1f, y = y)
+                ShadowLooper.idleMainLooper(IDLE_MILLIS * 6 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(
+                    a
+                        .viewModels<PhoneCameraViewModel>()
+                        .value.index.value,
+                ).isEqualTo(1)
+                assertThat(a.controlsShown).isTrue() // 1.2 s since the open, 0.6 s since the touch: still up
+                ShadowLooper.idleMainLooper(IDLE_MILLIS * 6 / 10, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.controlsShown).isFalse()
+                // Tap the picture to bring them back, then tap the bar at noon.
+                a.tap(controls.width / 2f, 10f)
+                assertThat(a.controlsShown).isTrue()
+                val (barX, barY) = centreInWindow(bar)
+                a.tap(barX.toFloat(), barY.toFloat())
+            }
+            ShadowLooper.idleMainLooper(SeekController.DEBOUNCE_MILLIS + 1, java.util.concurrent.TimeUnit.MILLISECONDS)
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                val vm = a.viewModels<PhoneCameraViewModel>().value
+                assertThat(vm.mode.value).isEqualTo(PhoneCameraMode.PLAYBACK)
+                assertThat(vm.index.value).isEqualTo(1) // the tap on the bar was not a camera switch either
+                assertThat(
+                    account.playbackOpened
+                        .single()
+                        .second.begin,
+                ).isEqualTo(LocalDate.now().atTime(12, 0))
+                assertThat(a.text(R.id.time_label)).startsWith("12:00")
+                assertThat(a.findViewById<View>(R.id.live_button).isEnabled).isTrue()
+            }
+        }
+    }
+
+    /** Upright, the controls have their own half of the screen: no timer, and a tap on the picture changes nothing. */
+    @Test
+    fun `upright the controls never hide and a tap on the picture is nothing`() {
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 0)).use { scenario ->
+            awaitUi { account.opened.isNotEmpty() }
+            scenario.onActivity { a ->
+                assertThat(a.isUpright).isTrue()
+                assertThat(a.controlsShown).isTrue()
+                ShadowLooper.idleMainLooper(IDLE_MILLIS + 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.VISIBLE)
+                val frame = a.findViewById<View>(R.id.video_frame)
+                a.tap(frame.width / 2f, frame.height / 2f)
+                assertThat(a.controlsShown).isTrue()
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.VISIBLE)
+            }
+        }
+    }
+
+    /** A finger down and up in one place; the confirmed tap is reported once the double-tap window has passed. */
+    private fun PhoneCameraActivity.tap(
+        x: Float,
+        y: Float,
+    ) {
+        val t0 = android.os.SystemClock.uptimeMillis()
+        dispatchTouchEvent(MotionEvent.obtain(t0, t0, MotionEvent.ACTION_DOWN, x, y, 0))
+        dispatchTouchEvent(MotionEvent.obtain(t0, t0 + 50, MotionEvent.ACTION_UP, x, y, 0))
+        ShadowLooper.idleMainLooper(TAP_CONFIRM_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    /** The centre of [view] in window coordinates, where the Activity's `dispatchTouchEvent` reads touches. */
+    private fun centreInWindow(view: View): Pair<Int, Int> {
+        val location = IntArray(2)
+        view.getLocationInWindow(location)
+        return (location[0] + view.width / 2) to (location[1] + view.height / 2)
+    }
+
+    private companion object {
+        /** The graph's idle time before the landscape controls hide (5 s in production). */
+        const val IDLE_MILLIS = 1_000L
+
+        /** `GestureDetector` confirms a single tap once the double-tap timeout (300 ms) has passed. */
+        const val TAP_CONFIRM_MILLIS = 350L
     }
 }

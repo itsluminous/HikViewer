@@ -24,7 +24,7 @@ class SwipeDetectorTest {
     @Test
     fun `onFling reports the step through the callback`() {
         val steps = mutableListOf<Int>()
-        val detector = SwipeDetector(steps::add)
+        val detector = SwipeDetector(onStep = steps::add)
         val down = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 900f, 300f, 0)
         val up = MotionEvent.obtain(0, 200, MotionEvent.ACTION_UP, 200f, 320f, 0)
         assertThat(detector.onFling(down, up, -2000f, 50f)).isTrue()
@@ -32,5 +32,19 @@ class SwipeDetectorTest {
         assertThat(steps).containsExactly(1)
         down.recycle()
         up.recycle()
+    }
+
+    /** A confirmed single tap goes to the tap callback alone; without one it is left to the system. */
+    @Test
+    fun `a confirmed single tap reports through the tap callback and never steps`() {
+        val steps = mutableListOf<Int>()
+        var taps = 0
+        val detector = SwipeDetector(onTap = { taps++ }) { steps += it }
+        val down = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 400f, 300f, 0)
+        assertThat(detector.onSingleTapConfirmed(down)).isTrue()
+        assertThat(taps).isEqualTo(1)
+        assertThat(steps).isEmpty()
+        assertThat(SwipeDetector(onStep = steps::add).onSingleTapConfirmed(down)).isFalse()
+        down.recycle()
     }
 }

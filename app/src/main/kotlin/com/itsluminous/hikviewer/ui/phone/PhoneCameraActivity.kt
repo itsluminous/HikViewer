@@ -36,25 +36,36 @@ import java.time.LocalDateTime
  * The phone's single-camera screen. It follows the phone: upright, a 16:9 live picture on top with
  * the day's time bar and transport controls below (tapping the bar plays recorded footage from
  * that time with the TV playback engine, Live returns to the stream); turned sideways, the picture
- * alone, as large as the screen allows (`layout-land`). Swiping the picture switches camera in
- * both. A rotation recreates the Activity with the other layout while the [PhoneCameraViewModel]
- * keeps the camera, the mode and the recorded engine, so footage resumes at the same position;
- * the controls that have no view in landscape are simply absent from the binding there. The tile
- * menu's Playback opens the same screen in its recorded mode ([EXTRA_PLAYBACK]), so footage too
- * follows the phone instead of forcing it sideways. A TV never shows this screen.
+ * alone, as large as the screen allows (`layout-land`), with the same transport (the shared
+ * `phone_camera_transport` include) laid over its bottom edge. Swiping the picture switches camera
+ * in both. A rotation recreates the Activity with the other layout while the
+ * [PhoneCameraViewModel] keeps the camera, the mode and the recorded engine, so footage resumes
+ * at the same position and speed. The tile menu's Playback opens the same screen in its recorded
+ * mode ([EXTRA_PLAYBACK]), so footage too follows the phone instead of forcing it sideways. A TV
+ * never shows this screen.
+ *
+ * Sideways, the controls are a transient visual on the grid's [InactivityTimer] policy: shown for
+ * the idle time when the screen opens (so the user learns the bar exists), hidden after it, and a
+ * single tap on the picture (`GestureDetector`'s confirmed tap, which a fling never is) shows them
+ * again or, while they are up, puts them away. Any touch that lands on the controls restarts the
+ * timer and is theirs alone: a drag along the bar scrubs into the footage and never switches
+ * camera. Upright, the controls have their own half of the screen and never hide.
  */
 class PhoneCameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPhoneCameraBinding
-    private lateinit var swipes: GestureDetector
+    private lateinit var gestures: GestureDetector
     private var playerJob: Job? = null
     private var boundPlayer: TilePlayer? = null
-    private var swipeStartedOnPicture = false
+    private var gestureStartedOnPicture = false
 
-    /** Landscape only: the help line hides after the grid's idle time; any touch brings it back. */
-    private var landscapeHelp: InactivityTimer? = null
+    /** Landscape only: the controls overlay (bar, buttons, help) hides after the grid's idle time. */
+    private var landscapeControls: InactivityTimer? = null
 
-    /** True when this instance was inflated with the portrait layout (the one with the time bar). */
-    val hasTimeline: Boolean get() = binding.timeBar != null
+    /** True when this instance was inflated with the portrait layout (picture on top, controls below). */
+    val isUpright: Boolean get() = binding.cameraName != null
+
+    /** True while the landscape controls overlay is on screen; always true upright, where it never hides. */
+    val controlsShown: Boolean get() = landscapeControls?.isVisible ?: true
 
     private val viewModel: PhoneCameraViewModel by viewModels {
         val graph = AppGraph.of(this)
@@ -86,19 +97,34 @@ class PhoneCameraActivity : AppCompatActivity() {
         binding.video.isClickable = false
         val settings = AppGraph.of(this).settingsStore
         // Upright, the name has its own line below the picture; sideways it is an overlay, as on the TV.
-        binding.video.showName = if (hasTimeline) false else settings.showCameraNames
+        binding.video.showName = if (isUpright) false else settings.showCameraNames
         binding.video.showFrameRate = settings.showFrameRate
-        swipes = GestureDetector(this, SwipeDetector { direction -> viewModel.step(direction) })
-        binding.timeBar?.onSeek = viewModel::scrubTo
-        binding.dayBack?.setOnClickListener { viewModel.changeDay(-1) }
-        binding.dayForward?.setOnClickListener { viewModel.changeDay(+1) }
-        binding.speedButton?.setOnClickListener { viewModel.cycleSpeed() }
-        binding.liveButton?.setOnClickListener { viewModel.goLive() }
-        if (!hasTimeline) {
-            landscapeHelp =
-                InactivityTimer(binding.help, AppGraph.of(this).topBarAutoHideMillis).also { it.onUserActivity() }
+        val onTap: (() -> Unit)? = if (isUpright) null else ::toggleControls
+        gestures = GestureDetector(this, SwipeDetector(onTap) { direction -> viewModel.step(direction) })
+        binding.transport.timeBar.onSeek = viewModel::scrubTo
+        binding.transport.dayBack.setOnClickListener { viewModel.changeDay(-1) }
+        binding.transport.dayForward.setOnClickListener { viewModel.changeDay(+1) }
+        binding.transport.speedButton.setOnClickListener { viewModel.cycleSpeed() }
+        binding.transport.liveButton.setOnClickListener { viewModel.goLive() }
+        if (!isUpright) {
+            // The window hands its first focus to the overlay's first button (there is nothing else
+            // focusable), and a view that holds focus cannot be hidden; the root takes it instead.
+            binding.root.isFocusable = true
+            binding.root.isFocusableInTouchMode = true
+            landscapeControls =
+                InactivityTimer(
+                    binding.controls,
+                    AppGraph.of(this).topBarAutoHideMillis,
+                    releaseFocus = { binding.root.requestFocus() },
+                ).also { it.onUserActivity() }
         }
         observe()
+    }
+
+    /** A tap on the picture sideways: the controls come up for the idle time, or go away if they were up. */
+    private fun toggleControls() {
+        val timer = landscapeControls ?: return
+        if (timer.isVisible) timer.hideNow() else timer.onUserActivity()
     }
 
     override fun onStart() {
@@ -108,18 +134,35 @@ class PhoneCameraActivity : AppCompatActivity() {
 
     override fun onStop() {
         viewModel.onStop()
-        landscapeHelp?.hideNow()
+        landscapeControls?.hideNow()
         super.onStop()
     }
 
-    /** Swipes count only on the picture, so a drag along the bar or the buttons never switches camera. */
+    /**
+     * Swipes and taps count only on the picture, so a drag along the bar or a press on a button
+     * never switches camera or toggles the overlay. A touch on the shown overlay (sideways) is the
+     * user working the controls: it restarts their timer.
+     */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-            swipeStartedOnPicture = ev.y < binding.videoFrame.bottom
-            landscapeHelp?.onUserActivity()
+            val onControls = controlsShown && hits(binding.controls, ev)
+            gestureStartedOnPicture = !onControls && ev.y < binding.videoFrame.bottom
+            if (onControls) landscapeControls?.onUserActivity()
         }
-        if (swipeStartedOnPicture) swipes.onTouchEvent(ev)
+        if (gestureStartedOnPicture) gestures.onTouchEvent(ev)
         return super.dispatchTouchEvent(ev)
+    }
+
+    /** True when [ev] (window coordinates, as the Activity receives them) is inside [view]. */
+    private fun hits(
+        view: View,
+        ev: MotionEvent,
+    ): Boolean {
+        val location = IntArray(2)
+        view.getLocationInWindow(location)
+        val x = ev.x - location[0]
+        val y = ev.y - location[1]
+        return x >= 0 && y >= 0 && x < view.width && y < view.height
     }
 
     override fun finish() {
@@ -156,9 +199,9 @@ class PhoneCameraActivity : AppCompatActivity() {
      */
     private fun renderMode() {
         val live = viewModel.mode.value == PhoneCameraMode.LIVE
-        binding.liveButton?.isEnabled = !live
-        binding.speedButton?.isEnabled = !live
-        binding.timeBar?.highlighted = !live
+        binding.transport.liveButton.isEnabled = !live
+        binding.transport.speedButton.isEnabled = !live
+        binding.transport.timeBar.highlighted = !live
         renderClock()
     }
 
@@ -172,18 +215,18 @@ class PhoneCameraActivity : AppCompatActivity() {
                 ?.value
                 ?.day
         val onToday = engineDay == null || engineDay == now.toLocalDate()
-        binding.timeBar?.positionFraction = if (onToday) PlaybackTimeline.fractionOfDay(now) else 0f
-        binding.timeLabel.text = PlaybackTimeline.label(now)
+        binding.transport.timeBar.positionFraction = if (onToday) PlaybackTimeline.fractionOfDay(now) else 0f
+        binding.transport.timeLabel.text = PlaybackTimeline.label(now)
     }
 
     private fun renderRecorded(state: PlaybackUiState) {
-        binding.dateChip?.text = state.day.toString()
-        binding.speedButton?.text = state.speed.label
-        binding.timeBar?.segments = state.segments
+        binding.transport.dateChip.text = state.day.toString()
+        binding.transport.speedButton.text = state.speed.label
+        binding.transport.timeBar.segments = state.segments
         val live = viewModel.mode.value == PhoneCameraMode.LIVE
         if (!live) {
-            binding.timeBar?.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
-            binding.timeLabel.text = PlaybackTimeline.label(state.position)
+            binding.transport.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
+            binding.transport.timeLabel.text = PlaybackTimeline.label(state.position)
         }
         // While live, only what concerns the day's listing is worth a line; the transport is the clock.
         val status =

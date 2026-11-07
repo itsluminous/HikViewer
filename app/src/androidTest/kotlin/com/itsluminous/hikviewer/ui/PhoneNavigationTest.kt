@@ -8,6 +8,13 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.ViewAction
+import androidx.test.espresso.action.GeneralClickAction
+import androidx.test.espresso.action.GeneralLocation
+import androidx.test.espresso.action.GeneralSwipeAction
+import androidx.test.espresso.action.Press
+import androidx.test.espresso.action.Swipe
+import androidx.test.espresso.action.Tap
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.espresso.action.ViewActions.swipeLeft
@@ -88,7 +95,8 @@ class PhoneNavigationTest {
     fun tearDown() {
         if (::scenario.isInitialized) scenario.close()
         finishAllActivities()
-        if (rotated) rotate(ROTATION_PORTRAIT)
+        // No Activity is left to idle on, so the rotation back is a plain wait (a failed test left it turned).
+        if (rotated) rotate(ROTATION_PORTRAIT, idleOnUi = false)
     }
 
     private var rotated = false
@@ -98,12 +106,15 @@ class PhoneNavigationTest {
      * leaves the accelerometer off), so the resumed Activity goes through a real configuration
      * change rather than a `requestedOrientation` it chose for itself.
      */
-    private fun rotate(userRotation: Int) {
+    private fun rotate(
+        userRotation: Int,
+        idleOnUi: Boolean = true,
+    ) {
         rotated = userRotation != ROTATION_PORTRAIT
         shell("settings put system accelerometer_rotation 0")
         shell("settings put system user_rotation $userRotation")
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        waitFor(ROTATION_MILLIS)
+        if (idleOnUi) waitFor(ROTATION_MILLIS) else Thread.sleep(ROTATION_MILLIS)
     }
 
     private fun shell(command: String) {
@@ -167,10 +178,12 @@ class PhoneNavigationTest {
         val sideways = resumedActivity()
         assert(sideways is PhoneCameraActivity) { "expected the phone camera screen sideways, got $sideways" }
         assert(sideways.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) { "not landscape" }
-        assert(!(sideways as PhoneCameraActivity).hasTimeline) { "the landscape layout has no time bar" }
-        onView(withId(R.id.time_bar)).check(doesNotExist())
-        onView(withId(R.id.speed_button)).check(doesNotExist())
+        assert(
+            !(sideways as PhoneCameraActivity).isUpright,
+        ) { "the landscape layout lays the controls over the picture" }
         onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
+        // The same transport is in the tree (an overlay, hidden by now: the rotation wait outlasts the idle time), on the footage.
+        onView(withId(R.id.live_button)).check(matches(isEnabled()))
         onView(liveTextOnThePicture()).check(doesNotExist()) // still the footage, and no text badge either way
         onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
         val frame = sideways.findViewById<View>(R.id.video_frame)
@@ -178,7 +191,7 @@ class PhoneNavigationTest {
 
         rotate(ROTATION_PORTRAIT)
         val upright = resumedActivity()
-        assert((upright as PhoneCameraActivity).hasTimeline) { "the portrait layout has the time bar" }
+        assert((upright as PhoneCameraActivity).isUpright) { "the portrait layout has the picture on top" }
         onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
         onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
         onView(withId(R.id.live_button)).check(matches(isEnabled()))
@@ -199,7 +212,7 @@ class PhoneNavigationTest {
         val phone = resumedActivity()
         assert(phone is PhoneCameraActivity) { "expected the phone camera screen, got $phone" }
         assert(phone.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) { "not portrait" }
-        assert((phone as PhoneCameraActivity).hasTimeline) { "the portrait layout has the time bar" }
+        assert((phone as PhoneCameraActivity).isUpright) { "the portrait layout has the picture on top" }
         onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
         onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
         onView(withId(R.id.live_button)).check(matches(isEnabled())) // footage, so Live is available
@@ -211,7 +224,6 @@ class PhoneNavigationTest {
         val sideways = resumedActivity()
         assert(sideways is PhoneCameraActivity) { "expected the phone camera screen sideways, got $sideways" }
         assert(sideways.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) { "not landscape" }
-        onView(withId(R.id.time_bar)).check(doesNotExist())
         onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
         onView(withId(R.id.time_label)).check(matches(withText(startsWith("23:5"))))
 
@@ -221,6 +233,70 @@ class PhoneNavigationTest {
         pressBack()
         onView(withId(R.id.grid)).check(matches(isDisplayed()))
     }
+
+    /**
+     * Sideways, the transport is an overlay on the picture: up for the idle time when the screen
+     * opens, gone after it, back on a tap, and a tap on the bar scrubs into the footage from there.
+     */
+    @Test
+    fun sidewaysATapShowsTheControlsAndTheyHideWhenIdle() {
+        // Turn the grid first, so the camera screen opens sideways and its first seconds can be seen.
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        rotate(ROTATION_LANDSCAPE)
+        onView(tile(1)).perform(click())
+        val sideways = resumedActivity()
+        assert(sideways is PhoneCameraActivity && !sideways.isUpright) { "expected the landscape camera screen" }
+        // Shown for the first seconds, then gone.
+        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+        onView(withId(R.id.help)).check(matches(withText(R.string.phone_help_landscape)))
+        waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS + 700)
+        onView(withId(R.id.controls)).check(matches(not(isDisplayed())))
+        onView(withId(R.id.video_frame)).check(matches(isDisplayed()))
+
+        // A tap on the picture brings them back; a second tap puts them away; a third brings them back.
+        tapThePicture()
+        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+        tapThePicture()
+        onView(withId(R.id.controls)).check(matches(not(isDisplayed())))
+        tapThePicture()
+        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+
+        // Scrubbing from sideways opens the footage, as upright does, and the bar stays up for it.
+        waitFor(SEGMENTS_MILLIS) // the day's segments; as long as the test idle time, so the overlay has gone again
+        onView(withId(R.id.controls)).check(matches(not(isDisplayed())))
+        tapThePicture()
+        onView(withId(R.id.time_bar)).perform(click())
+        onView(withId(R.id.live_button)).check(matches(isEnabled()))
+        onView(withId(R.id.time_label)).check(matches(withText(anyOf(startsWith("11:5"), startsWith("12:0")))))
+        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+        // A swipe on the picture still switches camera (back to live) and is not a tap: the overlay hides on time.
+        onView(withId(R.id.video_frame)).perform(swipeLeftNearTop())
+        onView(withId(R.id.live_button)).check(matches(not(isEnabled())))
+        waitFor(EspressoApp.TOP_BAR_HIDE_MILLIS + 700)
+        onView(withId(R.id.controls)).check(matches(not(isDisplayed())))
+
+        rotate(ROTATION_PORTRAIT)
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 3")))
+        onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
+    /**
+     * A tap in the upper part of the picture, clear of the controls overlay along its bottom, and
+     * the wait for `GestureDetector` to confirm it as a single tap (it holds the verdict for the
+     * double-tap window, which Espresso does not wait out).
+     */
+    private fun tapThePicture() {
+        onView(
+            withId(R.id.video_frame),
+        ).perform(GeneralClickAction(Tap.SINGLE, GeneralLocation.TOP_CENTER, Press.FINGER, 0, 0))
+        waitFor(TAP_CONFIRM_MILLIS)
+    }
+
+    /** A leftward swipe through the upper part of the view, clear of the controls overlay. */
+    private fun swipeLeftNearTop(): ViewAction =
+        GeneralSwipeAction(Swipe.FAST, GeneralLocation.TOP_RIGHT, GeneralLocation.TOP_LEFT, Press.FINGER)
 
     /**
      * Upright, the Layout menu offers the portrait shapes; 2 x 3 picked there is drawn 3 x 2 when
@@ -312,5 +388,8 @@ class PhoneNavigationTest {
 
         /** A popup menu's dismiss animation. */
         const val POPUP_DISMISS_MILLIS = 500L
+
+        /** `GestureDetector` confirms a single tap once the double-tap timeout (300 ms) has passed. */
+        const val TAP_CONFIRM_MILLIS = 450L
     }
 }

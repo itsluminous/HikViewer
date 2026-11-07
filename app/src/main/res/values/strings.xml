@@ -134,7 +134,7 @@
     <string name="phone_arrow_back">◀</string>
     <string name="phone_arrow_forward">▶</string>
     <string name="phone_help">Tap the bar to play footage from that time · Live returns to the stream · swipe the picture to switch camera</string>
-    <string name="phone_help_landscape">Swipe to switch camera · turn the phone upright for the timeline · Back to grid</string>
+    <string name="phone_help_landscape">Swipe to switch camera · tap the picture to hide or show these controls · Back to grid</string>
 
     <!-- Fullscreen -->
     <string name="fullscreen_hint">◀ ▶ switch camera · Back to grid</string>

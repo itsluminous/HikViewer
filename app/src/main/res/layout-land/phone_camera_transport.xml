@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The transport turned sideways: the same views and ids as the portrait include, packed into
+     the playhead over the bar and one row of buttons, so the overlay takes a third of the height
+     at most and the picture stays the point of the screen. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/time_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/on_background"
+        android:textSize="14sp"
+        tools:text="17:13:51" />
+
+    <com.itsluminous.hikviewer.ui.playback.TimeBarView
+        android:id="@+id/time_bar"
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:layout_marginTop="4dp"
+        android:contentDescription="@string/playback_bar_description" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/day_back"
+            style="@style/Widget.HikViewer.BarButton"
+            android:layout_marginStart="0dp"
+            android:contentDescription="@string/phone_day_back"
+            android:text="@string/phone_arrow_back" />
+
+        <TextView
+            android:id="@+id/date_chip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/on_background"
+            android:textSize="14sp"
+            tools:text="2026-11-04" />
+
+        <Button
+            android:id="@+id/day_forward"
+            style="@style/Widget.HikViewer.BarButton"
+            android:contentDescription="@string/phone_day_forward"
+            android:text="@string/phone_arrow_forward" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/speed_button"
+            style="@style/Widget.HikViewer.BarButton"
+            android:minWidth="64dp"
+            tools:text="1x" />
+
+        <Button
+            android:id="@+id/live_button"
+            style="@style/Widget.HikViewer.BarButton"
+            android:text="@string/phone_live_button" />
+    </LinearLayout>
+</LinearLayout>

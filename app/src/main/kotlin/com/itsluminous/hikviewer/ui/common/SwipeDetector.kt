@@ -10,11 +10,23 @@ import kotlin.math.abs
  * right with -1. Mostly-vertical or short, slow flings are ignored so a tap on a control or a
  * scroll never switches camera. The thresholds are in pixels and pixels per second, deliberately
  * loose: this runs on phones of every density.
+ *
+ * [onTap] is a single tap that stayed put (`GestureDetector`'s confirmed single tap, reported once
+ * the double-tap window has passed), the landscape camera screen's "show or hide the controls".
+ * A fling and a tap exclude each other: a finger that travelled far enough to fling never
+ * confirms as a tap, and a tap never moves far enough to fling.
  */
 class SwipeDetector(
+    private val onTap: (() -> Unit)? = null,
     private val onStep: (Int) -> Unit,
 ) : GestureDetector.SimpleOnGestureListener() {
     override fun onDown(e: MotionEvent): Boolean = true
+
+    override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+        val tap = onTap ?: return false
+        tap()
+        return true
+    }
 
     override fun onFling(
         e1: MotionEvent?,

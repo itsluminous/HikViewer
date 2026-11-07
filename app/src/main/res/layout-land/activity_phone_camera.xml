@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The phone's single-camera screen turned sideways: the same Activity and ViewModel as the
      portrait layout, but the picture alone, as large as the screen allows, like the TV's
-     fullscreen. The transport controls have no view here; the recorded engine keeps playing
-     from the same position and gets its bar back when the phone is upright again. -->
+     fullscreen. The transport controls are the portrait screen's (the shared include) laid over
+     the bottom of the picture: shown for the first seconds, hidden when idle, and a tap on the
+     picture brings them back or puts them away (see PhoneCameraActivity). -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
@@ -10,7 +11,7 @@
     android:layout_height="match_parent"
     tools:context=".ui.phone.PhoneCameraActivity">
 
-    <!-- Fills the height; swipe left/right here to switch camera. -->
+    <!-- Fills the height; swipe left/right here to switch camera, tap for the controls. -->
     <com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout
         android:id="@+id/video_frame"
         android:layout_width="match_parent"
@@ -35,32 +36,31 @@
             android:visibility="gone"
             tools:text="@string/playback_no_recordings"
             tools:visibility="visible" />
+    </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
 
-        <!-- The clock while live, the playhead while playing footage. -->
-        <TextView
-            android:id="@+id/time_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|start"
-            android:layout_margin="12dp"
-            android:background="@drawable/label_background"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="3dp"
-            android:textColor="@color/on_background"
-            android:textSize="14sp"
-            tools:text="17:13:51" />
+    <!-- The transport, over the bottom of the picture; the help line rides along with it. -->
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/top_bar_background"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp">
+
+        <include
+            android:id="@+id/transport"
+            layout="@layout/phone_camera_transport" />
 
         <TextView
             android:id="@+id/help"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_margin="12dp"
-            android:background="@drawable/label_background"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="3dp"
+            android:gravity="center"
             android:text="@string/phone_help_landscape"
             android:textColor="@color/on_background"
             android:textSize="12sp" />
-    </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
+    </LinearLayout>
 </FrameLayout>

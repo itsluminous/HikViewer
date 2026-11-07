@@ -100,10 +100,6 @@
     <string name="settings_cameras_help">OK to pick up a camera, UP/DOWN to move it, OK to drop. Untick to hide.</string>
     <string name="settings_quality">Fullscreen quality</string>
     <string name="settings_quality_main">Main stream (HEVC, needs a hardware decoder)</string>
-    <string name="settings_live_cameras">Live cameras</string>
-    <string name="settings_live_cameras_help">How many tiles play at full frame rate; the rest show one picture a second. More live tiles need more CPU.</string>
-    <string name="settings_live_cameras_automatic">Automatic</string>
-    <string name="settings_live_cameras_automatic_summary">Automatic (%1$d on this device)</string>
     <string name="settings_overlays">Tile overlays</string>
     <string name="settings_show_names">Show camera names</string>
     <string name="settings_show_fps">Show frame rate</string>

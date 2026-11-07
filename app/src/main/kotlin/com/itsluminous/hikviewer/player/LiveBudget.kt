@@ -24,10 +24,11 @@ package com.itsluminous.hikviewer.player
  * or the low-memory killer acts. Pure Kotlin so the thresholds are unit-testable; the caller feeds
  * time and the readings.
  *
- * The ceiling can be replaced by the user's choice (Settings, "Live cameras"): [setCeiling] makes
- * N the ceiling and switches probing off, since N is exactly what was asked for; the lag and
- * memory machinery keeps demoting below N and promoting back up to it. Automatic is
- * [setCeiling] with [automaticCeiling] and probing on, which is the state a new budget starts in.
+ * The ceiling can be replaced by an explicit count (a Settings row offered one until 0.2):
+ * [setCeiling] makes N the ceiling and switches probing off, since N is exactly what was asked
+ * for; the lag and memory machinery keeps demoting below N and promoting back up to it.
+ * Automatic is [setCeiling] with [automaticCeiling] and probing on, which is the state a new
+ * budget starts in.
  */
 class LiveBudget(
     capabilities: DeviceCapabilities,

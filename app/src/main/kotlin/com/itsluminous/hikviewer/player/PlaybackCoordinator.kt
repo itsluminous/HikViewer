@@ -77,17 +77,18 @@ class PlaybackCoordinator(
     /** Live-tile limit currently in force (for diagnostics). */
     val liveLimit: Int get() = budget.liveLimit
 
-    /** The ceiling the budget works under: the user's Live cameras count, or the device's automatic one. */
+    /** The ceiling the budget works under: an explicit count from [setLiveCeiling], or the device's automatic one. */
     val liveCeiling: Int get() = budget.ceiling
 
-    /** What "Automatic" resolves to on this device, for the Settings summary. */
+    /** What Automatic resolves to on this device. */
     val automaticCeiling: Int get() = budget.automaticCeiling
 
     /**
-     * Settings → Live cameras: [userCeiling] tiles decode live and the rest show stills, or null
-     * for Automatic (the device ceiling, probing above it with measured headroom). Applied at
-     * once: tiles are reassigned, and the probe thread starts or stops with whether there is
-     * anything left to probe for. A value that is already in force changes nothing.
+     * Live ceiling: [userCeiling] tiles decode live and the rest show stills, or null for Automatic
+     * (the device ceiling, probing above it with measured headroom), which is all the app passes
+     * since the Settings row was removed. Applied at once: tiles are reassigned, and the probe
+     * thread starts or stops with whether there is anything left to probe for. A value that is
+     * already in force changes nothing.
      */
     fun setLiveCeiling(userCeiling: Int?) {
         val before = budget.liveLimit

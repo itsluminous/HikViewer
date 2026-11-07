@@ -103,33 +103,6 @@
             </LinearLayout>
 
             <TextView
-                android:id="@+id/section_live_cameras"
-                style="@style/TextAppearance.HikViewer.Label"
-                android:tag="@string/settings_section_tag"
-                android:labelFor="@id/live_cameras"
-                android:text="@string/settings_live_cameras" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/settings_live_cameras_help"
-                android:textColor="#B0F2F4F7"
-                android:textSize="13sp" />
-
-            <!-- A button, not a spinner: its text is the summary ("Automatic (8 on this device)")
-                 and OK opens a single-choice list, which a remote, a mouse and a finger all drive.
-                 Sentence case: the Material default shouts a summary as ALL CAPS. -->
-            <Button
-                android:id="@+id/live_cameras"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textAllCaps="false"
-                android:textColor="@color/on_background"
-                tools:text="Automatic (8 on this device)" />
-
-            <TextView
                 android:id="@+id/section_cameras"
                 style="@style/TextAppearance.HikViewer.Label"
                 android:tag="@string/settings_section_tag"

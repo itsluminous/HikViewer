@@ -126,8 +126,9 @@ class GridViewModel(
         // used to open 16 relay connections and run 16 decrypt pipelines for 6 pictures on screen.
         // The shape, not the layout, knows the count: a turned phone shows one tile less of 1 + 6.
         val shown = cameras.take(GridGeometry.shape(layout, cameras.size, portrait).capacity)
-        // The ceiling first, so the new tile set is budgeted (and probed for) under the setting in force.
-        playback.setLiveCeiling(settings.liveCameras)
+        // Always Automatic: the device-derived ceiling with probing above it. An explicit count used
+        // to be a setting (0.1) and let a TV be slowed down; the API stays, the UI no longer offers it.
+        playback.setLiveCeiling(null)
         playback.setCameras(shown)
         playback.heroIndex = if (layout.isHero) hero else null
         if (visible && !needsCode) playback.start()

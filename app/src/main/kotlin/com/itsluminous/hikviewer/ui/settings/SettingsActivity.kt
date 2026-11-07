@@ -21,7 +21,6 @@ import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.databinding.ItemCameraChoiceBinding
 import com.itsluminous.hikviewer.di.AppGraph
-import com.itsluminous.hikviewer.player.LiveBudget
 import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.KeepScreenOn
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
@@ -63,7 +62,6 @@ class SettingsActivity : AppCompatActivity() {
         bindOverlays()
         bindQuality()
         bindScreen()
-        bindLiveCameras()
         bindCameraList()
         bindCode()
         bindAbout()
@@ -142,36 +140,6 @@ class SettingsActivity : AppCompatActivity() {
         binding.qualityMain.isChecked = settings.fullscreenQuality == StreamQuality.MAIN
         binding.qualityMain.setOnCheckedChangeListener { _, checked ->
             settings.fullscreenQuality = if (checked) StreamQuality.MAIN else StreamQuality.SUB
-        }
-    }
-
-    /**
-     * Live cameras: Automatic (the device ceiling, named so the user knows what it resolves to) or
-     * one of the explicit counts. The chooser is a single-choice `AlertDialog` list, like the
-     * tile menu's Change: already focusable for a remote and tappable for a finger. The store is
-     * written at once; the grid re-applies it when this screen returns.
-     */
-    private fun bindLiveCameras() {
-        val automatic = LiveBudget.staticCeiling(AppGraph.of(this).capabilities)
-        val choices = SettingsStore.LIVE_CAMERA_CHOICES
-
-        fun summary(): String =
-            settings.liveCameras?.toString() ?: getString(R.string.settings_live_cameras_automatic_summary, automatic)
-        binding.liveCameras.text = summary()
-        binding.liveCameras.setOnClickListener {
-            val labels =
-                (listOf(getString(R.string.settings_live_cameras_automatic)) + choices.map { it.toString() })
-                    .toTypedArray<CharSequence>()
-            val checked = settings.liveCameras?.let { choices.indexOf(it) + 1 } ?: 0
-            AlertDialog
-                .Builder(this)
-                .setTitle(R.string.settings_live_cameras)
-                .setSingleChoiceItems(labels, checked) { dialog, which ->
-                    settings.liveCameras = if (which == 0) null else choices[which - 1]
-                    binding.liveCameras.text = summary()
-                    dialog.dismiss()
-                }.setNegativeButton(R.string.code_cancel, null)
-                .show()
         }
     }
 

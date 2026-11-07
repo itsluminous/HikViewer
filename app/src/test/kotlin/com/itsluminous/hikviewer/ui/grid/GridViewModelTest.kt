@@ -311,12 +311,18 @@ class GridViewModelTest {
     }
 
     /**
-     * Settings → Live cameras rides the same re-read as every other setting: a return from Settings
-     * reassigns the tiles.
+     * The grid always runs the automatic ceiling: the Live cameras setting of 0.1 is gone, and a
+     * count it stored (here 12 under the old key) must not slow the TV down after the update.
      */
     @Test
-    fun `the live-camera setting caps the live tiles on the grid and Automatic restores the device ceiling`() =
+    fun `a stored live-camera count from an older build is ignored and the device ceiling applies`() =
         runTest(dispatcher) {
+            ApplicationProvider
+                .getApplicationContext<android.content.Context>()
+                .getSharedPreferences("test-settings", android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putInt("liveCameras", 12)
+                .commit()
             graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
             graph.settingsStore.visibleCameraKeys = (1..16).map { "${FakeCloudServices.SERIAL}/$it" }
             graph.arrangementStore.lastLayout = GridLayoutMode.GRID_4X4
@@ -325,18 +331,13 @@ class GridViewModelTest {
             dispatcher.scheduler.advanceUntilIdle()
             val players = vm.playback.players.value
             assertThat(players).hasSize(16)
-            // Automatic on the 2 GB test TV: 8 live, 8 stills.
+            // Automatic on the 2 GB test TV: 8 live, 8 stills, whatever the preference says.
+            assertThat(vm.playback.liveCeiling).isEqualTo(8)
             assertThat(vm.playback.liveLimit).isEqualTo(8)
             assertThat(players.count { it.mode.isLive }).isEqualTo(8)
-            graph.settingsStore.liveCameras = 12
+            assertThat(players.drop(8).all { it.mode == TileMode.KEYFRAME }).isTrue()
             vm.applySettings()
-            assertThat(vm.playback.liveLimit).isEqualTo(12)
-            assertThat(players.map { it.mode.isLive }).isEqualTo(List(12) { true } + List(4) { false })
-            assertThat(players.drop(12).all { it.mode == TileMode.KEYFRAME }).isTrue()
-            graph.settingsStore.liveCameras = null
-            vm.applySettings()
-            assertThat(vm.playback.liveLimit).isEqualTo(8)
-            assertThat(players.count { it.mode.isLive }).isEqualTo(8)
+            assertThat(vm.playback.liveCeiling).isEqualTo(8)
             vm.playback.release()
         }
 

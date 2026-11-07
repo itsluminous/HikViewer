@@ -4,7 +4,6 @@ import android.app.Activity
 import android.view.KeyEvent
 import android.view.View
 import android.widget.ImageView
-import androidx.activity.viewModels
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -40,7 +39,6 @@ import com.itsluminous.hikviewer.ui.grid.CameraGridLayout
 import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridActivity
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
-import com.itsluminous.hikviewer.ui.grid.GridViewModel
 import com.itsluminous.hikviewer.ui.settings.DonateActivity
 import com.itsluminous.hikviewer.ui.settings.SettingsActivity
 import kotlinx.coroutines.runBlocking
@@ -434,67 +432,6 @@ class GridNavigationTest {
                     .order(GridLayoutMode.AUTO)
                     ?.sortedBy { it.substringAfter('/').toInt() },
         )
-    }
-
-    /**
-     * Settings → Live cameras round trip on the 12-tile grid of the 2 GB test TV (ceiling 8): the
-     * row says what Automatic resolves to, picking 12 makes every tile live when the grid comes
-     * back, and Automatic again drops four tiles to stills. The status is driven by real decoders,
-     * so each state is waited for.
-     */
-    @Test
-    fun liveCamerasSettingRoundTripChangesTheGridStatus() {
-        waitForStatus("12 cameras · 8 live · 4 at 1 fps")
-        openSettings()
-        onView(withId(R.id.live_cameras))
-            .perform(scrollTo())
-            .check(matches(withText("Automatic (8 on this device)")))
-        onView(withId(R.id.live_cameras)).perform(click())
-        onView(withText("12")).inRoot(isDialog()).perform(click())
-        onView(withId(R.id.live_cameras)).check(matches(withText("12")))
-        assert(app.graph.settingsStore.liveCameras == 12)
-        pressBack()
-        onView(withId(R.id.grid)).check(matches(isDisplayed()))
-        // The ceiling moves at once; how many tiles actually decode live is up to the budget, which
-        // on a loaded CI emulator sheds software decoders for lag. Assert the policy, then that
-        // more than the automatic eight are live, not the exact count.
-        waitForCeiling(12)
-        waitForStatus(Regex("12 live|12 cameras · (9|1[01]) live · [1-3] at 1 fps"))
-        openSettings()
-        onView(withId(R.id.live_cameras)).perform(scrollTo(), click())
-        onView(withText(R.string.settings_live_cameras_automatic)).inRoot(isDialog()).perform(click())
-        assert(app.graph.settingsStore.liveCameras == null)
-        pressBack()
-        onView(withId(R.id.grid)).check(matches(isDisplayed()))
-        waitForCeiling(8)
-        waitForStatus(Regex("12 cameras · [1-8] live · ([4-9]|1[01]) at 1 fps"))
-    }
-
-    /** Waits until the grid's live budget works under [ceiling] (the setting applied). */
-    private fun waitForCeiling(ceiling: Int) {
-        val deadline = android.os.SystemClock.uptimeMillis() + STATUS_TIMEOUT_MILLIS
-        var seen = -1
-        while (android.os.SystemClock.uptimeMillis() < deadline) {
-            scenario.onActivity {
-                seen =
-                    it
-                        .viewModels<GridViewModel>()
-                        .value.playback.liveCeiling
-            }
-            if (seen == ceiling) return
-            waitFor(STATUS_POLL_MILLIS)
-        }
-        throw AssertionError("live ceiling never became $ceiling; last was $seen")
-    }
-
-    /** UP from the top row reaches the bar; RIGHT moves from Layout to Settings; OK opens it. */
-    private fun openSettings() {
-        InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
-        dpad(KeyEvent.KEYCODE_DPAD_UP)
-        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
-        onView(withId(R.id.settings_button)).check(matches(hasFocus()))
-        ok()
-        onView(withId(R.id.layout_spinner)).check(matches(isDisplayed()))
     }
 
     /** Waits until the top bar's status reads [expected]: the decoders need a moment to flow after a reassignment. */

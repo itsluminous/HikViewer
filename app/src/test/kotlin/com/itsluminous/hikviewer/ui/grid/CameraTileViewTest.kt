@@ -8,6 +8,8 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
@@ -16,10 +18,15 @@ import com.itsluminous.hikviewer.player.TileState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowDialog
+import org.robolectric.shadows.ShadowLooper
 
 @RunWith(AndroidJUnit4::class)
 class CameraTileViewTest {
-    private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    // Themed like an Activity's context: the application context carries no theme under Robolectric,
+    // and the detail dialog is an AppCompat one.
+    private val context: android.content.Context =
+        ContextThemeWrapper(ApplicationProvider.getApplicationContext(), R.style.Theme_HikViewer)
     private val tile = CameraTileView(context)
     private val spinner get() = tile.findViewById<View>(R.id.spinner)
     private val overlay get() = tile.findViewById<View>(R.id.error_overlay)
@@ -114,6 +121,33 @@ class CameraTileViewTest {
         tile.setOnClickListener { tileClicks++ }
         assertThat(retry.performClick()).isTrue()
         assertThat(tileClicks).isEqualTo(1)
+    }
+
+    /** Round 18: a non-technical user on a TV we cannot inspect photographs the codec's words from this dialog. */
+    @Test
+    fun `a long press on the retry icon of a decoder error opens the selectable detail dialog`() {
+        val detail = "codec=c2.amlogic.avc.decoder error=-38 transient=false recoverable=false diag=error_neg_38"
+        tile.bind(TileState.Error("Decoder error", detail = detail))
+        assertThat(tile.errorDetail).isEqualTo(detail)
+        val retry = tile.findViewById<ImageButton>(R.id.retry)
+        assertThat(retry.isLongClickable).isTrue()
+        assertThat(retry.performLongClick()).isTrue()
+        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        assertThat(dialog.isShowing).isTrue()
+        val message = dialog.findViewById<TextView>(android.R.id.message)!!
+        assertThat(message.text.toString()).isEqualTo(detail)
+        assertThat(message.isTextSelectable).isTrue()
+        assertThat(shadowOf(dialog).title.toString()).isEqualTo(context.getString(R.string.tile_decoder_detail_title))
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        ShadowLooper.idleMainLooper()
+        assertThat(dialog.isShowing).isFalse()
+        // A stream error carries no codec detail: nothing to show, and the long press falls through.
+        tile.bind(TileState.Error("No video"))
+        assertThat(tile.errorDetail).isNull()
+        assertThat(tile.showDecoderDetail()).isFalse()
+        tile.bind(TileState.Live)
+        assertThat(tile.errorDetail).isNull()
+        assertThat(ShadowDialog.getLatestDialog()).isSameInstanceAs(dialog) // no new dialog was opened
     }
 
     private fun View.descendants(): List<View> =

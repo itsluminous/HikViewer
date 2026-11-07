@@ -297,7 +297,9 @@ class GridActivity : AppCompatActivity() {
             }
         }
         tile.setOnLongClickListener {
-            if (!move.isMoving) showTileMenu(tile)
+            // A tile whose decoder failed answers the long press with the codec's words (the one
+            // thing a D-pad user can do to read them); every other tile gets the menu.
+            if (!move.isMoving && !tile.showDecoderDetail()) showTileMenu(tile)
             true
         }
         tile.setOnFocusChangeListener { _, focused ->

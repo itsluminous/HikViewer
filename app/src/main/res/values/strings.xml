@@ -43,6 +43,7 @@
     <string name="grid_status_compact_one_fps">1 fps</string>
     <string name="grid_layout_button">Layout</string>
     <string name="tile_retry">Retry</string>
+    <string name="tile_decoder_detail_title">Decoder detail</string>
     <string name="tile_fps">%1$d fps</string>
     <string name="tile_action_move">Move</string>
     <string name="tile_action_change">Change</string>

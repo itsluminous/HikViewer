@@ -11,6 +11,8 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.view.isVisible
@@ -25,8 +27,9 @@ import kotlinx.coroutines.launch
 
 /**
  * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
- * nothing has been drawn yet, a dim scrim with a centred retry icon while the stream is down, and a
- * dot in the top-right corner that is green while pictures reach the screen and red otherwise
+ * nothing has been drawn yet, a dim scrim with a centred retry icon while the stream is down (a
+ * long press on the icon opens the decoder's own error text, [showDecoderDetail]), and a dot in
+ * the top-right corner that is green while pictures reach the screen and red otherwise
  * ([framesFlowing]; the player samples it twice a second, so the dot never redraws per frame).
  *
  * Focus is a 4 dp accent border drawn by [TileFocusOverlay], the tile's last child, entirely
@@ -77,6 +80,14 @@ class CameraTileView
         /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
         val showsRetry: Boolean get() = binding.errorOverlay.isVisible
 
+        /**
+         * The codec's account of the decoder failure behind the current error overlay
+         * ([TileState.Error.detail]), or null when the overlay is up for a stream error or not up
+         * at all. [showDecoderDetail] puts it in a dialog.
+         */
+        var errorDetail: String? = null
+            private set
+
         /** True while the user is moving this tile: thicker border and an accent wash. */
         var lifted: Boolean = false
             set(value) {
@@ -115,6 +126,10 @@ class CameraTileView
             // descendants, so this is how a D-pad user sees that OK will retry. The icon is an
             // ordinary view inside the scrim: scaling it never touches the surface.
             binding.retry.setOnClickListener { performClick() }
+            // A long press on the icon (pointer, touch, or OK held on a screen where the icon
+            // itself has focus) shows the codec's words; the grid does the same for a long press
+            // on the tile, which is where the D-pad is.
+            binding.retry.setOnLongClickListener { showDecoderDetail() }
             binding.retry.setOnFocusChangeListener { _, _ -> updateRetryScale() }
             binding.surface.setZOrderMediaOverlay(true)
             binding.surface.holder.addCallback(
@@ -222,10 +237,32 @@ class CameraTileView
             if (state is TileState.Error) {
                 binding.errorMessage.text = state.message
                 binding.errorOverlay.visibility = VISIBLE
+                errorDetail = state.detail
             } else {
                 binding.errorOverlay.visibility = GONE
+                errorDetail = null
             }
             updateRetryScale()
+        }
+
+        /**
+         * Opens a small dialog with [errorDetail] (the codec name, error code and diagnostic text of
+         * the decoder failure), selectable so it can be copied where there is a clipboard and
+         * readable enough to photograph where there is not; OK closes it. Returns false, and shows
+         * nothing, while the tile has no decoder detail to show, so a long press can fall through
+         * to whatever else the owner does with one.
+         */
+        fun showDecoderDetail(): Boolean {
+            val detail = errorDetail ?: return false
+            val dialog =
+                AlertDialog
+                    .Builder(context)
+                    .setTitle(R.string.tile_decoder_detail_title)
+                    .setMessage(detail)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            dialog.findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
+            return true
         }
 
         /** The icon is scaled while it, or its tile with the icon showing, holds focus. */

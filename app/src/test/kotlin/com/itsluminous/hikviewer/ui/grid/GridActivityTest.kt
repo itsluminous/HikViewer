@@ -16,6 +16,8 @@ import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
+import com.itsluminous.hikviewer.player.TilePlayer
+import com.itsluminous.hikviewer.player.TileState
 import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
 import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
@@ -385,6 +387,41 @@ class GridActivityTest {
 
     private fun CameraGridLayout.names() = (0 until childCount).map {
         (childAtPosition(it) as CameraTileView).cameraName.toString()
+    }
+
+    /** Round 18: the D-pad cannot reach the retry icon, so the tile's own long press shows the codec detail. */
+    @Test
+    fun `a long press on a tile with a decoder error shows the detail dialog instead of the menu`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tile = grid.getChildAt(2) as CameraTileView
+                val detail = "codec=c2.amlogic.avc.decoder error=-38 transient=false recoverable=false diag=x"
+                tile.bind(TileState.Error(TilePlayer.DECODER_ERROR, detail = detail))
+                val menusBefore =
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu()
+                assertThat(tile.performLongClick()).isTrue()
+                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                assertThat(dialog.isShowing).isTrue()
+                assertThat(dialog.findViewById<TextView>(android.R.id.message)!!.text.toString()).isEqualTo(detail)
+                assertThat(
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu(),
+                ).isSameInstanceAs(menusBefore)
+                assertThat(a.isMoving).isFalse()
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                ShadowLooper.idleMainLooper()
+                assertThat(dialog.isShowing).isFalse()
+                // A stream error has no detail: the long press is the menu as before.
+                tile.bind(TileState.Error("No video"))
+                assertThat(tile.performLongClick()).isTrue()
+                assertThat(
+                    org.robolectric.shadows.ShadowPopupMenu
+                        .getLatestPopupMenu(),
+                ).isNotSameInstanceAs(menusBefore)
+                assertThat(ShadowDialog.getLatestDialog()).isSameInstanceAs(dialog)
+            }
+        }
     }
 
     @Test

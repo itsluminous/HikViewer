@@ -64,6 +64,34 @@ class SettingsStore(
     /** Wipes everything (logout). */
     fun clear() = prefs.edit { clear() }
 
+    /**
+     * The user's choices, without the verification code: what a backup carries. The code is a
+     * secret for the recorder and never leaves the device in a file.
+     */
+    data class Choices(
+        val visibleCameraKeys: List<String>?,
+        val fullscreenQuality: StreamQuality,
+        val showCameraNames: Boolean,
+        val showFrameRate: Boolean,
+        val keepScreenOn: Boolean,
+    )
+
+    /** The current [Choices]. */
+    fun choices(): Choices = Choices(visibleCameraKeys, fullscreenQuality, showCameraNames, showFrameRate, keepScreenOn)
+
+    /**
+     * Replaces every choice in one write (a restore), leaving the verification code as it is.
+     * One edit, so a reader never sees half a restore.
+     */
+    fun applyChoices(choices: Choices) = prefs.edit {
+        val visible = choices.visibleCameraKeys
+        if (visible == null) remove(KEY_VISIBLE) else putString(KEY_VISIBLE, visible.joinToString(SEPARATOR))
+        putString(KEY_QUALITY, choices.fullscreenQuality.name)
+        putBoolean(KEY_SHOW_NAMES, choices.showCameraNames)
+        putBoolean(KEY_SHOW_FPS, choices.showFrameRate)
+        putBoolean(KEY_KEEP_SCREEN_ON, choices.keepScreenOn)
+    }
+
     /** Preference keys. */
     companion object {
         private const val SEPARATOR = ","

@@ -73,6 +73,38 @@ class GridArrangementStore(
     private fun readOrder(key: String): List<String>? =
         prefs.getString(key, null)?.split(SEPARATOR)?.filter { it.isNotEmpty() }
 
+    /**
+     * Everything this store holds: the two last layouts and every stored order. A 1 + N order's
+     * first key is that layout's hero, so the heroes travel inside the orders.
+     */
+    data class Snapshot(
+        val lastLayout: GridLayoutMode,
+        val lastLayoutPortrait: GridLayoutMode,
+        val orders: Map<GridLayoutMode, List<String>>,
+    )
+
+    /** The current [Snapshot]. */
+    fun snapshot(): Snapshot = Snapshot(
+        lastLayout,
+        lastLayoutPortrait,
+        GridLayoutMode.entries.mapNotNull { mode -> order(mode)?.let { mode to it } }.toMap(),
+    )
+
+    /**
+     * Replaces the layouts and every order in one write (a restore): orders the snapshot lacks
+     * are removed, so the result is exactly the snapshot. One edit, so a reader never sees half
+     * a restore.
+     */
+    fun applySnapshot(snapshot: Snapshot) = prefs.edit {
+        putString(KEY_LAST_LAYOUT, snapshot.lastLayout.name)
+        putString(KEY_LAST_LAYOUT_PORTRAIT, snapshot.lastLayoutPortrait.name)
+        GridLayoutMode.entries.forEach { mode ->
+            val key = KEY_ORDER_PREFIX + mode.name
+            val keys = snapshot.orders[mode]
+            if (keys == null) remove(key) else putString(key, keys.joinToString(SEPARATOR))
+        }
+    }
+
     private fun readLayout(key: String): GridLayoutMode =
         GridLayoutMode.fromStoredName(prefs.getString(key, null)) ?: GridLayoutMode.AUTO
 

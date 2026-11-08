@@ -173,6 +173,12 @@ public class PlaybackStream(
                 throw VtmStallException("No picture for ${config.stallTimeoutMillis} ms")
             }
         }
+        // The window is over: the last picture, held back for a successor that never comes, is released.
+        for (picture in pipeline.flush()) {
+            progress.pictures++
+            if (progress.pictures == 1) onStatus(StreamStatus.Streaming)
+            emit(picture)
+        }
     }
 }
 

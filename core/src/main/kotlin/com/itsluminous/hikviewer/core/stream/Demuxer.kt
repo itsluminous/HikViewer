@@ -22,6 +22,9 @@ public interface Demuxer {
 
     /** Diagnostics: packets dropped as malformed, duplicate, late or because of a gap. */
     public val droppedPackets: Int
+
+    /** Diagnostics: elementary-stream bytes that belonged to no NAL (PS/TS only). */
+    public val discardedBytes: Int get() = 0
 }
 
 /** Detects the container from the first packet and delegates to it. */
@@ -40,6 +43,7 @@ public class AutoDemuxer : Demuxer {
 
     override val codecHint: VideoCodec? get() = delegate?.codecHint
     override val droppedPackets: Int get() = delegate?.droppedPackets ?: 0
+    override val discardedBytes: Int get() = delegate?.discardedBytes ?: 0
 
     override fun feed(packet: ByteArray): List<NalUnit> {
         val d = delegate ?: detect(packet).also { delegate = it }
@@ -72,14 +76,20 @@ public class AutoDemuxer : Demuxer {
 /**
  * Splits an Annex-B elementary stream into NAL units across chunk boundaries. The last, possibly
  * incomplete NAL is held back until the next start code or an explicit [flush]. Every NAL emitted
- * carries the [timestamp] current when it was emitted, so callers flush before changing it (one PES
- * is one picture, so this is exact for PS/TS).
+ * carries the [timestamp] current when it was emitted, so callers flush before changing it (a
+ * picture's NALs share one PTS, so this is exact for PS/TS). Bytes that arrive before any start
+ * code when nothing is held back (the tail of a NAL whose head was never seen, or was flushed too
+ * early) belong to no NAL; they are dropped and counted in [discardedBytes].
  */
 internal class AnnexBSplitter {
     private val buffer = ByteArrayOutputStream()
 
     /** Timestamp stamped on the NALs produced next. */
     var timestamp: Long? = null
+
+    /** Bytes dropped because they preceded the first start code of a fresh buffer. */
+    var discardedBytes: Int = 0
+        private set
 
     fun append(
         bytes: ByteArray,
@@ -90,6 +100,7 @@ internal class AnnexBSplitter {
         val data = buffer.toByteArray()
         val starts = startCodes(data)
         if (starts.size < 2) return emptyList()
+        discardedBytes += headless(data, starts[0])
         val out = ArrayList<NalUnit>(starts.size - 1)
         for (i in 0 until starts.size - 1) {
             nalBetween(data, starts[i], starts[i + 1])?.let { out += NalUnit(it, timestamp) }
@@ -104,7 +115,11 @@ internal class AnnexBSplitter {
         val data = buffer.toByteArray()
         buffer.reset()
         val starts = startCodes(data)
-        if (starts.isEmpty()) return emptyList()
+        if (starts.isEmpty()) {
+            discardedBytes += headless(data, data.size)
+            return emptyList()
+        }
+        discardedBytes += headless(data, starts[0])
         val out = ArrayList<NalUnit>(starts.size)
         for (i in starts.indices) {
             val end = if (i + 1 < starts.size) starts[i + 1] else data.size
@@ -118,6 +133,16 @@ internal class AnnexBSplitter {
 
     fun reset() {
         buffer.reset()
+    }
+
+    /** Bytes before [firstStart] that are not the leading zero run of a 4-byte start code (`00 00 00 01`). */
+    private fun headless(
+        data: ByteArray,
+        firstStart: Int,
+    ): Int {
+        var zeros = 0
+        while (zeros < firstStart && data[zeros] == 0.toByte()) zeros++
+        return firstStart - zeros
     }
 
     private fun nalBetween(

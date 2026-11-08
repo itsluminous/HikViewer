@@ -266,7 +266,9 @@ class DemuxerTest {
             val stream =
                 pack() + pes(start + sps + start + idr, pts = 90_000) + audio + pack() + pes(start + p, pts = 97_500)
 
-            val out = demuxer.feed(stream) + demuxer.feed(pes(start + p, pts = 105_000)) + demuxer.feed(pack())
+            val out =
+                demuxer.feed(stream) + demuxer.feed(pes(start + p, pts = 105_000)) + demuxer.feed(pack()) +
+                    demuxer.flush()
 
             assertThat(demuxer.container).isEqualTo(AutoDemuxer.Container.MPEG_PS)
             assertThat(out.map { it.data.toList() })
@@ -295,11 +297,58 @@ class DemuxerTest {
             val whole = pack() + pes(start + sps + start + idr, pts = 5) + pack() + pes(start + p, pts = 6) + pack()
             for (chunk in listOf(1, 3, 7, 16)) {
                 val demuxer = PsDemuxer()
-                val out = whole.toList().chunked(chunk).flatMap { demuxer.feed(it.toByteArray()) }
+                val out = whole.toList().chunked(chunk).flatMap { demuxer.feed(it.toByteArray()) } + demuxer.flush()
                 assertThat(
                     out.map { it.data.toList() },
                 ).containsExactly(sps.toList(), idr.toList(), p.toList()).inOrder()
             }
+        }
+
+        /**
+         * Round 19: the recorder splits a NAL bigger than a PES (16-bit length) over several PES
+         * packets; only the first carries the PTS. The 2.Jaimaal recording's 1080p HEVC IDRs
+         * (about 105 KB) came as a 63989-byte PES followed by a 40289-byte one, and the old
+         * flush-at-every-PES rule cut each IDR at 63985 bytes: the bottom of every picture was lost.
+         */
+        @Test
+        fun `a NAL split over several bounded PES packets is reassembled whole`() {
+            val demuxer = PsDemuxer()
+            val bigIdr = ByteArray(150_000) { (it % 251 + 1).toByte() }.also { it[0] = 0x65 }
+            val annexB = start + bigIdr
+            val pieces = annexB.toList().chunked(63_989).map { it.toByteArray() }
+            assertThat(pieces).hasSize(3)
+            val stream =
+                pack() + pes(start + sps, pts = 3000) + pes(pieces[0], pts = null) + pes(pieces[1], pts = null) +
+                    pes(pieces[2], pts = null) + pack() + pes(start + p, pts = 6600)
+
+            val out = stream.toList().chunked(1500).flatMap { demuxer.feed(it.toByteArray()) } + demuxer.flush()
+
+            assertThat(out.map { it.size }).containsExactly(sps.size, bigIdr.size, p.size).inOrder()
+            assertThat(out[1].data).isEqualTo(bigIdr)
+            assertThat(out.map { it.timestamp90k }).containsExactly(3000L, 3000L, 6600L).inOrder()
+            assertThat(demuxer.discardedBytes).isEqualTo(0)
+        }
+
+        @Test
+        fun `a PES repeating the picture's PTS continues the NAL instead of cutting it`() {
+            val demuxer = PsDemuxer()
+            val idrHead = start + idr.copyOfRange(0, 3)
+            val idrTail = idr.copyOfRange(3, idr.size)
+            val stream = pack() + pes(idrHead, pts = 7) + pes(idrTail, pts = 7) + pack() + pes(start + p, pts = 8)
+
+            val out = demuxer.feed(stream) + demuxer.flush()
+
+            assertThat(out.map { it.data.toList() }).containsExactly(idr.toList(), p.toList()).inOrder()
+        }
+
+        @Test
+        fun `a stream that starts mid NAL drops and counts the headless bytes`() {
+            val demuxer = PsDemuxer()
+            val out = demuxer.feed(pack() + pes(byteArrayOf(9, 9, 9, 9), pts = null) + pes(start + p, pts = 1) + pack())
+
+            assertThat(out).isEmpty()
+            assertThat(demuxer.flush().map { it.data.toList() }).containsExactly(p.toList())
+            assertThat(demuxer.discardedBytes).isEqualTo(4)
         }
 
         @Test
@@ -307,7 +356,7 @@ class DemuxerTest {
             val demuxer = PsDemuxer()
             demuxer.feed(ByteArray(5 shl 20) { 0x55 })
             assertThat(demuxer.resyncs).isEqualTo(1)
-            val out = demuxer.feed(pack() + pes(start + sps + start + idr, pts = 1) + pack())
+            val out = demuxer.feed(pack() + pes(start + sps + start + idr, pts = 1) + pack()) + demuxer.flush()
             assertThat(out).hasSize(2)
         }
     }

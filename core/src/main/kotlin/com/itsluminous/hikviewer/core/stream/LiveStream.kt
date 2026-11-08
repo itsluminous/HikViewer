@@ -236,9 +236,24 @@ public class DecodePipeline(
     /** The decryptor's variant once known, for diagnostics. */
     public val variant: NalDecryptor.Variant? get() = decryptor?.variant
 
+    /** Elementary-stream bytes the demuxer could not attach to a NAL; zero on a healthy stream. */
+    public val discardedBytes: Int get() = demuxer.discardedBytes
+
     /** Feeds one relay packet; throws [StreamException.WrongVerificationCode] when the key is wrong. */
-    public fun process(packet: ByteArray): List<AccessUnit> {
-        val nals = demuxer.feed(packet)
+    public fun process(packet: ByteArray): List<AccessUnit> = assemble(demuxer.feed(packet))
+
+    /**
+     * End of stream: the NAL the demuxer holds back (it waits for the next start code) and the
+     * picture the assembler holds (it waits for the next picture) are released. A playback window
+     * ends this way; a live stream never does.
+     */
+    public fun flush(): List<AccessUnit> {
+        val out = ArrayList(assemble(demuxer.flush()))
+        assembler?.flush()?.let(out::add)
+        return out
+    }
+
+    private fun assemble(nals: List<NalUnit>): List<AccessUnit> {
         if (nals.isEmpty()) return emptyList()
         val d = decryptor ?: NalDecryptor(verificationCode, demuxer.codecHint).also { decryptor = it }
         val out = ArrayList<AccessUnit>()

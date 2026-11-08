@@ -11,17 +11,21 @@ import org.junit.jupiter.api.Test
  * the shape of a decrypted playback window (HEVC Main 1280x720 @ 25 fps, closed GOPs of 25 with a
  * VPS/SPS/PPS before every IDR, no AUDs), see `scripts/gen-fixtures.sh`. `ffprobe -count_frames` reads
  * 274 frames in 11 GOPs, the last one truncated to 24 as a window end cuts a recording mid-GOP.
- * Re-packed as MPEG-PS and run through the live pipeline it must assemble into the same pictures;
+ * Re-packed as MPEG-PS and run through the live pipeline it must assemble into the same pictures (all 274
+ * once the window end flushes the pipeline);
  * this pins the HEVC access-unit path playback depends on.
  */
 class PlaybackKnownAnswerTest {
     @Test
     fun `the synthetic window assembles into 274 hevc pictures in 11 gops`() {
         val pipeline = DecodePipeline(null)
-        val units = PlaybackFixture.nals().flatMap { pipeline.process(PlaybackFixture.ps(it)) }
+        val streamed = PlaybackFixture.nals().flatMap { pipeline.process(PlaybackFixture.ps(it)) }
+        // The demuxer holds the last NAL for the next start code and the assembler the last picture
+        // for the next one (the fixture's PES carry no PTS); the window end releases both.
+        assertThat(streamed).hasSize(272)
+        val units = streamed + pipeline.flush()
 
-        // The assembler holds the last picture until the next one starts; the stream ends first.
-        assertThat(units).hasSize(273)
+        assertThat(units).hasSize(274)
         assertThat(units.count { it.isKeyframe }).isEqualTo(11)
         assertThat(units.all { it.codec == VideoCodec.H265 }).isTrue()
         assertThat(pipeline.codec).isEqualTo(VideoCodec.H265)

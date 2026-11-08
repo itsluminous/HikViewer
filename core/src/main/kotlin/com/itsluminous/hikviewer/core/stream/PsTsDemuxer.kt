@@ -46,12 +46,18 @@ internal object Pes {
 }
 
 /**
- * MPEG program stream demuxer: extracts video PES payloads (stream ids 0xE0–0xEF) into NAL units.
+ * MPEG program stream demuxer: extracts video PES payloads (stream ids 0xE0 to 0xEF) into NAL units.
  *
- * Hik recorders send unbounded video PES (length 0), so a PES ends at the next PS-level start code
+ * A PES ends at its length, or for an unbounded PES (length 0) at the next PS-level start code
  * (pack header, system header, another PES), never at a NAL start code inside it; both are
- * `00 00 01` so the fourth byte decides. Buffers are capped: on start-code-free garbage the demuxer
- * resynchronises at the last start code instead of growing forever.
+ * `00 00 01` so the fourth byte decides. A PES boundary is **not** a NAL boundary: the PES length
+ * field is 16 bits, so the recorder splits a NAL bigger than about 64 KB (every 1080p HEVC IDR,
+ * 100 KB and more) over several PES packets, only the first of which carries the PTS. The NAL held
+ * back by the splitter is therefore released when a PES with a *new* PTS starts the next picture,
+ * at a program end code and on [flush]; releasing it at every PES end cut the tail off every
+ * keyframe (the bottom of the picture) in recorded playback. Buffers are capped: on
+ * start-code-free garbage the demuxer resynchronises at the last start code instead of growing
+ * forever.
  */
 public class PsDemuxer : Demuxer {
     override val codecHint: VideoCodec? = null
@@ -64,6 +70,8 @@ public class PsDemuxer : Demuxer {
 
     private val pending = ByteArrayOutputStream()
     private val splitter = AnnexBSplitter()
+
+    override val discardedBytes: Int get() = splitter.discardedBytes
 
     override fun feed(packet: ByteArray): List<NalUnit> {
         pending.write(packet)
@@ -84,7 +92,10 @@ public class PsDemuxer : Demuxer {
             val next =
                 when {
                     code == PACK_HEADER -> packHeaderEnd(b, sc)
-                    code == PROGRAM_END -> sc + 4
+                    code == PROGRAM_END -> {
+                        out += splitter.flush()
+                        sc + 4
+                    }
                     code < PROGRAM_END -> sc + 3 // not a PS start code (NAL start code or resync leftovers)
                     Pes.isVideoStreamId(code) -> videoPes(b, sc, out)
                     else -> skipOtherPes(b, sc)
@@ -116,13 +127,19 @@ public class PsDemuxer : Demuxer {
         val length = ((b[sc + 4].toInt() and BYTE_MASK) shl 8) or (b[sc + 5].toInt() and BYTE_MASK)
         val end = if (length > 0) sc + 6 + length else nextPsStartCode(b, payloadStart)
         if (end < 0 || end > b.size) return -1
-        // The PES is complete (bounded length, or the next PS start code was found): every NAL in it
-        // is final, so the splitter's tail can be released with this PES's timestamp.
-        Pes.pts(b, sc)?.let { splitter.timestamp = it }
+        // A PTS marks the first PES of a picture: the previous picture is complete, so the NAL the
+        // splitter holds back belongs to it and is released with the old timestamp. A PES without a
+        // PTS (or with the same one) continues the picture, possibly mid-NAL, and is only appended.
+        val pts = Pes.pts(b, sc)
+        if (pts != null && pts != splitter.timestamp) {
+            out += splitter.flush()
+            splitter.timestamp = pts
+        }
         out += splitter.append(b, payloadStart, end)
-        out += splitter.flush()
         return end
     }
+
+    override fun flush(): List<NalUnit> = splitter.flush()
 
     private fun skipOtherPes(
         b: ByteArray,
@@ -194,9 +211,11 @@ public class PsDemuxer : Demuxer {
 }
 
 /**
- * MPEG transport stream demuxer. Follows PAT → PMT to find the video PID (stream types 0x1B H.264,
- * 0x24 HEVC); without tables it locks onto the first PID whose unit start carries a video PES.
- * One PES is one picture here, so the held-back NAL is flushed on every payload-unit start.
+ * MPEG transport stream demuxer. Follows PAT then PMT to find the video PID (stream types 0x1B
+ * H.264, 0x24 HEVC); without tables it locks onto the first PID whose unit start carries a video
+ * PES. As in [PsDemuxer], a PES boundary is not a NAL boundary: the held-back NAL is released when
+ * a PES with a new PTS starts the next picture and on [flush], so a bounded PES chain carrying one
+ * large NAL is reassembled whole.
  */
 public class TsDemuxer : Demuxer {
     override var codecHint: VideoCodec? = null
@@ -365,7 +384,9 @@ public class TsDemuxer : Demuxer {
         }
     }
 
-    override fun flush(): List<NalUnit> = completePes()
+    override fun flush(): List<NalUnit> = completePes() + splitter.flush()
+
+    override val discardedBytes: Int get() = splitter.discardedBytes
 
     /** Parses the accumulated PES (header + ES) and returns all its NALs. */
     private fun completePes(): List<NalUnit> {
@@ -375,9 +396,12 @@ public class TsDemuxer : Demuxer {
         val payloadStart = Pes.payloadStart(b, 0)
         if (payloadStart < 0) return emptyList()
         val out = ArrayList<NalUnit>()
-        Pes.pts(b, 0)?.let { splitter.timestamp = it }
+        val pts = Pes.pts(b, 0)
+        if (pts != null && pts != splitter.timestamp) {
+            out += splitter.flush()
+            splitter.timestamp = pts
+        }
         out += splitter.append(b, payloadStart, b.size)
-        out += splitter.flush()
         return out
     }
 

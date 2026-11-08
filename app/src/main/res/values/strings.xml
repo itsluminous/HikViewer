@@ -109,6 +109,23 @@
     <string name="settings_screen">Screen</string>
     <string name="settings_keep_screen_on">Keep screen on while HikViewer is open</string>
     <string name="settings_change_code">Change encryption password</string>
+    <string name="settings_backup">Backup</string>
+    <string name="settings_restore">Restore</string>
+    <string name="backup_explain">Saves the grid arrangement and the settings choices (visible cameras and order, layouts, tile positions, fullscreen quality, overlays) as a JSON file. Login and encryption password are not included.</string>
+    <string name="backup_explain_tv">Saves the grid arrangement and the settings choices as a JSON file in %1$s so you can copy it off this device (adb pull). Login and encryption password are not included.</string>
+    <string name="backup_action">Save backup</string>
+    <string name="backup_done_title">Backup saved</string>
+    <string name="backup_done">Saved as %1$s</string>
+    <string name="backup_failed">Could not write the backup: %1$s</string>
+    <string name="restore_explain">Replaces the grid arrangement and the settings choices with the ones in a backup file. Login and encryption password are not included and stay as they are.</string>
+    <string name="restore_action">Choose file</string>
+    <string name="restore_pick_title">Choose a backup</string>
+    <string name="restore_empty">No backup found. Put a HikViewer-backup-*.json file in %1$s (for example with adb push) and open Restore again.</string>
+    <string name="restore_done_title">Restored</string>
+    <string name="restore_done">Settings and grid arrangement from %1$s are in force. The grid picks them up when you go back.</string>
+    <string name="restore_failed_title">Not restored</string>
+    <string name="restore_failed">Nothing was changed. %1$s</string>
+    <string name="restore_entry" translatable="false">%1$s\n%2$s</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">HikViewer %1$s - unofficial Hik-Connect client, MIT licence</string>
     <string name="settings_donate">Donate via UPI</string>

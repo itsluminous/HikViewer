@@ -12,6 +12,7 @@ import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.HikConnectCloudServices
 import com.itsluminous.hikviewer.data.SessionStore
 import com.itsluminous.hikviewer.data.SettingsStore
+import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.player.DeviceCapabilities
 import com.itsluminous.hikviewer.player.DeviceHeadroomProbe
 import com.itsluminous.hikviewer.player.LiveBudget
@@ -39,6 +40,8 @@ class AppGraph(
     val topBarAutoHideMillis: Long = DEFAULT_TOP_BAR_AUTO_HIDE_MILLIS,
     /** Builds the `MediaCodec` wrappers; tests substitute a recorder so no codec is ever opened. */
     val playbackFactory: PlaybackFactory = PlaybackFactory(),
+    /** Where Settings' Backup and Restore keep files; tests substitute a fake directory. */
+    val backupStorage: (Context) -> BackupStorage = BackupStorage::choose,
 ) {
     /** Persisted session and per-install feature code. */
     val sessionStore: SessionStore = SessionStore(sessionPrefs)

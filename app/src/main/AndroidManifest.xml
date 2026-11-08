@@ -13,6 +13,16 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- Backup asks whether a documents UI handles CREATE_DOCUMENT (phones: yes, Android TV: no)
+         to choose between the Storage Access Framework and the Downloads folder; from API 30 the
+         package manager only answers for intents declared here. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.CREATE_DOCUMENT" />
+            <data android:mimeType="application/json" />
+        </intent>
+    </queries>
+
     <application
         android:name=".HikViewerApp"
         android:allowBackup="false"

@@ -10,7 +10,7 @@
     <!-- One column, as wide as the screen allows up to form_width: on a TV the 420 dp form it
          always was, on a 360 dp phone the full width, so no switch thumb or "signal" label ends
          up past the edge. Sections top to bottom: Grid layout, Tile overlays, Fullscreen quality,
-         Screen (phones), Live cameras, Visible cameras and order, Change encryption password,
+         Screen (phones), Backup, Restore, Visible cameras and order, Change encryption password,
          About, Logout; every section head carries the "section" tag so a test can walk them. No nextFocus* attributes: the D-pad follows this visual order on its own. -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -101,6 +101,31 @@
                     android:text="@string/settings_keep_screen_on"
                     android:textColor="@color/on_background" />
             </LinearLayout>
+
+            <!-- Backup and Restore: each button is its own section (hence the tag), placed before
+                 the camera list so they are reached before the long list. The flows live in
+                 BackupController: a documents UI where there is one, the Downloads folder on a TV. -->
+            <Button
+                android:id="@+id/backup"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:tag="@string/settings_section_tag"
+                android:text="@string/settings_backup"
+                android:textAllCaps="false"
+                android:textColor="@color/on_background" />
+
+            <Button
+                android:id="@+id/restore"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:tag="@string/settings_section_tag"
+                android:text="@string/settings_restore"
+                android:textAllCaps="false"
+                android:textColor="@color/on_background" />
 
             <TextView
                 android:id="@+id/section_cameras"

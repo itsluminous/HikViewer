@@ -18,6 +18,7 @@ import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.SettingsStore
+import com.itsluminous.hikviewer.data.backup.BackupCodec
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.ui.common.FormFactor
@@ -29,9 +30,9 @@ import com.itsluminous.hikviewer.ui.login.LoginActivity
 import kotlinx.coroutines.launch
 
 /**
- * Settings, top to bottom: grid layout, tile overlays, fullscreen quality, screen (phones), live
- * cameras, visible cameras and order, encryption password, about (version, View Source, Donate),
- * logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
+ * Settings, top to bottom: grid layout, tile overlays, fullscreen quality, screen (phones),
+ * backup, restore, visible cameras and order, encryption password, about (version, View Source,
+ * Donate), logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
  * the grid re-reads the store when this screen returns. The camera list is a `RecyclerView` of
  * rows (at most a few dozen cameras, all laid out) reordered with the D-pad on a TV and a drag
@@ -48,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
         LambdaViewModelFactory { SettingsViewModel(graph.account, graph.settingsStore) }
     }
     private val editor: CameraOrderEditor get() = viewModel.editor
+    private lateinit var backup: BackupController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,12 +57,21 @@ class SettingsActivity : AppCompatActivity() {
         settings = graph.settingsStore
         arrangement = graph.arrangementStore
         account = graph.account
+        // Registers its launchers, so before the activity starts.
+        backup =
+            BackupController(
+                this,
+                BackupCodec(settings, arrangement, versionName()),
+                graph.backupStorage(this),
+                onRestored = ::rebindAfterRestore,
+            )
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         bindLayout()
         bindOverlays()
         bindQuality()
         bindScreen()
+        bindBackup()
         bindCameraList()
         bindCode()
         bindAbout()
@@ -126,6 +137,27 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun bindBackup() {
+        binding.backup.setOnClickListener { backup.backup() }
+        binding.restore.setOnClickListener { backup.restore() }
+    }
+
+    /**
+     * A restore wrote both stores behind this screen's back: rebuild the camera rows and re-read
+     * every switch and spinner, and apply keep-screen-on to this window as the toggle would.
+     */
+    private fun rebindAfterRestore() {
+        viewModel.reloadFromStore()
+        bindLayout()
+        bindOverlays()
+        bindQuality()
+        bindScreen()
+        bindCameraList()
+        KeepScreenOn.apply(this)
+    }
+
+    private fun versionName(): String = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+
     private fun bindCode() {
         val encryptPwd = account.inventory.value?.encryptPwd
         binding.changeCode.isEnabled = encryptPwd != null
@@ -149,8 +181,7 @@ class SettingsActivity : AppCompatActivity() {
      * the UPI code with the UPI id under it, for a phone to scan or to type.
      */
     private fun bindAbout() {
-        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-        binding.about.text = getString(R.string.settings_about_version, version)
+        binding.about.text = getString(R.string.settings_about_version, versionName())
         val television = FormFactor.isTelevision(this)
         binding.viewSource.setOnClickListener {
             if (television) {

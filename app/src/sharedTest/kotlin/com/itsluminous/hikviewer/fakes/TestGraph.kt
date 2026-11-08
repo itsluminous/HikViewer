@@ -1,6 +1,7 @@
 package com.itsluminous.hikviewer.fakes
 
 import android.content.Context
+import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.DeviceCapabilities
 import com.itsluminous.hikviewer.player.PlaybackFactory
@@ -22,6 +23,8 @@ object TestGraph {
         playbackDispatcher: CoroutineDispatcher = Dispatchers.Default,
         /** Overrides the recording decoders, e.g. with real `MediaCodec`s on an emulator. */
         playbackFactory: PlaybackFactory = decoders.playbackFactory(playbackDispatcher),
+        /** Where Backup and Restore keep files; the real chooser unless a test plants a fake directory. */
+        backupStorage: (Context) -> BackupStorage = BackupStorage::choose,
     ): AppGraph {
         val session =
             context
@@ -42,6 +45,7 @@ object TestGraph {
             capabilities,
             topBarAutoHideMillis,
             playbackFactory,
+            backupStorage,
         )
     }
 }

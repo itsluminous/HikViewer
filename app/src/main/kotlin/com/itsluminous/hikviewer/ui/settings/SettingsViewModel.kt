@@ -17,17 +17,24 @@ import com.itsluminous.hikviewer.data.SettingsStore
  * store is written on every change, so after a process death the editor is rebuilt from it.
  */
 class SettingsViewModel(
-    account: AccountRepository,
+    private val account: AccountRepository,
     private val settings: SettingsStore,
 ) : ViewModel() {
     /** The reorderable visible-camera list; survives rotation with this ViewModel. */
-    val editor: CameraOrderEditor =
-        CameraOrderEditor(
-            account.inventory.value
-                ?.cameras
-                .orEmpty(),
-            settings.visibleCameraKeys,
-        )
+    var editor: CameraOrderEditor = buildEditor()
+        private set
+
+    /** Throws the list away and rebuilds it from the store, after a restore wrote the store behind its back. */
+    fun reloadFromStore() {
+        editor = buildEditor()
+    }
+
+    private fun buildEditor(): CameraOrderEditor = CameraOrderEditor(
+        account.inventory.value
+            ?.cameras
+            .orEmpty(),
+        settings.visibleCameraKeys,
+    )
 
     /** Ticks or unticks row [index] and persists the selection. */
     fun toggleVisible(index: Int) {

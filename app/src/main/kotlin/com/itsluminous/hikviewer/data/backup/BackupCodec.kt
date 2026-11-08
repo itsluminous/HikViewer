@@ -156,6 +156,8 @@ class BackupCodec(
             Json {
                 ignoreUnknownKeys = true
                 prettyPrint = true
+                // A null visibleCameras ("never chose") is written out, so the file says so to a reader.
+                encodeDefaults = true
             }
     }
 }

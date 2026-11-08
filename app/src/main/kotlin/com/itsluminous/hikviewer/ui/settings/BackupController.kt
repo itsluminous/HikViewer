@@ -102,7 +102,7 @@ class BackupController(
     private fun pickFromList(tv: TvBackupStorage) {
         val entries = tv.list()
         if (entries.isEmpty()) {
-            showMessage(R.string.settings_restore, activity.getString(R.string.restore_empty, tv.location))
+            showMessage(R.string.settings_restore, activity.getString(R.string.restore_empty, tv.dropLocation))
             return
         }
         val labels = entries.map { activity.getString(R.string.restore_entry, it.name, dateOf(it)) }.toTypedArray()

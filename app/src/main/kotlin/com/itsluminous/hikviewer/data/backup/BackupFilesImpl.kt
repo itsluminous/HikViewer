@@ -16,9 +16,8 @@ import java.time.Instant
  * The Downloads collection (`MediaStore.Downloads`) on API 29 and later: an app may insert there
  * and read back what it inserted with no permission, and the file lands in `/sdcard/Download/`
  * where `adb pull` and any file manager find it. The list asks for every file named like a
- * backup, not only the app's own rows: a file the user pushed with `adb` has no owner package.
- * Whether the provider shows such a row to an app without a storage permission is up to the
- * device's MediaProvider; the TV emulator check in the build notes records what it did.
+ * backup, not only the app's own rows, but without a storage permission the provider only
+ * returns the app's own (see [TvBackupStorage]); files from outside go to [AppDirBackupFiles].
  */
 @RequiresApi(Build.VERSION_CODES.Q)
 class DownloadsBackupFiles(
@@ -70,6 +69,8 @@ class DownloadsBackupFiles(
         }
     }
 
+    override fun owns(entry: BackupEntry): Boolean = entry.uri.scheme == ContentResolver.SCHEME_CONTENT
+
     override fun read(entry: BackupEntry): String {
         val stream = resolver.openInputStream(entry.uri) ?: throw IOException("Cannot open ${entry.uri} for reading")
         return stream.use { String(it.readBytes()) }
@@ -85,9 +86,10 @@ class DownloadsBackupFiles(
 }
 
 /**
- * The app's own external files directory (API 26 to 28, where the Downloads collection does not
- * exist and the public directory needs a permission). No permission is needed; `adb pull` and
- * `adb push` reach it under `/sdcard/Android/data/<package>/files/`.
+ * The app's own external files directory, `/sdcard/Android/data/<package>/files/`: readable and
+ * writable with no permission on every API level, and `adb push` and `adb pull` reach it (checked
+ * on the API 34 TV emulator). The only place Backup writes on API 26 to 28, where the Downloads
+ * collection does not exist; the place Restore reads files from outside on every level.
  */
 class AppDirBackupFiles(
     private val dir: File,
@@ -109,6 +111,9 @@ class AppDirBackupFiles(
         ?.filter { it.isFile }
         ?.map(::entry)
         .orEmpty()
+
+    override fun owns(entry: BackupEntry): Boolean =
+        entry.uri.scheme == ContentResolver.SCHEME_FILE && entry.uri.path?.startsWith(dir.absolutePath) == true
 
     override fun read(entry: BackupEntry): String = File(entry.uri.path ?: entry.location).readText()
 

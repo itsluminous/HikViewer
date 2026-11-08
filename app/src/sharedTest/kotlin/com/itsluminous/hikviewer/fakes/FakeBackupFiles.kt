@@ -47,8 +47,10 @@ class FakeBackupFiles(
 
     override fun list(): List<BackupEntry> = contents.keys.map(::entry)
 
+    override fun owns(entry: BackupEntry): Boolean = entry.uri.toString().startsWith("fake://$location")
+
     override fun read(entry: BackupEntry): String = contents[entry.name] ?: throw IOException("${entry.name} is gone")
 
     private fun entry(name: String) =
-        BackupEntry(name, modified[name], Uri.parse("fake://backups/$name"), location + name)
+        BackupEntry(name, modified[name], Uri.parse("fake://$location$name"), location + name)
 }

@@ -82,6 +82,7 @@ junit5-platform-launcher = { module = "org.junit.platform:junit-platform-launche
 androidx-test-core = { module = "androidx.test:core-ktx", version.ref = "androidxTestCore" }
 androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 androidx-test-espresso-contrib = { module = "androidx.test.espresso:espresso-contrib", version.ref = "espresso" }
+androidx-test-espresso-intents = { module = "androidx.test.espresso:espresso-intents", version.ref = "espresso" }
 androidx-test-junit = { module = "androidx.test.ext:junit-ktx", version.ref = "androidxJunit" }
 androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidxTestCore" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
@@ -90,7 +91,7 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 
 [bundles]
 app-unit-test = ["junit4", "robolectric", "truth", "androidx-test-core", "androidx-test-junit", "kotlinx-coroutines-test", "okhttp-mockwebserver", "turbine"]
-app-android-test = ["androidx-test-espresso-core", "androidx-test-espresso-contrib", "androidx-test-junit", "androidx-test-rules", "androidx-test-runner", "truth"]
+app-android-test = ["androidx-test-espresso-core", "androidx-test-espresso-contrib", "androidx-test-espresso-intents", "androidx-test-junit", "androidx-test-rules", "androidx-test-runner", "truth"]
 core-test = ["junit5-jupiter", "truth", "kotlinx-coroutines-test", "okhttp-mockwebserver", "turbine"]
 
 [plugins]

@@ -27,7 +27,7 @@ class BackupStorageTest {
     @Test
     @Config(qualifiers = "television")
     fun `without a documents UI the TV storage is chosen, whatever the API level says`() {
-        assertThat(BackupStorage.hasDocumentsUi(context.packageManager)).isFalse()
+        assertThat(BackupStorage.hasDocumentsUi(context)).isFalse()
         assertThat(BackupStorage.choose(context)).isInstanceOf(TvBackupStorage::class.java)
     }
 
@@ -35,22 +35,75 @@ class BackupStorageTest {
     @Test
     fun `with a documents UI the SAF storage is chosen`() {
         plantDocumentsUi()
-        assertThat(BackupStorage.hasDocumentsUi(context.packageManager)).isTrue()
+        assertThat(BackupStorage.hasDocumentsUi(context)).isTrue()
         assertThat(BackupStorage.choose(context)).isInstanceOf(SafBackupStorage::class.java)
+    }
+
+    /** Android TV's frameworkpackagestubs answers CREATE_DOCUMENT with a toast; it must not pass for a picker. */
+    @Test
+    @Config(qualifiers = "television")
+    fun `on a television the framework stubs package does not count as a documents UI`() {
+        plantDocumentsUi(
+            BackupStorage.TV_STUBS_PACKAGE,
+            "com.android.tv.frameworkpackagestubs.Stubs${'$'}DocumentsStub",
+        )
+        assertThat(BackupStorage.hasDocumentsUi(context)).isFalse()
+        assertThat(BackupStorage.choose(context)).isInstanceOf(TvBackupStorage::class.java)
+        // A real picker next to the stub does count.
+        plantDocumentsUi()
+        assertThat(BackupStorage.hasDocumentsUi(context)).isTrue()
+    }
+
+    /** The form factor is only a hint: on a phone every handler counts, whatever its package is called. */
+    @Test
+    fun `on a phone any handler counts as a documents UI`() {
+        plantDocumentsUi(
+            BackupStorage.TV_STUBS_PACKAGE,
+            "com.android.tv.frameworkpackagestubs.Stubs${'$'}DocumentsStub",
+        )
+        assertThat(BackupStorage.hasDocumentsUi(context)).isTrue()
     }
 
     @Test
     @Config(sdk = [28])
-    fun `before API 29 the TV storage is the app's external directory`() {
+    fun `before API 29 the TV storage writes and reads the app's external directory`() {
         val storage = BackupStorage.choose(context) as TvBackupStorage
-        assertThat(storage.location).isEqualTo(context.getExternalFilesDir(null)!!.absolutePath + "/")
+        val appDir = context.getExternalFilesDir(null)!!.absolutePath + "/"
+        assertThat(storage.location).isEqualTo(appDir)
+        assertThat(storage.dropLocation).isEqualTo(appDir)
+    }
+
+    /** Downloads is where a backup is written (adb pull); the app directory is where a pushed file is read from. */
+    @Test
+    @Config(sdk = [34])
+    fun `from API 29 the TV storage writes to Downloads and also lists the app's external directory`() {
+        val storage = BackupStorage.choose(context) as TvBackupStorage
+        assertThat(storage.location).endsWith("/Download/")
+        assertThat(storage.dropLocation).isEqualTo(context.getExternalFilesDir(null)!!.absolutePath + "/")
     }
 
     @Test
-    @Config(sdk = [34])
-    fun `from API 29 the TV storage is the Downloads collection`() {
-        val storage = BackupStorage.choose(context) as TvBackupStorage
-        assertThat(storage.location).endsWith("/Download/")
+    fun `the TV restore list merges both places and reads each entry from the place that listed it`() {
+        val downloads = FakeBackupFiles("/sdcard/Download/")
+        val appDir = FakeBackupFiles("/sdcard/Android/data/hv/files/")
+        val storage = TvBackupStorage(written = downloads, dropped = appDir)
+        downloads.put("HikViewer-backup-20261108-1000.json", "mine", Instant.parse("2026-11-08T10:00:00Z"))
+        appDir.put("HikViewer-backup-test.json", "pushed", Instant.parse("2026-11-08T11:00:00Z"))
+        appDir.put("readme.txt", "x", Instant.parse("2026-11-09T11:00:00Z"))
+        downloads.now = Instant.parse("2026-11-08T12:00:00Z")
+        storage.write("HikViewer-backup-20261108-1200.json", "newest")
+        assertThat(downloads.contents).containsKey("HikViewer-backup-20261108-1200.json")
+        assertThat(appDir.contents).doesNotContainKey("HikViewer-backup-20261108-1200.json")
+        assertThat(storage.location).isEqualTo("/sdcard/Download/")
+        assertThat(storage.dropLocation).isEqualTo("/sdcard/Android/data/hv/files/")
+        val listed = storage.list()
+        assertThat(listed.map { it.name })
+            .containsExactly(
+                "HikViewer-backup-20261108-1200.json",
+                "HikViewer-backup-test.json",
+                "HikViewer-backup-20261108-1000.json",
+            ).inOrder()
+        assertThat(listed.map { storage.read(it) }).containsExactly("newest", "pushed", "mine").inOrder()
     }
 
     @Test
@@ -112,13 +165,16 @@ class BackupStorageTest {
         assertThat(storage.displayName(uri)).isEqualTo("42")
     }
 
-    private fun plantDocumentsUi() {
+    private fun plantDocumentsUi(
+        handlerPackage: String = "com.android.documentsui",
+        handlerClass: String = "com.android.documentsui.picker.PickActivity",
+    ) {
         val info =
             ResolveInfo().apply {
                 activityInfo =
                     ActivityInfo().apply {
-                        packageName = "com.android.documentsui"
-                        name = "com.android.documentsui.picker.PickActivity"
+                        packageName = handlerPackage
+                        name = handlerClass
                     }
             }
         shadowOf(context.packageManager).addResolveInfoForIntent(BackupStorage.documentsUiIntent(), info)

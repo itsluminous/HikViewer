@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.R
+import com.itsluminous.hikviewer.player.TileLiveness
 import com.itsluminous.hikviewer.player.TileState
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,6 +164,27 @@ class CameraTileViewTest {
         assertThat(dot.backgroundTintList!!.defaultColor).isEqualTo(context.getColor(R.color.live_dot_flowing))
         tile.framesFlowing = false
         assertThat(dot.backgroundTintList!!.defaultColor).isEqualTo(context.getColor(R.color.live_dot_stalled))
+    }
+
+    @Test
+    fun `a keyframe tile's dot is a lighter green than a live tile's`() {
+        val dot = tile.findViewById<View>(R.id.live_dot)
+        tile.liveness = TileLiveness.LIVE
+        val live = dot.backgroundTintList!!.defaultColor
+        tile.liveness = TileLiveness.AT_ONE_FPS
+        val oneFps = dot.backgroundTintList!!.defaultColor
+        tile.liveness = TileLiveness.NOT_LIVE
+        val stalled = dot.backgroundTintList!!.defaultColor
+        assertThat(live).isEqualTo(context.getColor(R.color.live_dot_flowing))
+        assertThat(oneFps).isEqualTo(context.getColor(R.color.live_dot_one_fps))
+        assertThat(stalled).isEqualTo(context.getColor(R.color.live_dot_stalled))
+        // Lighter: every channel of the 1 fps green is at least as bright as the live green's.
+        assertThat(android.graphics.Color.red(oneFps)).isAtLeast(android.graphics.Color.red(live))
+        assertThat(android.graphics.Color.green(oneFps)).isAtLeast(android.graphics.Color.green(live))
+        assertThat(android.graphics.Color.blue(oneFps)).isAtLeast(android.graphics.Color.blue(live))
+        // Both greens count as flowing for the status text's purposes.
+        tile.liveness = TileLiveness.AT_ONE_FPS
+        assertThat(tile.framesFlowing).isTrue()
     }
 
     @Test

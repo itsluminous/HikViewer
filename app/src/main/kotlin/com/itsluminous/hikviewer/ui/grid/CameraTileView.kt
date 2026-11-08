@@ -19,6 +19,7 @@ import androidx.core.view.isVisible
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
 import com.itsluminous.hikviewer.player.StillSink
+import com.itsluminous.hikviewer.player.TileLiveness
 import com.itsluminous.hikviewer.player.TilePlayer
 import com.itsluminous.hikviewer.player.TileState
 import kotlinx.coroutines.CoroutineScope
@@ -177,12 +178,22 @@ class CameraTileView
                 binding.fps.visibility = if (value) VISIBLE else GONE
             }
 
-        /** Green dot while true (pictures within the last ~2 s), red while false. */
-        var framesFlowing: Boolean = false
+        /**
+         * What the dot says: green while pictures flow at the stream's rate, a lighter green while
+         * the tile shows one still a second, red while nothing recent arrived.
+         */
+        var liveness: TileLiveness = TileLiveness.NOT_LIVE
             set(value) {
                 field = value
-                val color = if (value) R.color.live_dot_flowing else R.color.live_dot_stalled
-                binding.liveDot.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, color))
+                binding.liveDot.backgroundTintList =
+                    ColorStateList.valueOf(ContextCompat.getColor(context, dotColor(value)))
+            }
+
+        /** True while the dot is one of the two greens (pictures within the last ~2 s); setting it keeps the full green. */
+        var framesFlowing: Boolean
+            get() = liveness.isFlowing
+            set(value) {
+                liveness = if (value) TileLiveness.LIVE else TileLiveness.NOT_LIVE
             }
 
         /** Rendered frames per second for the counter; whole numbers read better from a couch. */
@@ -217,7 +228,7 @@ class CameraTileView
                     }
                 }
                 launch { player.frameRate.collect { frameRate = it } }
-                launch { player.framesFlowing.collect { framesFlowing = it } }
+                launch { player.liveness.collect { liveness = it } }
             }
         }
 
@@ -308,6 +319,13 @@ class CameraTileView
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
             binding.focusFrame.focused = gainFocus
             updateRetryScale()
+        }
+
+        /** The dot's colour resource for [liveness]. */
+        private fun dotColor(liveness: TileLiveness): Int = when (liveness) {
+            TileLiveness.LIVE -> R.color.live_dot_flowing
+            TileLiveness.AT_ONE_FPS -> R.color.live_dot_one_fps
+            TileLiveness.NOT_LIVE -> R.color.live_dot_stalled
         }
 
         /** Sizes. */

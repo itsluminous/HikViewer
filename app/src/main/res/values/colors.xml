@@ -11,6 +11,7 @@
     <color name="tile_dim">#B3101418</color>
     <color name="error_text">#FFEF5350</color>
     <color name="live_dot_flowing">#FF43A047</color>
+    <color name="live_dot_one_fps">#FFA5D6A7</color>
     <color name="live_dot_stalled">#FFE53935</color>
     <color name="time_bar_track">#FF2A323B</color>
     <color name="time_bar_recorded">#FF2E7D32</color>

@@ -294,6 +294,7 @@ class GridNavigationTest {
             if (focused) return
             waitFor(STATUS_POLL_MILLIS)
         }
+        throw AssertionError("tile $position never took focus back within $STATUS_TIMEOUT_MILLIS ms")
     }
 
     @Test

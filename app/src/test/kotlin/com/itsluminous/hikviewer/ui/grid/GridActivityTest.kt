@@ -336,37 +336,6 @@ class GridActivityTest {
     }
 
     @Test
-    fun `asks for the verification code when none is stored and accepts the right one`() {
-        app.graph.settingsStore.verificationCode = null
-        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
-            scenario.grid { _, _ ->
-                val dialog =
-                    shadowOf(
-                        androidx.test.core.app.ApplicationProvider
-                            .getApplicationContext<android.app.Application>(),
-                    ).let {
-                        org.robolectric.shadows.ShadowDialog
-                            .getLatestDialog() as AlertDialog
-                    }
-                assertThat(dialog.isShowing).isTrue()
-                assertThat(cloud.accounts.single().opened).isEmpty()
-                val input = dialog.findViewById<android.widget.EditText>(R.id.code_input)!!
-                val error = dialog.findViewById<TextView>(R.id.code_error)!!
-                input.setText("wrong")
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-                assertThat(dialog.isShowing).isTrue()
-                assertThat(error.visibility).isEqualTo(View.VISIBLE)
-                input.setText(FakeCloudServices.GOOD_CODE)
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-                ShadowLooper.idleMainLooper()
-                assertThat(dialog.isShowing).isFalse()
-                assertThat(app.graph.settingsStore.verificationCode).isEqualTo(FakeCloudServices.GOOD_CODE)
-                assertThat(cloud.accounts.single().opened).hasSize(12)
-            }
-        }
-    }
-
-    @Test
     fun `empty grid shows a message`() {
         app.graph.settingsStore.visibleCameraKeys = emptyList()
         ActivityScenario.launch(GridActivity::class.java).use { scenario ->

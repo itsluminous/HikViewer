@@ -438,7 +438,7 @@ class TilePlayer(
             } else {
                 "in=${d.framesIn} out=${d.framesOut} queued=${d.queuedFrames} " +
                     "outAge=${d.outputAgeMillis(nowMillis)} fps=${Math.round(d.framesPerSecond(nowMillis))} " +
-                    d.describeGate() + d.describePacer()
+                    d.describeGate() + d.describeInput() + d.describePacer()
             }
         val stillAge = if (lastStillAtMillis == 0L) -1 else nowMillis - lastStillAtMillis
         val stills = if (mode.isLive) "" else " stills=$stillsDelivered stillAge=$stillAge"
@@ -626,7 +626,9 @@ class TilePlayer(
         unit: AccessUnit,
     ) {
         plan.stale?.release() // synchronously: the hardware slot must be free before the next start
-        val (d, software) = createDecoder(plan.config, plan.target, plan.software, plan.paced) ?: return
+        val request =
+            DecoderRequest(plan.config, plan.target, plan.software, plan.paced, TileDecoder.inputSizeFor(unit.size))
+        val (d, software) = createDecoder(request) ?: return
         val installed =
             synchronized(lock) {
                 val wanted = generation == plan.generation && decoder == null && mode.isLive
@@ -643,13 +645,22 @@ class TilePlayer(
         if (installed) d.feed(unit) else releaseLater(d)
     }
 
+    /** What a decoder is built for: the parameter sets, the surface, the kind, and the input buffer size. */
+    private class DecoderRequest(
+        val config: CodecConfig,
+        val target: Surface,
+        val software: Boolean,
+        val paced: Boolean,
+        val maxInputSize: Int,
+    ) {
+        fun withSoftware(software: Boolean) = DecoderRequest(config, target, software, paced, maxInputSize)
+    }
+
     /** A started decoder and whether it is a software one, or null when the tile is now in error. */
-    private fun createDecoder(
-        config: CodecConfig,
-        target: Surface,
-        software: Boolean,
-        paced: Boolean,
-    ): Pair<TileDecoder, Boolean>? {
+    private fun createDecoder(request: DecoderRequest): Pair<TileDecoder, Boolean>? {
+        val config = request.config
+        val software = request.software
+        val paced = request.paced
         val name = pickCodec(config.codec.mimeType, software)
         if (name == null) {
             failDecoder(
@@ -658,7 +669,15 @@ class TilePlayer(
             )
             return null
         }
-        val d = decoderFactory.create(name, config, target, this, paced = paced)
+        val d =
+            decoderFactory.create(
+                name,
+                config,
+                request.target,
+                this,
+                paced = paced,
+                maxInputSize = request.maxInputSize,
+            )
         d.renderSlotNanos = if (paced) RenderPacer.DEFAULT_SLOT_NANOS else 0L
         return try {
             d.start()
@@ -668,14 +687,14 @@ class TilePlayer(
             d to software
         } catch (e: MediaCodec.CodecException) {
             d.release()
-            afterStartFailure(name, e, config, target, software, paced)
+            afterStartFailure(name, e, request)
         } catch (e: IOException) {
             d.release()
-            afterStartFailure(name, e, config, target, software, paced)
+            afterStartFailure(name, e, request)
         } catch (e: IllegalStateException) {
             // The codec answered configure() or start() from a state it should not be in.
             d.release()
-            afterStartFailure(name, e, config, target, software, paced)
+            afterStartFailure(name, e, request)
         } catch (e: IllegalArgumentException) {
             // `configure` throws this when the surface is unusable: gone, or still held by another
             // codec. On the MiTV the codec released a moment ago can still hold the surface's
@@ -705,10 +724,7 @@ class TilePlayer(
     private fun afterStartFailure(
         name: String,
         failed: Throwable,
-        config: CodecConfig,
-        target: Surface,
-        software: Boolean,
-        paced: Boolean,
+        request: DecoderRequest,
     ): Pair<TileDecoder, Boolean>? {
         val detail = DecoderPolicy.describeFailure(name, failed)
         val hardwareTried =
@@ -716,15 +732,15 @@ class TilePlayer(
                 lastFailure = detail
                 hardwareRetryAt > 0L
             }
-        return when (DecoderPolicy.afterDecoderFailure(software, hardwareTried)) {
+        return when (DecoderPolicy.afterDecoderFailure(request.software, hardwareTried)) {
             DecoderPolicy.FailureAction.RETRY_WITH_SOFTWARE -> {
                 val wait = synchronized(lock) { deferHardwareLocked() }
                 Log.w(TAG, "$tag: hardware decoder failed, software for ${wait / MILLIS_PER_SECOND} s: $detail")
-                createDecoder(config, target, software = true, paced = paced)
+                createDecoder(request.withSoftware(true))
             }
             DecoderPolicy.FailureAction.RETRY_WITH_HARDWARE -> {
                 Log.w(TAG, "$tag: software decoder failed, trying hardware once: $detail")
-                createDecoder(config, target, software = false, paced = paced)
+                createDecoder(request.withSoftware(false))
             }
             DecoderPolicy.FailureAction.TILE_ERROR -> {
                 Log.w(TAG, "$tag: software decoder failed: $detail")

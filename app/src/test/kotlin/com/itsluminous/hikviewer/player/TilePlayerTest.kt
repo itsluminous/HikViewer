@@ -94,6 +94,20 @@ class TilePlayerTest {
         p.stop()
     }
 
+    /** Round 19: the decoder's input buffers are sized from the keyframe it is built on. */
+    @Test
+    fun `the decoder is asked for input buffers sized from its first keyframe`() = runTest(dispatcher) {
+        val p = player()
+        p.attachSurface(surface)
+        p.mode = TileMode.SW_LIVE
+        run(p)
+        val d = decoders.created.single()
+        val keyframe = SyntheticStream.pictures.first { it.isKeyframe }
+        assertThat(d.maxInputSizeRequested).isEqualTo(TileDecoder.inputSizeFor(keyframe.size))
+        assertThat(d.maxInputSizeRequested).isAtLeast(TileDecoder.DEFAULT_MAX_INPUT_SIZE)
+        p.stop()
+    }
+
     @Test
     fun `live mode creates a decoder at the first keyframe and feeds every picture`() = runTest(dispatcher) {
         val p = player()

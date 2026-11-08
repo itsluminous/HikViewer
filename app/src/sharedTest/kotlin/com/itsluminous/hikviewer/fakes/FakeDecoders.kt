@@ -25,6 +25,8 @@ class RecordingDecoder(
     private val failOnStart: Throwable? = null,
     /** Whether the owner asked for a jitter buffer (software tiles do, the hardware hero does not). */
     val pacedRequested: Boolean = false,
+    /** The `KEY_MAX_INPUT_SIZE` the owner asked for. */
+    val maxInputSizeRequested: Int = DEFAULT_MAX_INPUT_SIZE,
 ) : TileDecoder(codecName, config, surface, listener) {
     /** Every access unit fed. */
     val fed = CopyOnWriteArrayList<AccessUnit>()
@@ -118,9 +120,9 @@ class RecordingDecoderFactory {
 
     /** The factory for [TileDecoder]'s owners. */
     val factory: DecoderFactory =
-        DecoderFactory { name, config, surface, listener, paced ->
+        DecoderFactory { name, config, surface, listener, paced, maxInputSize ->
             val failure = startFailures.firstOrNull { it.first == name }?.also(startFailures::remove)?.second
-            RecordingDecoder(name, config, surface, listener, failure, paced).also(created::add)
+            RecordingDecoder(name, config, surface, listener, failure, paced, maxInputSize).also(created::add)
         }
 
     /** `pickCodec` stand-in: `sw`/`hw` names so tests can tell which path was taken. */

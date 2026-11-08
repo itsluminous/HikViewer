@@ -34,4 +34,34 @@ class TileDecoderFormatTest {
         assertThat(unsupported.containsKey(MediaFormat.KEY_LOW_LATENCY)).isFalse()
         assertThat(unsupported.getByteBuffer("csd-1")).isNotNull()
     }
+
+    /**
+     * Round 19: the input buffers are sized from the stream, not from the 960x480 hint. A 1080p
+     * HEVC keyframe of the main stream is 100 KB and more; a codec that sized its buffers from the
+     * hint would make every such picture oversized.
+     */
+    @Test
+    fun `the input format asks for input buffers of the given size`() {
+        val format = TileDecoder.inputFormat(config, lowLatency = false, maxInputSize = 3 shl 20)
+        assertThat(format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)).isEqualTo(3 shl 20)
+
+        val default = TileDecoder.inputFormat(config, lowLatency = false)
+        assertThat(default.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE)).isEqualTo(TileDecoder.DEFAULT_MAX_INPUT_SIZE)
+    }
+
+    @Test
+    fun `the input size is twice the keyframe, floored at 1 MiB and capped at 8 MiB`() {
+        assertThat(TileDecoder.inputSizeFor(105_953)).isEqualTo(1 shl 20) // the 2.Jaimaal 1080p HEVC IDR
+        assertThat(TileDecoder.inputSizeFor(14_000)).isEqualTo(1 shl 20) // a sub-stream keyframe
+        assertThat(TileDecoder.inputSizeFor(700_000)).isEqualTo(1_400_000)
+        assertThat(TileDecoder.inputSizeFor(6 shl 20)).isEqualTo(8 shl 20)
+        assertThat(TileDecoder.inputSizeFor(Int.MAX_VALUE)).isEqualTo(8 shl 20)
+    }
+
+    @Test
+    fun `a picture is queued only when it fits the input buffer whole, never cut`() {
+        assertThat(TileDecoder.fits(size = 1000, capacity = 1000)).isTrue()
+        assertThat(TileDecoder.fits(size = 1001, capacity = 1000)).isFalse()
+        assertThat(TileDecoder.fits(size = 0, capacity = 1000)).isTrue()
+    }
 }

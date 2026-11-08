@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.Surface
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.CodecConfig
@@ -49,6 +50,8 @@ open class TileDecoder(
     private val listener: Listener,
     /** Width/height hint; the decoder reads the real size from the SPS. */
     private val sizeHint: Pair<Int, Int> = DEFAULT_SIZE_HINT,
+    /** `KEY_MAX_INPUT_SIZE`: how big an access unit the input buffers must hold; see [inputSizeFor]. */
+    private val maxInputSize: Int = DEFAULT_MAX_INPUT_SIZE,
     /** The jitter buffer, or null to feed every picture the moment it arrives. */
     private val pacer: FramePacer? = null,
     /**
@@ -145,10 +148,19 @@ open class TileDecoder(
     private val recent = RecentPictures(RECENT)
     private val outputGaps = IntervalStats()
     private var inputCapacity = -1
-    private var truncated = 0
+    private var oversized = 0
 
-    /** Diagnostic: the last pictures fed (pts/size, `K` for a keyframe) and the last output timestamps. */
-    fun recentHistory(): String = synchronized(lock) { "cap=$inputCapacity truncated=$truncated ${recent.describe()}" }
+    /** Pictures dropped because they were bigger than the codec's input buffers ([inputCapacity]). */
+    val oversizedPictures: Int get() = synchronized(lock) { oversized }
+
+    /**
+     * Diagnostic: the codec's input buffer size and the pictures too big for it, then the last
+     * pictures fed (pts/size, `K` for a keyframe) and the last output timestamps.
+     */
+    fun recentHistory(): String = synchronized(lock) { "cap=$inputCapacity oversized=$oversized ${recent.describe()}" }
+
+    /** Diagnostic: the codec's input buffer size and the pictures dropped for not fitting it. */
+    fun describeInput(): String = synchronized(lock) { " cap=$inputCapacity oversized=$oversized" }
 
     /** Diagnostic: the jitter buffer's fill and its re-base counters, or an empty string for an unpaced decoder. */
     fun describePacer(): String = synchronized(lock) {
@@ -174,7 +186,8 @@ open class TileDecoder(
 
     /** Configures and starts the codec. Throws `MediaCodec.CodecException`/`IOException` on failure. */
     open fun start() {
-        val format = inputFormat(config, sizeHint, lowLatency = supportsLowLatency(codecName))
+        val format =
+            inputFormat(config, sizeHint, lowLatency = supportsLowLatency(codecName), maxInputSize = maxInputSize)
         val c = MediaCodec.createByCodecName(codecName)
         // Owned from this point on: a configure() that fails (error 1100 on the MiTV when both
         // hardware instances are busy) must still be followed by release(), or the codec stays
@@ -309,26 +322,40 @@ open class TileDecoder(
                 // lost and every P-frame behind it is decoded against nothing.
                 if (csdToSend > 0) {
                     val csd = config.csd[config.csd.size - csdToSend]
-                    if (queueLocked(c, index, csd, 0L, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)) csdToSend--
+                    if (queueLocked(c, index, csd, 0L, MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == Queued.YES) csdToSend--
                     return@synchronized // the loop comes back for the next buffer
                 }
                 if (pending.isEmpty()) return
                 val unit = pending.pollFirst() ?: return
                 val pts = unit.presentationTimeUs ?: 0L
-                if (!queueLocked(c, index, unit.data, pts, 0)) {
-                    pending.addFirst(unit)
-                    return@synchronized
+                when (queueLocked(c, index, unit.data, pts, 0)) {
+                    Queued.REFUSED -> {
+                        pending.addFirst(unit)
+                        return@synchronized
+                    }
+                    Queued.OVERSIZED -> {
+                        dropOversizedLocked(unit, index)
+                        return@synchronized
+                    }
+                    Queued.YES -> {
+                        framesQueued++
+                        stall.onInput(nowMillis)
+                        recent.recordIn(pts, unit.data.size, unit.isKeyframe)
+                    }
                 }
-                framesQueued++
-                stall.onInput(nowMillis)
-                recent.recordIn(pts, unit.data.size, unit.isKeyframe)
             }
         }
     }
 
+    private enum class Queued { YES, REFUSED, OVERSIZED }
+
     /**
-     * Copies [data] into input buffer [index] and queues it; under [lock]. False when the codec
-     * refused the index (void after a flush) or the buffer, in which case nothing was consumed.
+     * Copies [data] into input buffer [index] and queues it; under [lock]. [Queued.REFUSED] when the
+     * codec refused the index (void after a flush) or the buffer, in which case nothing was
+     * consumed and the index is gone; [Queued.OVERSIZED] when [data] does not fit the buffer, in
+     * which case nothing was queued and the index is still valid. A picture is never cut to fit:
+     * the codec would decode the slices that arrived and conceal the rest (a correct top, a
+     * smeared bottom), which is worse than a dropped picture.
      */
     private fun queueLocked(
         c: MediaCodec,
@@ -336,14 +363,42 @@ open class TileDecoder(
         data: ByteArray,
         pts: Long,
         flags: Int,
-    ): Boolean {
-        val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return false
+    ): Queued {
+        val buffer = runCatching { c.getInputBuffer(index) }.getOrNull() ?: return Queued.REFUSED
         buffer.clear()
         if (inputCapacity < 0) inputCapacity = buffer.remaining()
-        val size = minOf(data.size, buffer.remaining())
-        if (size < data.size) truncated++
-        buffer.put(data, 0, size)
-        return runCatching { c.queueInputBuffer(index, 0, size, pts, flags) }.isSuccess
+        if (!fits(data.size, buffer.remaining())) return Queued.OVERSIZED
+        buffer.put(data, 0, data.size)
+        return if (runCatching { c.queueInputBuffer(index, 0, data.size, pts, flags) }.isSuccess) {
+            Queued.YES
+        } else {
+            Queued.REFUSED
+        }
+    }
+
+    /**
+     * [unit] is bigger than the codec's input buffers: it is dropped with everything queued behind
+     * it, and the gate waits for the next keyframe, because the pictures that follow predict from
+     * the one that was not decoded. The input buffer [index] goes back to the free list (it was
+     * not used). Logged on the first drop and every [OVERSIZED_LOG_EVERY] after, so a recorder
+     * whose pictures outgrow [maxInputSize] shows up in logcat without flooding it.
+     */
+    private fun dropOversizedLocked(
+        unit: AccessUnit,
+        index: Int,
+    ) {
+        oversized++
+        freeInputs.addFirst(index)
+        pending.clear()
+        pacer?.clear()
+        gate.await()
+        if (oversized == 1 || oversized % OVERSIZED_LOG_EVERY == 0) {
+            Log.w(
+                TAG,
+                "$codecName: picture of ${unit.data.size} bytes exceeds the input buffer ($inputCapacity), " +
+                    "dropped $oversized",
+            )
+        }
     }
 
     private val callback =
@@ -426,15 +481,43 @@ open class TileDecoder(
             config: CodecConfig,
             sizeHint: Pair<Int, Int> = DEFAULT_SIZE_HINT,
             lowLatency: Boolean,
+            maxInputSize: Int = DEFAULT_MAX_INPUT_SIZE,
         ): MediaFormat {
             val format = MediaFormat.createVideoFormat(config.codec.mimeType, sizeHint.first, sizeHint.second)
             config.csd.forEachIndexed { i, bytes -> format.setByteBuffer("csd-$i", ByteBuffer.wrap(bytes)) }
+            format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxInputSize)
             if (lowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
             }
             return format
         }
 
+        /**
+         * `KEY_MAX_INPUT_SIZE` for a decoder built on a keyframe of [keyframeBytes]: twice that
+         * keyframe (motion and scene changes make later ones bigger), at least
+         * [DEFAULT_MAX_INPUT_SIZE] and at most [MAX_INPUT_SIZE]. Without the key a codec sizes its
+         * input buffers from the format's width and height, which is only a hint here; a 1080p
+         * HEVC keyframe of the main stream is 100 KB and more, so the buffers must be sized from
+         * what the stream really sends, and [fits] drops rather than cuts a picture that still
+         * does not fit.
+         */
+        fun inputSizeFor(keyframeBytes: Int): Int =
+            (2L * keyframeBytes).coerceIn(DEFAULT_MAX_INPUT_SIZE.toLong(), MAX_INPUT_SIZE.toLong()).toInt()
+
+        /** True when a picture of [size] bytes can be queued into an input buffer of [capacity] bytes. */
+        fun fits(
+            size: Int,
+            capacity: Int,
+        ): Boolean = size <= capacity
+
+        /** The least `KEY_MAX_INPUT_SIZE` asked for: enough for any sub-stream picture and a 1080p keyframe. */
+        const val DEFAULT_MAX_INPUT_SIZE: Int = 1 shl 20
+
+        /** The most `KEY_MAX_INPUT_SIZE` asked for, so a corrupt size cannot make the codec allocate wildly. */
+        const val MAX_INPUT_SIZE: Int = 8 shl 20
+
+        private const val OVERSIZED_LOG_EVERY = 100
+        private const val TAG = "TileDecoder"
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val RECENT = 24
         private val DEFAULT_SIZE_HINT = 960 to 480

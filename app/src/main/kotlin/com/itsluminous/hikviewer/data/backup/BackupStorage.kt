@@ -70,25 +70,38 @@ sealed interface BackupStorage {
 class SafBackupStorage(
     private val resolver: ContentResolver,
 ) : BackupStorage {
-    /** Writes [text] as the whole content of [uri] (an existing file is truncated, not appended to). */
+    /**
+     * Writes [text] as the whole content of [uri] (an existing file is truncated, not appended to).
+     * Throws [IOException] when the provider cannot open it or refuses the Uri.
+     */
     fun write(
         uri: Uri,
         text: String,
-    ) {
+    ) = BackupText.io {
         val stream = resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot open $uri for writing")
-        stream.use { it.write(text.toByteArray()) }
+        stream.use { it.write(BackupText.bytes(text)) }
     }
 
-    /** Reads the whole content of [uri] as UTF-8. */
-    fun read(uri: Uri): String {
+    /**
+     * Reads the whole content of [uri] as UTF-8, at most [BackupText.MAX_BYTES]: the picker lets
+     * the user choose any file. Throws [IOException] past that, or when the provider refuses.
+     */
+    fun read(uri: Uri): String = BackupText.io {
         val stream = resolver.openInputStream(uri) ?: throw IOException("Cannot open $uri for reading")
-        return stream.use { String(it.readBytes()) }
+        stream.use(BackupText::read)
     }
 
-    /** The file name the documents provider shows for [uri], or the last path segment when it has none. */
+    /**
+     * The file name the documents provider shows for [uri], or the last path segment when it has
+     * none or will not say. Never throws: it only labels a dialog.
+     */
     fun displayName(uri: Uri): String {
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getString(0)
+        try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getString(0)
+            }
+        } catch (_: SecurityException) {
+            // A provider that refuses the query still gets the Uri's own name below.
         }
         return uri.lastPathSegment ?: uri.toString()
     }
@@ -140,23 +153,14 @@ class TvBackupStorage(
         .filter { BackupCodec.isBackupFileName(it.name) }
         .sortedWith(compareByDescending<BackupEntry> { it.modified ?: Instant.MIN }.thenByDescending { it.name })
 
-    /** Reads [entry] as UTF-8 from the place that listed it. */
-    fun read(entry: BackupEntry): String = (
-        sources.firstOrNull {
-            it.owns(
-                entry,
-            )
-        } ?: throw IOException("${entry.name} is not in a known place")
-    ).read(entry)
+    /** Reads [entry] as UTF-8 from the place that listed it; at most [BackupText.MAX_BYTES]. */
+    fun read(entry: BackupEntry): String {
+        val source =
+            sources.firstOrNull { it.owns(entry) } ?: throw IOException("${entry.name} is not in a known place")
+        return source.read(entry)
+    }
 
-    private val sources: List<BackupFiles> get() =
-        if (dropped ===
-            written
-        ) {
-            listOf(written)
-        } else {
-            listOf(written, dropped)
-        }
+    private val sources: List<BackupFiles> = if (dropped === written) listOf(written) else listOf(written, dropped)
 
     /** Picks by API level. */
     companion object {
@@ -192,6 +196,6 @@ interface BackupFiles {
     /** True when [entry] came from this directory's [list]. */
     fun owns(entry: BackupEntry): Boolean
 
-    /** The content of [entry] as UTF-8. */
+    /** The content of [entry] as UTF-8; an [IOException] past [BackupText.MAX_BYTES] or when it cannot be opened. */
     fun read(entry: BackupEntry): String
 }

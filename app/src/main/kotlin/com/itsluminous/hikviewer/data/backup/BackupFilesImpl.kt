@@ -38,11 +38,26 @@ class DownloadsBackupFiles(
             }
         val uri =
             resolver.insert(collection, values) ?: throw IOException("MediaStore refused to create $name")
-        val stream = resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot open $uri for writing")
-        stream.use { it.write(text.toByteArray()) }
-        resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
-        return BackupEntry(name, Instant.now(), uri, "$downloadsDir/$name")
+        try {
+            BackupText.io {
+                val stream = resolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot open $uri for writing")
+                stream.use { it.write(BackupText.bytes(text)) }
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            }
+        } catch (e: IOException) {
+            // Without this the half-written row stays pending and invisible, holding the name.
+            resolver.delete(uri, null, null)
+            throw e
+        }
+        // MediaStore renames a file whose name is taken ("... (1).json"); tell the user that name.
+        val stored = displayNameOf(uri) ?: name
+        return BackupEntry(stored, Instant.now(), uri, "$downloadsDir/$stored")
     }
+
+    private fun displayNameOf(uri: Uri): String? =
+        resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
 
     override fun list(): List<BackupEntry> {
         val projection =
@@ -71,9 +86,9 @@ class DownloadsBackupFiles(
 
     override fun owns(entry: BackupEntry): Boolean = entry.uri.scheme == ContentResolver.SCHEME_CONTENT
 
-    override fun read(entry: BackupEntry): String {
+    override fun read(entry: BackupEntry): String = BackupText.io {
         val stream = resolver.openInputStream(entry.uri) ?: throw IOException("Cannot open ${entry.uri} for reading")
-        return stream.use { String(it.readBytes()) }
+        stream.use(BackupText::read)
     }
 
     private val collection: Uri get() = MediaStore.Downloads.EXTERNAL_CONTENT_URI
@@ -102,7 +117,7 @@ class AppDirBackupFiles(
     ): BackupEntry {
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("Cannot create ${dir.absolutePath}")
         val file = File(dir, name)
-        file.writeText(text)
+        file.writeBytes(BackupText.bytes(text))
         return entry(file)
     }
 
@@ -115,7 +130,11 @@ class AppDirBackupFiles(
     override fun owns(entry: BackupEntry): Boolean =
         entry.uri.scheme == ContentResolver.SCHEME_FILE && entry.uri.path?.startsWith(dir.absolutePath) == true
 
-    override fun read(entry: BackupEntry): String = File(entry.uri.path ?: entry.location).readText()
+    override fun read(entry: BackupEntry): String {
+        val file = File(entry.uri.path ?: entry.location)
+        if (file.length() > BackupText.MAX_BYTES) throw BackupText.tooLarge()
+        return file.inputStream().use(BackupText::read)
+    }
 
     private fun entry(file: File) =
         BackupEntry(file.name, Instant.ofEpochMilli(file.lastModified()), Uri.fromFile(file), file.absolutePath)

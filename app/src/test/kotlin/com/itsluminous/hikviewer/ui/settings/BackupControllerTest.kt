@@ -21,6 +21,7 @@ import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.backup.BackupCodec
 import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.data.backup.TvBackupStorage
+import com.itsluminous.hikviewer.fakes.EndlessInputStream
 import com.itsluminous.hikviewer.fakes.FakeBackupFiles
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
@@ -192,6 +193,53 @@ class BackupControllerTest {
                 assertThat(latestDialog().message()).startsWith("Nothing was changed.")
                 assertThat(app.graph.settingsStore.choices()).isEqualTo(before)
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isTrue()
+            }
+        }
+    }
+
+    /** The picker is asked for every MIME type, so the user can pick a video; the read stops at 1 MiB. */
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `on a phone a file past 1 MiB is refused without being read whole, and nothing changes`() {
+        usePhoneWithDocumentsUi()
+        val uri = Uri.parse("content://x/doc/huge.mp4")
+        val endless = EndlessInputStream(limit = 4 shl 20)
+        shadowOf(app.contentResolver).registerInputStreamSupplier(uri) { endless }
+        val before = app.graph.settingsStore.choices()
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.settled { a ->
+                a.findViewById<android.view.View>(R.id.restore).performClick()
+                latestDialog().ok()
+                val request = shadowOf(a).nextStartedActivityForResult!!.intent
+                shadowOf(a).receiveResult(request, Activity.RESULT_OK, Intent().setData(uri))
+                ShadowLooper.idleMainLooper()
+                assertThat(latestDialog().message()).isEqualTo(
+                    "Nothing was changed. The file is larger than 1 MiB, so it is not a HikViewer backup",
+                )
+                assertThat(endless.served).isAtMost((1 shl 20) + EndlessInputStream.CHUNK)
+                assertThat(endless.closed).isTrue()
+                assertThat(app.graph.settingsStore.choices()).isEqualTo(before)
+            }
+        }
+    }
+
+    /** A provider may refuse the Uri it handed out (grant gone); that is an error dialog, not a crash. */
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `on a phone a Uri the provider refuses is reported and nothing changes`() {
+        usePhoneWithDocumentsUi()
+        val uri = Uri.parse("content://x/doc/gone")
+        shadowOf(app.contentResolver).registerInputStreamSupplier(uri) { throw SecurityException("Permission Denial") }
+        val before = app.graph.settingsStore.choices()
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.settled { a ->
+                a.findViewById<android.view.View>(R.id.restore).performClick()
+                latestDialog().ok()
+                val request = shadowOf(a).nextStartedActivityForResult!!.intent
+                shadowOf(a).receiveResult(request, Activity.RESULT_OK, Intent().setData(uri))
+                ShadowLooper.idleMainLooper()
+                assertThat(latestDialog().message()).isEqualTo("Nothing was changed. Permission Denial")
+                assertThat(app.graph.settingsStore.choices()).isEqualTo(before)
             }
         }
     }

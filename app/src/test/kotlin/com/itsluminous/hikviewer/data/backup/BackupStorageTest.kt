@@ -1,16 +1,22 @@
 package com.itsluminous.hikviewer.data.backup
 
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.pm.ResolveInfo
 import android.net.Uri
+import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.itsluminous.hikviewer.fakes.EndlessInputStream
 import com.itsluminous.hikviewer.fakes.FakeBackupFiles
+import com.itsluminous.hikviewer.fakes.FakeMediaProvider
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
@@ -163,6 +169,90 @@ class BackupStorageTest {
         assertThat(out.toString()).isEqualTo("{\"out\":true}")
         assertThat(storage.read(uri)).isEqualTo("{\"in\":true}")
         assertThat(storage.displayName(uri)).isEqualTo("42")
+    }
+
+    @Test
+    fun `the SAF storage stops reading past 1 MiB and turns a refused Uri into an IOException`() {
+        val resolver = shadowOf(context.contentResolver)
+        val huge = Uri.parse("content://com.example.documents/document/video")
+        val endless = EndlessInputStream(limit = 4 shl 20)
+        resolver.registerInputStreamSupplier(huge) { endless }
+        val storage = SafBackupStorage(context.contentResolver)
+        val tooLarge = assertThrows(IOException::class.java) { storage.read(huge) }
+        assertThat(tooLarge.message).contains("larger than 1 MiB")
+        assertThat(endless.served).isAtMost(BackupText.MAX_BYTES + EndlessInputStream.CHUNK)
+        assertThat(endless.closed).isTrue()
+
+        val refused = Uri.parse("content://com.example.documents/document/refused")
+        resolver.registerInputStreamSupplier(refused) { throw SecurityException("no grant") }
+        resolver.registerOutputStreamSupplier(refused) { throw SecurityException("no grant") }
+        assertThat(assertThrows(IOException::class.java) { storage.read(refused) }.message).isEqualTo("no grant")
+        assertThat(assertThrows(IOException::class.java) { storage.write(refused, "{}") }.message).isEqualTo("no grant")
+        // The name is only a label, so a refused query falls back to the Uri's own.
+        assertThat(storage.displayName(refused)).isEqualTo("refused")
+    }
+
+    @Test
+    fun `the app directory refuses a file past 1 MiB before reading it`() {
+        val dir = createTempDirectory("hv-backup").toFile()
+        val files = AppDirBackupFiles(dir)
+        val big = dir.resolve("HikViewer-backup-20261108-1200.json")
+        big.writeBytes(ByteArray(BackupText.MAX_BYTES + 1))
+        val entry = files.list().single()
+        assertThat(assertThrows(IOException::class.java) { files.read(entry) }.message).contains("larger than 1 MiB")
+        val exact = dir.resolve("HikViewer-backup-20261108-1201.json")
+        exact.writeBytes(ByteArray(BackupText.MAX_BYTES) { 'a'.code.toByte() })
+        assertThat(files.read(files.list().first { it.name == exact.name }).length).isEqualTo(BackupText.MAX_BYTES)
+        dir.deleteRecursively()
+    }
+
+    /**
+     * The Downloads collection through a fake `media` provider: Robolectric has no MediaStore, but
+     * the shadow resolver routes insert, query, update and delete to a registered provider and the
+     * streams to registered ones, which is enough to see the protocol the real provider expects.
+     */
+    @Test
+    @Config(sdk = [34])
+    fun `the Downloads files insert pending, finish, read back the stored name, and drop the row of a failed write`() {
+        val provider =
+            Robolectric.buildContentProvider(FakeMediaProvider::class.java).create(MediaStore.AUTHORITY).get()
+        val resolver = shadowOf(context.contentResolver)
+        val out = ByteArrayOutputStream()
+        resolver.registerOutputStream(ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, 1), out)
+        val files = DownloadsBackupFiles(context.contentResolver)
+        // A file of that name is already there (adb left it, no date); MediaStore will rename ours.
+        provider.rows[10L] =
+            ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, "HikViewer-backup-20261108-1200.json") }
+
+        val entry = files.write("HikViewer-backup-20261108-1200.json", "{\"a\":1}")
+        assertThat(out.toString()).isEqualTo("{\"a\":1}")
+        val row = provider.rows.getValue(1L)
+        assertThat(row.getAsString(MediaStore.Downloads.RELATIVE_PATH)).isEqualTo("Download")
+        assertThat(row.getAsString(MediaStore.Downloads.MIME_TYPE)).isEqualTo("application/json")
+        assertThat(provider.pendingHistory).containsExactly(1, 0).inOrder()
+        // The provider renamed the file (the name was taken); the entry says what is on disk.
+        assertThat(entry.name).isEqualTo("HikViewer-backup-20261108-1200 (1).json")
+        assertThat(entry.location).endsWith("/Download/HikViewer-backup-20261108-1200 (1).json")
+        assertThat(files.location).endsWith("/Download/")
+
+        val second = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, 2)
+        resolver.registerOutputStreamSupplier(second) { throw SecurityException("volume gone") }
+        val failed = assertThrows(IOException::class.java) { files.write("HikViewer-backup-20261108-1201.json", "{}") }
+        assertThat(failed.message).isEqualTo("volume gone")
+        assertThat(provider.rows.keys).containsExactly(10L, 1L)
+
+        provider.rows[3L] = ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, "other.json") }
+        val listed = files.list()
+        assertThat(provider.lastSelection).isEqualTo("_display_name LIKE ?")
+        assertThat(provider.lastSelectionArgs).asList().containsExactly("HikViewer-backup-%.json")
+        assertThat(listed.map { it.name })
+            .containsExactly("HikViewer-backup-20261108-1200.json", "HikViewer-backup-20261108-1200 (1).json")
+        val ours = listed.first { it.uri == entry.uri }
+        assertThat(ours.modified).isEqualTo(Instant.ofEpochSecond(FakeMediaProvider.MODIFIED))
+        assertThat(listed.first { it.uri != entry.uri }.modified).isNull()
+        assertThat(files.owns(ours)).isTrue()
+        resolver.registerInputStream(ours.uri, ByteArrayInputStream("{\"a\":1}".toByteArray()))
+        assertThat(files.read(ours)).isEqualTo("{\"a\":1}")
     }
 
     private fun plantDocumentsUi(

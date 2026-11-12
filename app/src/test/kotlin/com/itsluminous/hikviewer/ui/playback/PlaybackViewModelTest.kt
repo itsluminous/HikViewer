@@ -9,6 +9,7 @@ import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.playback.RecordSegment
+import com.itsluminous.hikviewer.data.StoredRecorderClocks
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
@@ -26,7 +27,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackViewModelTest {
@@ -70,6 +73,7 @@ class PlaybackViewModelTest {
         camera,
         graph.account,
         graph.playbackFactory,
+        graph.recorderClocks,
         today,
         io = dispatcher,
         // The seek debounce and acceleration read this clock; the scheduler's time keeps them in step with delay().
@@ -518,5 +522,137 @@ class PlaybackViewModelTest {
         // -2x resumes as stepping: the first step's window and the next one's open at once.
         assertThat(account.playbackOpened).hasSize(opens + PlaybackStepper.PREFETCH_STEPS)
         assertThat(decoders.created.first().released).isTrue()
+    }
+
+    // --- Recorder time -------------------------------------------------------------------------
+
+    /** Indian time on the recorder, Pacific time on the device. */
+    private val ist = Duration.ofMinutes(13 * 60 + 30)
+
+    /** An engine that follows the recorder's today, learning from the fake's footage with the device at [deviceNow]. */
+    private fun followingToday(deviceNow: LocalDateTime): PlaybackViewModel {
+        val clocks = StoredRecorderClocks(graph.settingsStore) { deviceNow }
+        val vm =
+            PlaybackViewModel(
+                camera,
+                graph.account,
+                graph.playbackFactory,
+                clocks,
+                io = dispatcher,
+                clock = { dispatcher.scheduler.currentTime },
+            )
+        vm.player.attachSurface(android.view.Surface(android.graphics.SurfaceTexture(1)))
+        vm.onStart()
+        run()
+        return vm
+    }
+
+    private fun recorded(
+        day: LocalDate,
+        end: LocalDateTime,
+        start: LocalDateTime = day.atTime(6, 0),
+    ) = listOf(RecordSegment(start, end, RecordSegment.TYPE_TIMING))
+
+    @Test
+    fun `opens on the recorder's today near its newest footage when both clocks are on the same date`() {
+        val deviceNow = today.atTime(6, 43, 10) // 20:13:10 on the recorder
+        val newestEnd = deviceNow.plus(ist).minusMinutes(12) // the cloud index lags
+        cloud.recordings = { day -> if (day == today) recorded(day, newestEnd) else emptyList() }
+
+        val vm = followingToday(deviceNow)
+
+        assertThat(account.searched.map { it.second }).containsExactly(today)
+        assertThat(vm.state.value.day).isEqualTo(today)
+        assertThat(
+            account.playbackOpened
+                .single()
+                .second.begin,
+        ).isEqualTo(newestEnd.minus(PlaybackViewModel.INITIAL_LOOKBACK))
+        assertThat(vm.recorderClock.offset).isEqualTo(ist)
+        assertThat(vm.recorderClock.now()).isEqualTo(deviceNow.plus(ist))
+        assertThat(graph.settingsStore.recorderOffsetMinutes(camera.deviceSerial)).isEqualTo(810)
+    }
+
+    @Test
+    fun `moves to the next day when the device's date ran to midnight on the recorder`() {
+        val deviceNow = today.atTime(11, 0, 0) // 00:30 the next day on the recorder
+        val tomorrow = today.plusDays(1)
+        val newestEnd = deviceNow.plus(ist).minusMinutes(8)
+        cloud.recordings = { day ->
+            when (day) {
+                today -> recorded(day, tomorrow.atStartOfDay())
+                tomorrow -> recorded(day, newestEnd, start = tomorrow.atStartOfDay())
+                else -> emptyList()
+            }
+        }
+
+        val vm = followingToday(deviceNow)
+
+        assertThat(account.searched.map { it.second }).containsExactly(today, tomorrow).inOrder()
+        assertThat(vm.state.value.day).isEqualTo(tomorrow)
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PLAYING)
+        assertThat(
+            account.playbackOpened
+                .single()
+                .second.begin,
+        ).isEqualTo(newestEnd.minus(PlaybackViewModel.INITIAL_LOOKBACK))
+        assertThat(vm.recorderClock.offset).isEqualTo(ist)
+        // The date chip cannot go past the recorder's today.
+        vm.changeDay(+1)
+        run()
+        assertThat(account.searched).hasSize(2)
+    }
+
+    @Test
+    fun `falls back to the day before when the recorder has not reached the device's date yet`() {
+        val deviceNow = today.atTime(3, 0, 0) // a phone in New Zealand: 19:30 yesterday on the recorder
+        val nzst = Duration.ofMinutes(-(7 * 60 + 30))
+        val yesterday = today.minusDays(1)
+        val newestEnd = deviceNow.plus(nzst).minusMinutes(3)
+        cloud.recordings = { day -> if (day == yesterday) recorded(day, newestEnd) else emptyList() }
+
+        val vm = followingToday(deviceNow)
+
+        assertThat(account.searched.map { it.second }).containsExactly(today, yesterday).inOrder()
+        assertThat(vm.state.value.day).isEqualTo(yesterday)
+        assertThat(
+            account.playbackOpened
+                .single()
+                .second.begin,
+        ).isEqualTo(newestEnd.minus(PlaybackViewModel.INITIAL_LOOKBACK))
+        assertThat(vm.recorderClock.offset).isEqualTo(nzst)
+        assertThat(vm.recorderClock.today()).isEqualTo(yesterday)
+    }
+
+    @Test
+    fun `settles on an empty today after one look at the day before`() {
+        val deviceNow = today.atTime(9, 0, 0)
+        cloud.recordings = { emptyList() }
+
+        val vm = followingToday(deviceNow)
+
+        assertThat(account.searched.map { it.second }).containsExactly(today, today.minusDays(1), today).inOrder()
+        assertThat(vm.state.value.day).isEqualTo(today)
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.NO_RECORDINGS)
+        assertThat(vm.recorderClock.offset).isEqualTo(Duration.ZERO)
+    }
+
+    @Test
+    fun `a named start day is listed as it is, with no hops`() {
+        val clocks = StoredRecorderClocks(graph.settingsStore) { today.atTime(11, 0) }
+        val vm =
+            PlaybackViewModel(
+                camera,
+                graph.account,
+                graph.playbackFactory,
+                clocks,
+                today,
+                io = dispatcher,
+                clock = { 0L },
+            )
+        vm.onStart()
+        run()
+        assertThat(account.searched.map { it.second }).containsExactly(today)
+        assertThat(vm.state.value.day).isEqualTo(today)
     }
 }

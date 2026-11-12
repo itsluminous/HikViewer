@@ -28,6 +28,7 @@ import com.itsluminous.hikviewer.ui.common.SystemBarInsets
 import com.itsluminous.hikviewer.ui.fullscreen.FullscreenActivity
 import com.itsluminous.hikviewer.ui.playback.PlaybackTimeline
 import com.itsluminous.hikviewer.ui.playback.PlaybackUiState
+import com.itsluminous.hikviewer.ui.playback.RecorderTimeLabel
 import com.itsluminous.hikviewer.ui.playback.aboutTheDay
 import com.itsluminous.hikviewer.ui.playback.statusRes
 import kotlinx.coroutines.Job
@@ -35,7 +36,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 
 /**
  * The phone's single-camera screen. It follows the phone: upright, a 16:9 live picture on top with
@@ -109,6 +109,7 @@ class PhoneCameraActivity : AppCompatActivity() {
                 graph.playbackFactory,
                 portraitGrid = intent.getBooleanExtra(EXTRA_PORTRAIT_GRID, false),
                 startInPlayback = intent.getBooleanExtra(EXTRA_PLAYBACK, false),
+                clocks = graph.recorderClocks,
             ) { vm ->
                 graph.playbackFactory.create(
                     opener = { camera, quality, onStatus -> graph.account.openStream(camera, quality, onStatus) },
@@ -295,10 +296,15 @@ class PhoneCameraActivity : AppCompatActivity() {
         renderClock()
     }
 
-    /** In live mode the playhead is the clock; the recorded state's position takes over otherwise. */
+    /**
+     * In live mode the playhead is the clock, the recorder's: its now on the bar (which is in
+     * recorder time, like the clock burnt into the picture), and the label with the offset hint
+     * when the phone's clock differs. The recorded state's position takes over otherwise.
+     */
     private fun renderClock() {
         if (viewModel.mode.value != PhoneCameraMode.LIVE) return
-        val now = LocalDateTime.now()
+        val clock = viewModel.recorderClock()
+        val now = clock.now()
         val engineDay =
             viewModel.recorded.value
                 ?.state
@@ -306,7 +312,7 @@ class PhoneCameraActivity : AppCompatActivity() {
                 ?.day
         val onToday = engineDay == null || engineDay == now.toLocalDate()
         binding.transport.timeBar.positionFraction = if (onToday) PlaybackTimeline.fractionOfDay(now) else 0f
-        binding.transport.timeLabel.text = PlaybackTimeline.label(now)
+        binding.transport.timeLabel.text = RecorderTimeLabel.of(resources, now, clock)
     }
 
     private fun renderRecorded(state: PlaybackUiState) {
@@ -314,9 +320,13 @@ class PhoneCameraActivity : AppCompatActivity() {
         binding.transport.speedButton.text = state.speed.label
         binding.transport.timeBar.segments = state.segments
         val live = viewModel.mode.value == PhoneCameraMode.LIVE
-        if (!live) {
+        if (live) {
+            // The listing may just have taught the recorder's clock: the playhead and label move at once.
+            renderClock()
+        } else {
             binding.transport.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
-            binding.transport.timeLabel.text = PlaybackTimeline.label(state.position)
+            binding.transport.timeLabel.text =
+                RecorderTimeLabel.of(resources, state.position, viewModel.recorderClock())
         }
         // While live, only what concerns the day's listing is worth a line; the transport is the clock.
         val status =

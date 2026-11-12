@@ -11,6 +11,7 @@ import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
+import com.itsluminous.hikviewer.fakes.FixedRecorderClocks
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
 import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
@@ -18,6 +19,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.shadows.ShadowLooper
+import java.time.Duration
 import java.time.LocalDate
 
 @RunWith(AndroidJUnit4::class)
@@ -268,6 +270,36 @@ class PlaybackActivityTest {
             ShadowLooper.idleMainLooper()
             scenario.onActivity { a ->
                 assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.INVISIBLE)
+            }
+        }
+    }
+
+    /** On a TV in another zone the label carries the recorder's offset; the bar's numbers stay the recorder's. */
+    @Test
+    fun `the time label names the recorder's offset when its clock differs`() {
+        val cloud =
+            FakeCloudServices(cameraCount = 4, signalCount = 3).apply {
+                playbackPaced = false
+                playbackHold = true
+                playbackFramesPerWindow = 24
+            }
+        app.graph =
+            TestGraph.create(app, cloud, topBarAutoHideMillis = 300) {
+                FixedRecorderClocks(Duration.ofMinutes(13 * 60 + 30)) { LocalDate.now().atTime(6, 43) }
+            }
+        kotlinx.coroutines.runBlocking {
+            app.graph.account.login("a", "secret", Region.INDIA)
+            app.graph.account.loadInventory()
+        }
+        app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        val account = cloud.accounts.single()
+        ActivityScenario.launch<PlaybackActivity>(PlaybackActivity.intent(app, cameraKey)).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                // The recorder's today, 20:13 there, is the day after the device's.
+                assertThat(a.text(R.id.date_chip)).contains(LocalDate.now().toString())
+                assertThat(a.text(R.id.time_label)).startsWith("23:55:0")
+                assertThat(a.text(R.id.time_label)).endsWith(" (recorder, +13:30)")
             }
         }
     }

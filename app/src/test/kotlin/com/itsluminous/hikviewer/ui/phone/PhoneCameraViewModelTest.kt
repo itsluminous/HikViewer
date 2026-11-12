@@ -9,6 +9,7 @@ import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
+import com.itsluminous.hikviewer.fakes.FixedRecorderClocks
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
@@ -48,6 +49,8 @@ class PhoneCameraViewModelTest {
                 cloud,
                 decoders = RecordingDecoderFactory(),
                 playbackDispatcher = dispatcher,
+                // The forward bound of the date chip is the recorder's today, which is the pinned day here.
+                recorderClocks = { FixedRecorderClocks { today.atTime(10, 0) } },
             )
         kotlinx.coroutines.runBlocking {
             graph.account.login("a", "secret", Region.INDIA)
@@ -79,7 +82,8 @@ class PhoneCameraViewModelTest {
         graph.playbackFactory,
         portraitGrid = portraitGrid,
         startInPlayback = playback,
-        today = { today },
+        clocks = graph.recorderClocks,
+        startDay = today,
         io = dispatcher,
         clock = { dispatcher.scheduler.currentTime }, // the seek debounce follows the test scheduler
     ) { _ ->

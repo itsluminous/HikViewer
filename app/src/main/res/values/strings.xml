@@ -57,6 +57,8 @@
     <string name="playback_error">Could not list recordings</string>
     <string name="playback_paused">Paused</string>
     <string name="playback_date_chip">◀ %1$s ▶</string>
+    <!-- The time label when the recorder's clock differs from this device's: time, then its offset such as +13:30. -->
+    <string name="time_label_recorder">%1$s (recorder, %2$s)</string>
     <string name="grid_move_hint">Moving: ◀ ▲ ▼ ▶ swap · OK drop · Back cancel</string>
 
     <!-- Layouts -->

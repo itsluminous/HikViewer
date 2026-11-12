@@ -4,8 +4,10 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.core.devices.Camera
+import com.itsluminous.hikviewer.core.playback.RecorderClock
 import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.GridArrangementStore
+import com.itsluminous.hikviewer.data.RecorderClocks
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.player.PlaybackCoordinator
 import com.itsluminous.hikviewer.player.PlaybackFactory
@@ -45,6 +47,10 @@ enum class PhoneCameraMode {
  * [PhoneCameraMode.PLAYBACK] instead: the live stream is never opened and the engine plays the
  * day's footage from where the TV playback screen would (near the end of today's recording). The
  * phone keeps its orientation either way; the Activity's two layouts do the rest.
+ *
+ * "Today" and "now" on the bar are the recorder's, through its [RecorderClock] ([clocks]): the
+ * bar's numbers match the clock burnt into the picture whatever zone the phone is in, and the
+ * engine of each camera opens on the recorder's current day ([PlaybackViewModel]).
  */
 class PhoneCameraViewModel(
     private val account: AccountRepository,
@@ -56,7 +62,10 @@ class PhoneCameraViewModel(
     portraitGrid: Boolean = false,
     /** True to open on recorded footage rather than the live stream. */
     startInPlayback: Boolean = false,
-    private val today: () -> LocalDate = { LocalDate.now() },
+    /** The recorders' clocks; every engine lists the recorder's today and teaches them. */
+    private val clocks: RecorderClocks,
+    /** The day the engines open on, or null for the recorder's today; tests pin a day. */
+    private val startDay: LocalDate? = null,
     /** Where recording searches run; a test dispatcher in tests. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Monotonic milliseconds for the engines' seek timing; tests pass their scheduler's time. */
@@ -104,6 +113,13 @@ class PhoneCameraViewModel(
     /** Watchdog period for the recorded player's [TilePlayer.tick]. */
     val watchdogMillis: Long = factory.watchdogMillis
 
+    /**
+     * The clock of the camera on screen's recorder (the device's own when there is no camera or
+     * nothing is known yet): the live playhead sits at its now and the label mentions its offset.
+     */
+    fun recorderClock(): RecorderClock =
+        recordedFlow.value?.recorderClock ?: clocks.clock(camera?.deviceSerial.orEmpty())
+
     init {
         rebuildRecorded()
         if (startInPlayback) {
@@ -146,9 +162,9 @@ class PhoneCameraViewModel(
         showLive()
     }
 
-    /** The date chip: another day on the bar; while live only the bar changes. */
+    /** The date chip: another day on the bar (never past the recorder's today); while live only the bar changes. */
     fun changeDay(delta: Int) {
-        recordedFlow.value?.changeDay(delta, today())
+        recordedFlow.value?.changeDay(delta)
     }
 
     /** The speed button; only meaningful while playing footage. */
@@ -200,7 +216,16 @@ class PhoneCameraViewModel(
         val current = camera
         recordedFlow.value =
             current?.let {
-                PlaybackViewModel(it, account, factory, today(), io = io, clock = clock, externalScope = viewModelScope)
+                PlaybackViewModel(
+                    it,
+                    account,
+                    factory,
+                    clocks,
+                    startDay,
+                    io = io,
+                    clock = clock,
+                    externalScope = viewModelScope,
+                )
             }
         if (visible) recordedFlow.value?.listDay()
     }

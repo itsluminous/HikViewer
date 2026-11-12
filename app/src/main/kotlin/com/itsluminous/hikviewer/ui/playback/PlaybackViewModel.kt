@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.core.devices.Camera
 import com.itsluminous.hikviewer.core.playback.PlaybackWindow
 import com.itsluminous.hikviewer.core.playback.RecordSegment
+import com.itsluminous.hikviewer.core.playback.RecorderClock
 import com.itsluminous.hikviewer.core.stream.AccessUnit
 import com.itsluminous.hikviewer.core.stream.StreamStatus
 import com.itsluminous.hikviewer.data.AccountRepository
+import com.itsluminous.hikviewer.data.RecorderClocks
 import com.itsluminous.hikviewer.player.PlaybackFactory
 import com.itsluminous.hikviewer.player.StreamOpener
 import com.itsluminous.hikviewer.player.TilePlayer
@@ -30,6 +32,7 @@ import java.io.IOException
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlin.math.abs
 
 /** Which control the D-pad acts on. Logical, not view focus: the controls hide while playing. */
 enum class PlaybackControl {
@@ -103,6 +106,15 @@ data class PlaybackUiState(
  *    place; a seek while stepping restarts it at the new time.
  *  * **Pause** stops the stream and keeps the last picture; resume reopens at the playhead.
  *
+ * Every time on this axis is the recorder's ([RecordSegment]). The device's "today" is laid on it
+ * through the recorder's [RecorderClock] ([clocks]): a [startDay] of null means the recorder's
+ * today, and the first listing then follows that estimate as it learns. The day's listing teaches
+ * the clock ([RecorderClocks.learn]); when that moves the estimated today (the footage ran to
+ * midnight: the recorder is already on the next day) the next day is listed instead, and when the
+ * estimated today has no footage the day before is listed, which is where a user east of the
+ * recorder finds its newest footage. At most [MAX_INITIAL_HOPS] such hops, then the screen settles
+ * on what it has. A caller that names a [startDay] gets that day and no hops.
+ *
  * A switch between 1x and stepping, and a seek at 1x, reopens the player's stream but keeps its
  * one decoder ([TilePlayer.reopen]): the codec is flushed and admits nothing until the next
  * keyframe, so the old picture stays until the new one is decoded instead of a blank surface, and
@@ -119,7 +131,10 @@ class PlaybackViewModel(
     val camera: Camera,
     private val account: AccountRepository,
     factory: PlaybackFactory,
-    startDay: LocalDate,
+    /** The recorder's clock, for "today"; learns from every listing. */
+    private val clocks: RecorderClocks,
+    /** The day to open on, or null for the recorder's today. */
+    startDay: LocalDate? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Time between two pictures at a fast speed; tests shorten it. */
     private val stepMillis: Long = PlaybackStepper.CADENCE_MILLIS,
@@ -127,7 +142,11 @@ class PlaybackViewModel(
     private val clock: () -> Long = { SystemClock.uptimeMillis() },
     private val externalScope: CoroutineScope? = null,
 ) : ViewModel() {
-    private val stateFlow = MutableStateFlow(PlaybackUiState(day = startDay))
+    private val stateFlow =
+        MutableStateFlow(PlaybackUiState(day = startDay ?: clocks.clock(camera.deviceSerial).today()))
+
+    /** True while the screen is still looking for the recorder's today (no [startDay] was named). */
+    private val followsToday = startDay == null
 
     /** For the controls. */
     val state: StateFlow<PlaybackUiState> = stateFlow.asStateFlow()
@@ -147,6 +166,9 @@ class PlaybackViewModel(
 
     /** Watchdog period for [TilePlayer.tick]. */
     val watchdogMillis: Long = factory.watchdogMillis
+
+    /** The recorder's clock as currently known; its offset is what the time label mentions. */
+    val recorderClock: RecorderClock get() = clocks.clock(camera.deviceSerial)
 
     private var window: PlaybackWindow? = null
 
@@ -203,10 +225,10 @@ class PlaybackViewModel(
         stopTransportAndHold()
     }
 
-    /** LEFT/RIGHT on the date chip: show [delta] days later (never after [today]). */
+    /** LEFT/RIGHT on the date chip: show [delta] days later (never after [today], the recorder's). */
     fun changeDay(
         delta: Int,
-        today: LocalDate = LocalDate.now(),
+        today: LocalDate = recorderClock.today(),
     ) {
         val day = stateFlow.value.day.plusDays(delta.toLong())
         if (day.isAfter(today)) return
@@ -349,6 +371,8 @@ class PlaybackViewModel(
     private fun loadDay(
         day: LocalDate,
         initial: Boolean,
+        hops: Int = 0,
+        todayWasEmpty: Boolean = false,
     ) {
         scope.launch {
             val segments =
@@ -359,7 +383,16 @@ class PlaybackViewModel(
                     stateFlow.update { it.copy(phase = PlaybackPhase.ERROR) }
                     return@launch
                 }
+            val clock = clocks.learn(camera.deviceSerial, day, segments, todayWasEmpty)
             if (stateFlow.value.day != day) return@launch
+            if (initial && followsToday && hops < MAX_INITIAL_HOPS) {
+                val next = nextDayToTry(day, clock.today(), segments.isEmpty())
+                if (next != null) {
+                    stateFlow.update { it.copy(day = next, segments = emptyList(), position = next.atStartOfDay()) }
+                    loadDay(next, initial = true, hops = hops + 1, todayWasEmpty = next.isBefore(day))
+                    return@launch
+                }
+            }
             if (segments.isEmpty()) {
                 stateFlow.update { it.copy(segments = emptyList(), phase = PlaybackPhase.NO_RECORDINGS) }
                 return@launch
@@ -368,6 +401,21 @@ class PlaybackViewModel(
             stateFlow.update { it.copy(segments = segments, position = start, phase = PlaybackPhase.PLAYING) }
             if (started) resumeTransport()
         }
+    }
+
+    /**
+     * After listing [day] on the way to the recorder's today: the day the clock now calls today
+     * when the estimate moved (by a day at most; a farther day was never meant as today), the day
+     * before when today itself is empty (the recorder may not have reached it), else null: settled.
+     */
+    private fun nextDayToTry(
+        day: LocalDate,
+        today: LocalDate,
+        empty: Boolean,
+    ): LocalDate? = when {
+        day != today && abs(day.toEpochDay() - today.toEpochDay()) <= 1 -> today
+        empty && day == today -> day.minusDays(1)
+        else -> null
     }
 
     /** Today opens near the end of the footage (what just happened); any other day at its start. */
@@ -520,6 +568,12 @@ class PlaybackViewModel(
 
         /** Where today's playback starts: a few minutes before the latest footage. */
         val INITIAL_LOOKBACK: Duration = Duration.ofMinutes(5)
+
+        /**
+         * Listings the first open may make beyond the first while it follows the recorder's today:
+         * one to the day the clock moved to, and one back when that day is empty.
+         */
+        const val MAX_INITIAL_HOPS: Int = 2
 
         /** The player's state line is logged every this many watchdog ticks (every 5 s at the default 500 ms). */
         const val DIAGNOSTICS_EVERY_TICKS: Int = 10

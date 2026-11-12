@@ -20,10 +20,11 @@ import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 /**
- * Recorded footage of one camera, full screen, with a 24 h time bar.
+ * Recorded footage of one camera, full screen, with a 24 h time bar in recorder time: it opens on
+ * the recorder's today ([com.itsluminous.hikviewer.data.RecorderClocks]) and the time label says
+ * by how much the recorder's clock differs from this device's when it does ([RecorderTimeLabel]).
  *
  * The D-pad never moves view focus here: the controls hide after the shared idle time and a
  * hidden view cannot hold focus, so the ViewModel keeps a logical [PlaybackControl] (UP/DOWN
@@ -46,7 +47,7 @@ class PlaybackActivity : AppCompatActivity() {
                     ?.camera(key),
             ) { "unknown camera $key" }
         LambdaViewModelFactory {
-            PlaybackViewModel(camera, graph.account, graph.playbackFactory, LocalDate.now())
+            PlaybackViewModel(camera, graph.account, graph.playbackFactory, graph.recorderClocks)
         }
     }
 
@@ -108,7 +109,7 @@ class PlaybackActivity : AppCompatActivity() {
         binding.timeBar.segments = state.segments
         binding.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
         binding.timeBar.highlighted = state.control == PlaybackControl.BAR
-        binding.timeLabel.text = PlaybackTimeline.label(state.position)
+        binding.timeLabel.text = RecorderTimeLabel.of(resources, state.position, viewModel.recorderClock)
         val status = state.phase.statusRes?.let(::getString)
         binding.status.text = status
         binding.status.visibility = if (status == null) View.GONE else View.VISIBLE

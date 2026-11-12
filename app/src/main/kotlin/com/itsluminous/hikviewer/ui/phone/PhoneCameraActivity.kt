@@ -16,6 +16,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
+import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.databinding.ActivityPhoneCameraBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TilePlayer
@@ -191,6 +192,10 @@ class PhoneCameraActivity : AppCompatActivity() {
             offersToggle &&
             !isUpright &&
             forcedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // The help line must say what Back does in this state.
+        binding.help?.setText(
+            if (exitFullscreenOnBack.isEnabled) R.string.phone_help_landscape_forced else R.string.phone_help_landscape,
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -200,8 +205,9 @@ class PhoneCameraActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        refreshOrientationControls()
+        // Watch first, then read: a change between the two calls is then never missed.
         if (!isTelevision) autoRotate.watch(::refreshOrientationControls)
+        refreshOrientationControls()
     }
 
     override fun onPause() {

@@ -143,6 +143,9 @@ class PhoneCameraOrientationLockTest {
                 assertThat(a.isUpright).isFalse()
                 assertThat(a.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
                 assertThat(a.exitButton()!!.visibility).isEqualTo(View.VISIBLE)
+                // The help line says what Back does while the orientation is forced.
+                assertThat(a.findViewById<android.widget.TextView>(R.id.help).text.toString())
+                    .isEqualTo(a.getString(R.string.phone_help_landscape_forced))
                 a.pressBack()
                 assertThat(a.isFinishing).isFalse()
                 assertThat(a.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
@@ -176,6 +179,7 @@ class PhoneCameraOrientationLockTest {
     @Test
     @Config(qualifiers = LANDSCAPE)
     fun `with auto-rotate on there is no button sideways and Back leaves at once`() {
+        // No accelerometer_rotation row at all here: the absent row must read as auto-rotate on.
         ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 0)).use { scenario ->
             awaitStream()
             scenario.onActivity { a ->

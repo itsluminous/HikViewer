@@ -100,6 +100,8 @@ class PhoneNavigationTest {
         finishAllActivities()
         // No Activity is left to idle on, so the rotation back is a plain wait (a failed test left it turned).
         if (rotated) rotate(ROTATION_PORTRAIT, idleOnUi = false)
+        // Leave the emulator as a phone ships: auto-rotate on (rotate() and the toggle tests turn it off).
+        shell("settings put system accelerometer_rotation 1")
     }
 
     private var rotated = false
@@ -288,6 +290,82 @@ class PhoneNavigationTest {
     }
 
     /**
+     * A phone whose auto-rotate is off: the fullscreen icon in the upright picture's corner turns
+     * the screen sideways (a real configuration change, `SENSOR_LANDSCAPE`), where the exit icon
+     * sits in the controls overlay and comes back upright. Back while forced sideways goes upright
+     * first, as a video player does, and only the next Back returns to the grid.
+     */
+    @Test
+    fun withAutoRotateOffTheFullscreenButtonsTurnTheScreenAndBackComesUprightFirst() {
+        shell("settings put system accelerometer_rotation 0")
+        shell("settings put system user_rotation $ROTATION_PORTRAIT")
+        onView(tile(1)).perform(click())
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
+        onView(withId(R.id.fullscreen_button)).check(matches(isDisplayed()))
+        onView(withId(R.id.fullscreen_button)).perform(click())
+        waitFor(ROTATION_MILLIS)
+        val sideways = resumedActivity()
+        assert(sideways is PhoneCameraActivity && !sideways.isUpright) { "expected the sideways screen, got $sideways" }
+        assert(sideways.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) { "not landscape" }
+        assert(sideways.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+            "forced orientation is ${sideways.requestedOrientation}"
+        }
+        onView(withId(R.id.fullscreen_button)).check(doesNotExist()) // the enter icon belongs to the upright layout
+        // The exit icon shows and hides with the overlay: the rotation wait outlasts the idle time, a tap brings both back.
+        onView(withId(R.id.controls)).check(matches(not(isDisplayed())))
+        tapThePicture()
+        onView(withId(R.id.controls)).check(matches(isDisplayed()))
+        onView(withId(R.id.fullscreen_exit_button)).check(matches(isDisplayed()))
+        onView(withId(R.id.fullscreen_exit_button)).check(matches(isDescendantOfA(withId(R.id.controls))))
+
+        pressBack()
+        waitFor(ROTATION_MILLIS)
+        val upright = resumedActivity()
+        assert(upright is PhoneCameraActivity && upright.isUpright) { "Back should go upright first, got $upright" }
+        assert(upright.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            "forced orientation is ${upright.requestedOrientation}"
+        }
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2"))) // the camera rode along
+        onView(withId(R.id.fullscreen_button)).check(matches(isDisplayed()))
+
+        // The exit icon does the same turn as Back did.
+        onView(withId(R.id.fullscreen_button)).perform(click())
+        waitFor(ROTATION_MILLIS)
+        tapThePicture()
+        onView(withId(R.id.fullscreen_exit_button)).perform(click())
+        waitFor(ROTATION_MILLIS)
+        assert((resumedActivity() as PhoneCameraActivity).isUpright) { "the exit icon should go upright" }
+        onView(withId(R.id.time_bar)).check(matches(isDisplayed()))
+
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
+    /**
+     * With auto-rotate on the phone turns itself, so the icons are gone; flipping the switch while
+     * the screen is up shows and hides them through the setting's observer.
+     */
+    @Test
+    fun withAutoRotateOnTheFullscreenButtonsAreAbsentAndFollowTheSwitch() {
+        shell("settings put system accelerometer_rotation 1")
+        onView(tile(1)).perform(click())
+        onView(withId(R.id.camera_name)).check(matches(withText("Camera 2")))
+        onView(withId(R.id.fullscreen_button)).check(matches(not(isDisplayed())))
+        val phone = resumedActivity() as PhoneCameraActivity
+        assert(phone.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) { "nothing may be forced" }
+
+        shell("settings put system accelerometer_rotation 0")
+        waitFor(SETTING_MILLIS)
+        onView(withId(R.id.fullscreen_button)).check(matches(isDisplayed()))
+        shell("settings put system accelerometer_rotation 1")
+        waitFor(SETTING_MILLIS)
+        onView(withId(R.id.fullscreen_button)).check(matches(not(isDisplayed())))
+
+        pressBack() // one Back leaves, as before the toggle existed
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+    }
+
+    /**
      * A tap in the upper part of the picture, clear of the controls overlay along its bottom, and
      * the wait for `GestureDetector` to confirm it as a single tap (it holds the verdict for the
      * double-tap window, which Espresso does not wait out).
@@ -447,6 +525,9 @@ class PhoneNavigationTest {
 
         /** The system's rotation animation plus the recreated Activity's first frames. */
         const val ROTATION_MILLIS = 2_500L
+
+        /** The settings provider's change notification reaching the screen's observer. */
+        const val SETTING_MILLIS = 1_000L
 
         /** A popup menu's dismiss animation. */
         const val POPUP_DISMISS_MILLIS = 500L

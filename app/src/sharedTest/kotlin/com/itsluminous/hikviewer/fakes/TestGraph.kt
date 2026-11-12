@@ -1,6 +1,8 @@
 package com.itsluminous.hikviewer.fakes
 
 import android.content.Context
+import com.itsluminous.hikviewer.data.RecorderClocks
+import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.DeviceCapabilities
@@ -25,6 +27,13 @@ object TestGraph {
         playbackFactory: PlaybackFactory = decoders.playbackFactory(playbackDispatcher),
         /** Where Backup and Restore keep files; the real chooser unless a test plants a fake directory. */
         backupStorage: (Context) -> BackupStorage = BackupStorage::choose,
+        /**
+         * Recorder clocks. The default never learns and keeps every recorder on the device's time,
+         * because the fake footage runs to midnight on whatever day is asked for, which a real
+         * recorder's today never does; tests of the learning build a
+         * [com.itsluminous.hikviewer.data.StoredRecorderClocks] on the graph's settings store.
+         */
+        recorderClocks: (SettingsStore) -> RecorderClocks = { FixedRecorderClocks() },
     ): AppGraph {
         val session =
             context
@@ -46,6 +55,7 @@ object TestGraph {
             topBarAutoHideMillis,
             playbackFactory,
             backupStorage,
+            recorderClocks = recorderClocks,
         )
     }
 }

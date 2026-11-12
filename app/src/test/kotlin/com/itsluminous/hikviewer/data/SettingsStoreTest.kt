@@ -29,6 +29,26 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `recorder offset is remembered per serial, including zero and negative, and cleared on logout`() {
+        assertThat(store.recorderOffsetMinutes("DVR1")).isNull()
+        store.setRecorderOffsetMinutes("DVR1", 810)
+        store.setRecorderOffsetMinutes("DVR2", -225)
+        store.setRecorderOffsetMinutes("DVR3", 0)
+        val reopened = SettingsStore(prefs)
+        assertThat(reopened.recorderOffsetMinutes("DVR1")).isEqualTo(810)
+        assertThat(reopened.recorderOffsetMinutes("DVR2")).isEqualTo(-225)
+        assertThat(reopened.recorderOffsetMinutes("DVR3")).isEqualTo(0)
+        assertThat(reopened.recorderOffsetMinutes("DVR4")).isNull()
+        store.setRecorderOffsetMinutes("DVR1", null)
+        assertThat(store.recorderOffsetMinutes("DVR1")).isNull()
+        // A learnt value, not a choice: backups never carry it and a restore never touches it.
+        store.applyChoices(store.choices())
+        assertThat(store.recorderOffsetMinutes("DVR2")).isEqualTo(-225)
+        store.clear()
+        assertThat(store.recorderOffsetMinutes("DVR2")).isNull()
+    }
+
+    @Test
     fun `camera name position round-trips and an unknown stored name is the default`() {
         store.cameraNamePosition = NamePosition.TOP_LEFT
         assertThat(SettingsStore(prefs).cameraNamePosition).isEqualTo(NamePosition.TOP_LEFT)

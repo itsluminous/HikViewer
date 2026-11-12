@@ -10,8 +10,10 @@ import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.CloudServices
 import com.itsluminous.hikviewer.data.GridArrangementStore
 import com.itsluminous.hikviewer.data.HikConnectCloudServices
+import com.itsluminous.hikviewer.data.RecorderClocks
 import com.itsluminous.hikviewer.data.SessionStore
 import com.itsluminous.hikviewer.data.SettingsStore
+import com.itsluminous.hikviewer.data.StoredRecorderClocks
 import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.player.DeviceCapabilities
 import com.itsluminous.hikviewer.player.DeviceHeadroomProbe
@@ -42,12 +44,17 @@ class AppGraph(
     val playbackFactory: PlaybackFactory = PlaybackFactory(),
     /** Where Settings' Backup and Restore keep files; tests substitute a fake directory. */
     val backupStorage: (Context) -> BackupStorage = BackupStorage::choose,
+    /** Each recorder's clock offset, learnt from its recordings; tests substitute a fixed one. */
+    recorderClocks: ((SettingsStore) -> RecorderClocks)? = null,
 ) {
     /** Persisted session and per-install feature code. */
     val sessionStore: SessionStore = SessionStore(sessionPrefs)
 
     /** Persisted user settings. */
     val settingsStore: SettingsStore = SettingsStore(settingsPrefs)
+
+    /** Recorder time versus device time, per recorder; cached on the settings preferences. */
+    val recorderClocks: RecorderClocks = recorderClocks?.invoke(settingsStore) ?: StoredRecorderClocks(settingsStore)
 
     /** Last layout and per-layout tile positions; on the settings preferences so logout clears it. */
     val arrangementStore: GridArrangementStore = GridArrangementStore(settingsPrefs)

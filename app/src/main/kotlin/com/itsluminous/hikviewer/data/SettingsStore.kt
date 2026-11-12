@@ -6,9 +6,10 @@ import com.itsluminous.hikviewer.core.stream.StreamQuality
 
 /**
  * User settings: visible cameras and their order, fullscreen quality, tile overlays (names, their
- * position, frame rate), keep-screen-on, the live-camera count and the video verification code.
- * Kept in encrypted preferences because of the verification code. The grid layout and per-layout
- * tile positions live in [GridArrangementStore] on the same preferences.
+ * position, frame rate), keep-screen-on, the live-camera count and the video verification code,
+ * plus one learnt value, each recorder's clock offset. Kept in encrypted preferences because of
+ * the verification code. The grid layout and per-layout tile positions live in
+ * [GridArrangementStore] on the same preferences.
  *
  * Camera references are [com.itsluminous.hikviewer.core.devices.Camera.key] strings
  * (`serial/channel`), which survive renames on the recorder.
@@ -66,6 +67,26 @@ class SettingsStore(
                 if (value == null) remove(KEY_VERIFICATION_CODE) else putString(KEY_VERIFICATION_CODE, value)
             }
 
+    /**
+     * The recorder's clock minus this device's, in minutes, as last learnt for the device with
+     * [serial] (see [com.itsluminous.hikviewer.core.playback.RecorderClock]); null until a record
+     * search taught it. Cached so a cold open of a camera lands on the recorder's today at once.
+     * Learnt, not chosen, so it is not part of [Choices] and never in a backup.
+     */
+    fun recorderOffsetMinutes(serial: String): Int? {
+        val key = KEY_RECORDER_OFFSET_PREFIX + serial
+        return if (prefs.contains(key)) prefs.getInt(key, 0) else null
+    }
+
+    /** Remembers [minutes] for [serial]; null forgets it. */
+    fun setRecorderOffsetMinutes(
+        serial: String,
+        minutes: Int?,
+    ) = prefs.edit {
+        val key = KEY_RECORDER_OFFSET_PREFIX + serial
+        if (minutes == null) remove(key) else putInt(key, minutes)
+    }
+
     /** Wipes everything (logout). */
     fun clear() = prefs.edit { clear() }
 
@@ -110,5 +131,6 @@ class SettingsStore(
         private const val KEY_SHOW_FPS = "showFrameRate"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
         private const val KEY_NAME_POSITION = "cameraNamePosition"
+        private const val KEY_RECORDER_OFFSET_PREFIX = "recorderOffset/"
     }
 }

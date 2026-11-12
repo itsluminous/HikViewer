@@ -58,6 +58,29 @@
                 android:text="@string/settings_show_names"
                 android:textColor="@color/on_background" />
 
+            <!-- Only while names are shown: the corner the name sits in. -->
+            <LinearLayout
+                android:id="@+id/name_position_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/name_position_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:labelFor="@id/name_position_spinner"
+                    android:paddingTop="4dp"
+                    android:text="@string/settings_name_position"
+                    android:textColor="@color/on_background"
+                    android:textSize="14sp" />
+
+                <Spinner
+                    android:id="@+id/name_position_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp" />
+            </LinearLayout>
+
             <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/show_fps"
                 android:layout_width="match_parent"

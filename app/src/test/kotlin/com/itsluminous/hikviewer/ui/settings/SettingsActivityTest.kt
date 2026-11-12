@@ -24,6 +24,7 @@ import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.stream.StreamQuality
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
@@ -106,6 +107,72 @@ class SettingsActivityTest {
                 GridLayoutMode.heroModes.forEach { mode -> assertThat(app.graph.arrangementStore.order(mode)).isNull() }
             }
         }
+    }
+
+    /**
+     * The name-position row exists only while names are on, on a phone as on a TV: the switch
+     * shows and hides it at once, and the chooser writes the store.
+     */
+    private fun namePositionRowFollowsTheSwitch() {
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                val row = a.findViewById<View>(R.id.name_position_row)
+                val spinner = a.findViewById<Spinner>(R.id.name_position_spinner)
+                val switch = a.findViewById<SwitchCompat>(R.id.show_names)
+                assertThat(switch.isChecked).isFalse()
+                assertThat(row.visibility).isEqualTo(View.GONE)
+                // Directly below Show camera names, above Show frame rate.
+                val column = row.parent as ViewGroup
+                assertThat(column.indexOfChild(row)).isEqualTo(column.indexOfChild(switch) + 1)
+                assertThat(column.indexOfChild(a.findViewById(R.id.show_fps))).isEqualTo(column.indexOfChild(row) + 1)
+                switch.isChecked = true
+                ShadowLooper.idleMainLooper()
+                assertThat(row.visibility).isEqualTo(View.VISIBLE)
+                assertThat(row.isShown).isTrue()
+                assertThat(spinner.isEnabled).isTrue()
+                assertThat((0 until spinner.adapter.count).map { spinner.adapter.getItem(it).toString() })
+                    .containsExactly("Top left", "Bottom left", "Bottom right")
+                    .inOrder()
+                assertThat(spinner.selectedItemPosition).isEqualTo(1)
+                val label = a.findViewById<TextView>(R.id.name_position_label)
+                assertThat(label.text.toString()).isEqualTo("Camera name position")
+                spinner.setSelection(0)
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.cameraNamePosition).isEqualTo(NamePosition.TOP_LEFT)
+                spinner.setSelection(2)
+                ShadowLooper.idleMainLooper()
+                assertThat(app.graph.settingsStore.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_RIGHT)
+                switch.isChecked = false
+                ShadowLooper.idleMainLooper()
+                assertThat(row.visibility).isEqualTo(View.GONE)
+                // Hiding the row keeps the choice: it is back when names return.
+                assertThat(app.graph.settingsStore.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_RIGHT)
+            }
+        }
+        // A fresh screen with names on and a stored corner shows the row with that corner selected.
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                assertThat(a.findViewById<View>(R.id.name_position_row).visibility).isEqualTo(View.GONE)
+                app.graph.settingsStore.showCameraNames = true
+            }
+        }
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            scenario.rows { a, _ ->
+                assertThat(a.findViewById<View>(R.id.name_position_row).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.findViewById<Spinner>(R.id.name_position_spinner).selectedItemPosition).isEqualTo(2)
+            }
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun `on a television the name position row follows the names switch`() = namePositionRowFollowsTheSwitch()
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-port-xhdpi")
+    fun `on a phone the name position row follows the names switch`() {
+        shadowOf(app.packageManager).setSystemFeature(PackageManager.FEATURE_TOUCHSCREEN, true)
+        namePositionRowFollowsTheSwitch()
     }
 
     /** On a television the spinner has the TV's grids: AUTO and 3 x 3 for three cameras, never a portrait shape. */

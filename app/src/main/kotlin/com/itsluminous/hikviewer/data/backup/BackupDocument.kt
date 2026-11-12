@@ -37,6 +37,11 @@ data class BackupSettings(
     val showCameraNames: Boolean,
     val showFrameRate: Boolean,
     val keepScreenOn: Boolean,
+    /**
+     * A `NamePosition` name. Optional, so a format-1 file from before the setting existed (and a
+     * file that omits it) still reads; absent or unknown means the default corner.
+     */
+    val cameraNamePosition: String? = null,
 )
 
 /** [com.itsluminous.hikviewer.data.GridArrangementStore.Snapshot] as written to the file. */

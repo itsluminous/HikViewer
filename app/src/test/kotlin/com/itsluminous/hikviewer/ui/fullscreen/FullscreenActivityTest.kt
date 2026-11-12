@@ -1,9 +1,11 @@
 package com.itsluminous.hikviewer.ui.fullscreen
 
 import android.app.Activity
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -13,9 +15,11 @@ import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.stream.StreamQuality
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.TileMode
+import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import org.junit.Before
 import org.junit.Test
@@ -136,6 +140,24 @@ class FullscreenActivityTest {
                 }
                 walk(a.findViewById(android.R.id.content))
                 assertThat(texts.filter { it.contains("LIVE", ignoreCase = true) }).isEmpty()
+            }
+        }
+    }
+
+    @Test
+    fun `the name label follows Show camera names and Camera name position`() {
+        app.graph.settingsStore.showCameraNames = true
+        app.graph.settingsStore.cameraNamePosition = NamePosition.TOP_LEFT
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 0)).use { scenario ->
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a ->
+                val tile = a.findViewById<CameraTileView>(R.id.tile)
+                assertThat(tile.showName).isTrue()
+                assertThat(tile.namePosition).isEqualTo(NamePosition.TOP_LEFT)
+                val name = a.findViewById<TextView>(R.id.name)
+                assertThat(name.visibility).isEqualTo(View.VISIBLE)
+                val gravity = (name.layoutParams as FrameLayout.LayoutParams).gravity
+                assertThat(gravity).isEqualTo(Gravity.START or Gravity.TOP)
             }
         }
     }

@@ -130,6 +130,7 @@ class FullscreenActivity : AppCompatActivity() {
         val settings = AppGraph.of(this).settingsStore
         binding.tile.cameraName = viewModel.camera?.name.orEmpty()
         binding.tile.showName = settings.showCameraNames
+        binding.tile.namePosition = settings.cameraNamePosition
         binding.tile.showFrameRate = settings.showFrameRate
     }
 

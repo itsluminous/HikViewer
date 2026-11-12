@@ -26,6 +26,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.android.material.button.MaterialButton
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.devices.Camera
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.databinding.ActivityGridBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TileLiveness
@@ -255,7 +256,7 @@ class GridActivity : AppCompatActivity() {
             is GridUiState.Ready -> {
                 if (state.cameras.isEmpty()) binding.message.setText(R.string.grid_empty)
                 binding.grid.mode = state.layout
-                syncTiles(state.cameras, state.showNames, state.showFrameRate)
+                syncTiles(state.cameras, state.showNames, state.showFrameRate, state.namePosition)
                 if (state.needsCode) {
                     VerificationCodeDialog.show(
                         this,
@@ -272,6 +273,7 @@ class GridActivity : AppCompatActivity() {
         cameras: List<Camera>,
         showNames: Boolean,
         showFrameRate: Boolean,
+        namePosition: NamePosition,
     ) {
         val grid = binding.grid
         val wanted = cameras.mapTo(HashSet()) { it.key }
@@ -280,6 +282,7 @@ class GridActivity : AppCompatActivity() {
             val tile = tilesByKey.getOrPut(camera.key) { newTile().also(grid::addView) }
             tile.cameraName = camera.name
             tile.showName = showNames
+            tile.namePosition = namePosition
             tile.showFrameRate = showFrameRate
         }
         grid.order = cameras.map { grid.indexOfChild(tilesByKey.getValue(it.key)) }

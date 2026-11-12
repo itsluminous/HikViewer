@@ -5,7 +5,9 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ResolveInfo
 import android.net.Uri
+import android.view.View
 import android.widget.CheckBox
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
@@ -18,6 +20,7 @@ import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.stream.StreamQuality
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.data.backup.BackupCodec
 import com.itsluminous.hikviewer.data.backup.BackupStorage
 import com.itsluminous.hikviewer.data.backup.TvBackupStorage
@@ -99,7 +102,8 @@ class BackupControllerTest {
         """
         {"format":1,"app":"HikViewer","version":"0.5","created":"2026-11-08T15:00:00+05:30",
          "settings":{"visibleCameras":${visible.joinToString(",", "[", "]") { "\"$it\"" }},
-                     "fullscreenQuality":"MAIN","showCameraNames":false,"showFrameRate":$showFrameRate,"keepScreenOn":false},
+                     "fullscreenQuality":"MAIN","showCameraNames":true,"showFrameRate":$showFrameRate,"keepScreenOn":false,
+                     "cameraNamePosition":"TOP_LEFT"},
          "arrangements":{"lastLayout":"GRID_3X3","lastLayoutPortrait":"AUTO","orders":{"GRID_3X3":["$serial/3"]}}}
         """.trimIndent()
 
@@ -144,6 +148,7 @@ class BackupControllerTest {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.settled { a ->
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_fps).isChecked).isFalse()
+                assertThat(a.findViewById<android.view.View>(R.id.name_position_row).visibility).isEqualTo(View.GONE)
                 a.findViewById<android.view.View>(R.id.restore).performClick()
                 val explain = latestDialog()
                 assertThat(explain.message()).contains("Login and encryption password are not included")
@@ -165,6 +170,11 @@ class BackupControllerTest {
                 // The screen shows the restored values without being reopened.
                 assertThat(a.findViewById<SwitchCompat>(R.id.show_fps).isChecked).isTrue()
                 assertThat(a.findViewById<SwitchCompat>(R.id.quality_main).isChecked).isTrue()
+                // Names came on with the file, so the position row appears with the restored corner.
+                assertThat(app.graph.settingsStore.cameraNamePosition).isEqualTo(NamePosition.TOP_LEFT)
+                assertThat(a.findViewById<SwitchCompat>(R.id.show_names).isChecked).isTrue()
+                assertThat(a.findViewById<android.view.View>(R.id.name_position_row).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.findViewById<Spinner>(R.id.name_position_spinner).selectedItemPosition).isEqualTo(0)
                 val list = a.findViewById<RecyclerView>(R.id.camera_list)
                 assertThat(
                     (0 until list.childCount).map { list.getChildAt(it).findViewById<CheckBox>(R.id.check).isChecked },

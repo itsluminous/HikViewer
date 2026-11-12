@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -17,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.view.isVisible
 import com.itsluminous.hikviewer.R
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.databinding.ViewCameraTileBinding
 import com.itsluminous.hikviewer.player.StillSink
 import com.itsluminous.hikviewer.player.TileLiveness
@@ -181,6 +183,18 @@ class CameraTileView
         /** True while [bind] last saw an error: the name is shown whatever [showName] says. */
         private var inError = false
 
+        /**
+         * The corner the name label sits in (Settings: Camera name position). Top left never meets
+         * the live dot or the fps badge, which are at the top right.
+         */
+        var namePosition: NamePosition = NamePosition.DEFAULT
+            set(value) {
+                field = value
+                val params = binding.name.layoutParams as LayoutParams
+                params.gravity = gravityOf(value)
+                binding.name.layoutParams = params
+            }
+
         /** Whether the fps counter is drawn. */
         var showFrameRate: Boolean = false
             set(value) {
@@ -336,6 +350,13 @@ class CameraTileView
             super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
             binding.focusFrame.focused = gainFocus
             updateRetryScale()
+        }
+
+        /** The `layout_gravity` of the name label for [position]. */
+        private fun gravityOf(position: NamePosition): Int = when (position) {
+            NamePosition.TOP_LEFT -> Gravity.START or Gravity.TOP
+            NamePosition.BOTTOM_LEFT -> Gravity.START or Gravity.BOTTOM
+            NamePosition.BOTTOM_RIGHT -> Gravity.END or Gravity.BOTTOM
         }
 
         /** The dot's colour resource for [liveness]. */

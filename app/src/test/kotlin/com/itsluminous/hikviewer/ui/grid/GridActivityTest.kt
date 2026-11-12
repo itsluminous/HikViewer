@@ -13,6 +13,7 @@ import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.stream.StreamException
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.RecordingDecoderFactory
 import com.itsluminous.hikviewer.fakes.TestGraph
@@ -70,6 +71,7 @@ class GridActivityTest {
                 assertThat((grid.getChildAt(0) as CameraTileView).cameraName.toString()).isEqualTo("Camera 1")
                 assertThat((grid.getChildAt(0) as CameraTileView).showName).isFalse()
                 assertThat((grid.getChildAt(0) as CameraTileView).showFrameRate).isFalse()
+                assertThat((grid.getChildAt(0) as CameraTileView).namePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
                 assertThat(grid.getChildAt(0).isFocused).isTrue()
                 assertThat(a.findViewById<View>(R.id.top_bar).visibility).isEqualTo(View.INVISIBLE)
                 assertThat(a.findViewById<View>(R.id.message).visibility).isEqualTo(View.GONE)
@@ -179,6 +181,30 @@ class GridActivityTest {
                 val next = shadowOf(a).nextStartedActivity
                 assertThat(next.component?.className).isEqualTo(FullscreenActivity::class.java.name)
                 assertThat(next.getIntExtra(FullscreenActivity.EXTRA_INDEX, -1)).isEqualTo(5)
+            }
+        }
+    }
+
+    @Test
+    fun `applySettings pushes the name position and the names switch to every tile`() {
+        ActivityScenario.launch(GridActivity::class.java).use { scenario ->
+            scenario.grid { a, grid ->
+                val tiles = (0 until grid.childCount).map { grid.getChildAt(it) as CameraTileView }
+                app.graph.settingsStore.showCameraNames = true
+                app.graph.settingsStore.cameraNamePosition = NamePosition.TOP_LEFT
+                a.viewModels<GridViewModel>().value.applySettings()
+                ShadowLooper.idleMainLooper()
+                tiles.forEach { tile ->
+                    assertThat(tile.showName).isTrue()
+                    assertThat(tile.namePosition).isEqualTo(NamePosition.TOP_LEFT)
+                    val name = tile.findViewById<android.widget.TextView>(R.id.name)
+                    assertThat((name.layoutParams as android.widget.FrameLayout.LayoutParams).gravity)
+                        .isEqualTo(android.view.Gravity.START or android.view.Gravity.TOP)
+                }
+                app.graph.settingsStore.cameraNamePosition = NamePosition.BOTTOM_RIGHT
+                a.viewModels<GridViewModel>().value.applySettings()
+                ShadowLooper.idleMainLooper()
+                tiles.forEach { assertThat(it.namePosition).isEqualTo(NamePosition.BOTTOM_RIGHT) }
             }
         }
     }

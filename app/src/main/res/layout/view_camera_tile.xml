@@ -103,7 +103,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="start|bottom"
-        android:layout_margin="6dp"
+        android:layout_margin="@dimen/tile_label_margin"
         android:background="@drawable/label_background"
         android:ellipsize="end"
         android:maxLines="1"

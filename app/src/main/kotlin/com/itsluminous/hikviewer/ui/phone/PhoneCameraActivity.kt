@@ -130,6 +130,7 @@ class PhoneCameraActivity : AppCompatActivity() {
         val settings = AppGraph.of(this).settingsStore
         // Upright, the name has its own line below the picture; sideways it is an overlay, as on the TV.
         binding.video.showName = if (isUpright) false else settings.showCameraNames
+        binding.video.namePosition = settings.cameraNamePosition
         binding.video.showFrameRate = settings.showFrameRate
         val onTap: (() -> Unit)? = if (isUpright) null else ::toggleControls
         gestures = GestureDetector(this, SwipeDetector(onTap) { direction -> viewModel.step(direction) })

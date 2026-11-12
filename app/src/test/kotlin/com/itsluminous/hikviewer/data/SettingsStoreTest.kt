@@ -24,6 +24,27 @@ class SettingsStoreTest {
         assertThat(store.showCameraNames).isFalse()
         assertThat(store.showFrameRate).isFalse()
         assertThat(store.keepScreenOn).isFalse()
+        assertThat(store.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
+        assertThat(NamePosition.DEFAULT).isEqualTo(NamePosition.BOTTOM_LEFT)
+    }
+
+    @Test
+    fun `camera name position round-trips and an unknown stored name is the default`() {
+        store.cameraNamePosition = NamePosition.TOP_LEFT
+        assertThat(SettingsStore(prefs).cameraNamePosition).isEqualTo(NamePosition.TOP_LEFT)
+        store.cameraNamePosition = NamePosition.BOTTOM_RIGHT
+        assertThat(SettingsStore(prefs).cameraNamePosition).isEqualTo(NamePosition.BOTTOM_RIGHT)
+        prefs.edit().putString("cameraNamePosition", "MIDDLE").commit()
+        assertThat(store.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
+        assertThat(NamePosition.fromName(null)).isEqualTo(NamePosition.BOTTOM_LEFT)
+    }
+
+    @Test
+    fun `choices carry the name position and applyChoices writes it`() {
+        store.cameraNamePosition = NamePosition.TOP_LEFT
+        assertThat(store.choices().cameraNamePosition).isEqualTo(NamePosition.TOP_LEFT)
+        store.applyChoices(store.choices().copy(cameraNamePosition = NamePosition.BOTTOM_RIGHT))
+        assertThat(SettingsStore(prefs).cameraNamePosition).isEqualTo(NamePosition.BOTTOM_RIGHT)
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.core.auth.Session
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.GridArrangementStore
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.data.SessionStore
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
@@ -38,6 +39,7 @@ class BackupCodecTest {
         settings.showCameraNames = true
         settings.showFrameRate = true
         settings.keepScreenOn = true
+        settings.cameraNamePosition = NamePosition.TOP_LEFT
         settings.verificationCode = "ABCDEF"
         arrangement.lastLayout = GridLayoutMode.GRID_4X3
         arrangement.lastLayoutPortrait = GridLayoutMode.GRID_2X7
@@ -64,8 +66,10 @@ class BackupCodecTest {
             "showCameraNames",
             "showFrameRate",
             "keepScreenOn",
+            "cameraNamePosition",
         )
         assertThat(s["fullscreenQuality"]!!.jsonPrimitive.content).isEqualTo("MAIN")
+        assertThat(s["cameraNamePosition"]!!.jsonPrimitive.content).isEqualTo("TOP_LEFT")
         val a = doc["arrangements"]!!.jsonObject
         assertThat(a["lastLayout"]!!.jsonPrimitive.content).isEqualTo("GRID_4X3")
         assertThat(a["lastLayoutPortrait"]!!.jsonPrimitive.content).isEqualTo("GRID_2X7")
@@ -87,7 +91,14 @@ class BackupCodecTest {
         assertThat(arrangement.lastLayout).isEqualTo(GridLayoutMode.AUTO)
         codec.restore(text)
         assertThat(settings.choices()).isEqualTo(
-            SettingsStore.Choices(listOf("S1/3", "S1/1", "S2/7"), StreamQuality.MAIN, true, true, true),
+            SettingsStore.Choices(
+                listOf("S1/3", "S1/1", "S2/7"),
+                StreamQuality.MAIN,
+                true,
+                true,
+                true,
+                NamePosition.TOP_LEFT,
+            ),
         )
         assertThat(arrangement.snapshot()).isEqualTo(
             GridArrangementStore.Snapshot(
@@ -140,11 +151,30 @@ class BackupCodecTest {
              "arrangements":{"lastLayout":"AUTO","lastLayoutPortrait":"GRID_1X3",
                              "orders":{"GRID_1X3":["Z9/1","Z9/2"]},"heroColours":[]}}
             """.trimIndent()
+        settings.cameraNamePosition = NamePosition.BOTTOM_RIGHT
         codec.restore(text)
         assertThat(settings.visibleCameraKeys).containsExactly("Z9/1")
         assertThat(settings.showFrameRate).isTrue()
         assertThat(arrangement.lastLayoutPortrait).isEqualTo(GridLayoutMode.GRID_1X3)
         assertThat(arrangement.order(GridLayoutMode.GRID_1X3)).containsExactly("Z9/1", "Z9/2").inOrder()
+        // A format-1 file from before the name position existed: the default corner, not a refusal.
+        assertThat(settings.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
+    }
+
+    @Test
+    fun `an unknown name position restores as the default while a known one is applied`() {
+        fun file(position: String) =
+            """
+            {"format":1,"app":"HikViewer","version":"0.9","created":"2030-01-01T00:00:00Z",
+             "settings":{"visibleCameras":null,"fullscreenQuality":"SUB","showCameraNames":true,
+                         "showFrameRate":false,"keepScreenOn":false,"cameraNamePosition":"$position"},
+             "arrangements":{"lastLayout":"AUTO","lastLayoutPortrait":"AUTO","orders":{}}}
+            """.trimIndent()
+        codec.restore(file("BOTTOM_RIGHT"))
+        assertThat(settings.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_RIGHT)
+        codec.restore(file("TOP_CENTRE"))
+        assertThat(settings.cameraNamePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
+        assertThat(settings.showCameraNames).isTrue()
     }
 
     private fun rejects(

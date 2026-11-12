@@ -33,6 +33,7 @@ import com.itsluminous.hikviewer.EspressoApp
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.PlaybackFactory
@@ -347,6 +348,52 @@ class GridNavigationTest {
         onView(withId(R.id.caption)).check(matches(not(isDisplayed())))
         pressBack()
         assert(resumedActivity() is SettingsActivity) { "expected SettingsActivity on top, got ${resumedActivity()}" }
+    }
+
+    /**
+     * Settings: names on, Camera name position = Top left; back on the grid every tile's name
+     * label sits in its tile's top-left corner, inset by the label margin, clear of the live dot.
+     */
+    @Test
+    fun settingsNamePositionTopLeftPutsTheLabelInEveryTilesTopLeftCorner() {
+        onView(tile(0)).check(matches(hasFocus()))
+        scenario.onActivity { a ->
+            val grid = a.findViewById<CameraGridLayout>(R.id.grid)
+            val first = grid.childAtPosition(0) as CameraTileView
+            val label = first.findViewById<View>(R.id.name)
+            check(!first.showName && label.visibility == View.GONE) { "names on already" }
+        }
+        dpad(KeyEvent.KEYCODE_DPAD_UP)
+        dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
+        onView(withId(R.id.settings_button)).check(matches(hasFocus()))
+        ok()
+        onView(withId(R.id.name_position_row)).check(matches(withEffectiveVisibility(Visibility.GONE)))
+        onView(withId(R.id.show_names)).perform(scrollTo(), click()).check(matches(isChecked()))
+        onView(withId(R.id.name_position_row)).check(matches(isDisplayed()))
+        onView(withId(R.id.name_position_spinner)).perform(scrollTo(), click())
+        popupItem(R.string.name_position_top_left).perform(click())
+        assert(app.graph.settingsStore.cameraNamePosition == NamePosition.TOP_LEFT) { "Top left not stored" }
+        pressBack()
+        onView(withId(R.id.grid)).check(matches(isDisplayed()))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        scenario.onActivity { a ->
+            val grid = a.findViewById<CameraGridLayout>(R.id.grid)
+            val tiles = (0 until grid.shape.cells.size).mapNotNull { grid.childAtPosition(it) as? CameraTileView }
+            check(tiles.size == 12) { "4x3 expected, got ${tiles.size} tiles" }
+            tiles.forEach { tile ->
+                val name = tile.findViewById<View>(R.id.name)
+                val margin = tile.resources.getDimensionPixelSize(R.dimen.tile_label_margin)
+                val dot = tile.findViewById<View>(R.id.live_dot)
+                check(tile.showName && tile.namePosition == NamePosition.TOP_LEFT) { "${tile.cameraName} not top-left" }
+                check(name.visibility == View.VISIBLE && name.isShown) { "name hidden on ${tile.cameraName}" }
+                check(name.width > 0 && name.height > 0) { "name of ${tile.cameraName} has no size" }
+                check(name.left == margin && name.top == margin) {
+                    "name of ${tile.cameraName} at ${name.left},${name.top}; expected $margin,$margin"
+                }
+                check(name.bottom < tile.height / 2) { "name of ${tile.cameraName} not in the top half" }
+                check(name.right < dot.left) { "name of ${tile.cameraName} overlaps the live dot" }
+            }
+        }
     }
 
     private fun hasDrawable(): Matcher<View> = object : TypeSafeMatcher<View>() {

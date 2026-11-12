@@ -2,6 +2,7 @@ package com.itsluminous.hikviewer.data.backup
 
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.GridArrangementStore
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import kotlinx.serialization.json.Json
@@ -52,6 +53,7 @@ class BackupCodec(
                     showCameraNames = choices.showCameraNames,
                     showFrameRate = choices.showFrameRate,
                     keepScreenOn = choices.keepScreenOn,
+                    cameraNamePosition = choices.cameraNamePosition.name,
                 ),
             arrangements =
                 BackupArrangements(
@@ -93,6 +95,8 @@ class BackupCodec(
                 showCameraNames = doc.settings.showCameraNames,
                 showFrameRate = doc.settings.showFrameRate,
                 keepScreenOn = doc.settings.keepScreenOn,
+                // Absent (an older file) or unknown (a newer one): the default corner, never a refusal.
+                cameraNamePosition = NamePosition.fromName(doc.settings.cameraNamePosition),
             ),
             GridArrangementStore.Snapshot(
                 lastLayout = layout(doc.arrangements.lastLayout),

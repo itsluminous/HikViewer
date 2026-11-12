@@ -17,6 +17,7 @@ import com.itsluminous.hikviewer.core.devices.VerificationCode
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.AccountRepository
 import com.itsluminous.hikviewer.data.GridArrangementStore
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.data.SettingsStore
 import com.itsluminous.hikviewer.data.backup.BackupCodec
 import com.itsluminous.hikviewer.databinding.ActivitySettingsBinding
@@ -30,7 +31,8 @@ import com.itsluminous.hikviewer.ui.login.LoginActivity
 import kotlinx.coroutines.launch
 
 /**
- * Settings, top to bottom: grid layout, tile overlays, fullscreen quality, screen (phones),
+ * Settings, top to bottom: grid layout, tile overlays (names, their corner while names are on,
+ * frame rate), fullscreen quality, screen (phones),
  * backup, restore, visible cameras and order, encryption password, about (version, View Source,
  * Donate), logout. There is no hero setting: the hero is whatever sits at position 0 of a 1 + N layout,
  * chosen on the grid with Move or Change. Every change is written to [SettingsStore] immediately;
@@ -117,11 +119,28 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Show camera names, the name's corner (a row that exists only while names are on, so a
+     * hidden label has no dangling position setting) and the frame-rate counter.
+     */
     private fun bindOverlays() {
         binding.showNames.isChecked = settings.showCameraNames
-        binding.showNames.setOnCheckedChangeListener { _, checked -> settings.showCameraNames = checked }
+        binding.namePositionRow.visibility = if (settings.showCameraNames) View.VISIBLE else View.GONE
+        binding.showNames.setOnCheckedChangeListener { _, checked ->
+            settings.showCameraNames = checked
+            binding.namePositionRow.visibility = if (checked) View.VISIBLE else View.GONE
+        }
+        binding.namePositionSpinner.adapter = spinnerAdapter(NAME_POSITIONS.map { getString(labelOf(it)) })
+        binding.namePositionSpinner.setSelection(NAME_POSITIONS.indexOf(settings.cameraNamePosition))
+        binding.namePositionSpinner.onItemSelected { settings.cameraNamePosition = NAME_POSITIONS[it] }
         binding.showFps.isChecked = settings.showFrameRate
         binding.showFps.setOnCheckedChangeListener { _, checked -> settings.showFrameRate = checked }
+    }
+
+    private fun labelOf(position: NamePosition): Int = when (position) {
+        NamePosition.TOP_LEFT -> R.string.name_position_top_left
+        NamePosition.BOTTOM_LEFT -> R.string.name_position_bottom_left
+        NamePosition.BOTTOM_RIGHT -> R.string.name_position_bottom_right
     }
 
     /** Keep screen on: phones only, and applied to this window at once so the toggle is felt here. */
@@ -232,6 +251,12 @@ class SettingsActivity : AppCompatActivity() {
             )
             finish()
         }
+    }
+
+    /** Chooser order of the name corners: top to bottom, left to right. */
+    private companion object {
+        val NAME_POSITIONS: List<NamePosition> =
+            listOf(NamePosition.TOP_LEFT, NamePosition.BOTTOM_LEFT, NamePosition.BOTTOM_RIGHT)
     }
 
     private fun spinnerAdapter(labels: List<String>) = ArrayAdapter(

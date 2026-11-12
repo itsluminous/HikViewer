@@ -105,6 +105,10 @@
     <string name="settings_quality_main">Main stream (HEVC, needs a hardware decoder)</string>
     <string name="settings_overlays">Tile overlays</string>
     <string name="settings_show_names">Show camera names</string>
+    <string name="settings_name_position">Camera name position</string>
+    <string name="name_position_top_left">Top left</string>
+    <string name="name_position_bottom_left">Bottom left</string>
+    <string name="name_position_bottom_right">Bottom right</string>
     <string name="settings_show_fps">Show frame rate</string>
     <string name="settings_screen">Screen</string>
     <string name="settings_keep_screen_on">Keep screen on while HikViewer is open</string>

@@ -4,6 +4,8 @@
     <dimen name="tile_focus_border">4dp</dimen>
     <dimen name="live_dot_size">8dp</dimen>
     <dimen name="live_dot_margin">6dp</dimen>
+    <!-- Inset of the camera name label from the tile's corner (Settings: Camera name position). -->
+    <dimen name="tile_label_margin">6dp</dimen>
     <!-- The retry glyph on a failed tile (see ic_retry.xml). -->
     <dimen name="tile_retry_icon">48dp</dimen>
     <!-- The fps counter sits left of the dot: margin + dot + a 4 dp gap. -->

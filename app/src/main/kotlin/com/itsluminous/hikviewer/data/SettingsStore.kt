@@ -5,10 +5,10 @@ import androidx.core.content.edit
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 
 /**
- * User settings: visible cameras and their order, fullscreen quality, tile overlays, keep-screen-on,
- * the live-camera count and the video verification code. Kept in encrypted preferences because of
- * the verification code. The grid layout and per-layout tile positions live in
- * [GridArrangementStore] on the same preferences.
+ * User settings: visible cameras and their order, fullscreen quality, tile overlays (names, their
+ * position, frame rate), keep-screen-on, the live-camera count and the video verification code.
+ * Kept in encrypted preferences because of the verification code. The grid layout and per-layout
+ * tile positions live in [GridArrangementStore] on the same preferences.
  *
  * Camera references are [com.itsluminous.hikviewer.core.devices.Camera.key] strings
  * (`serial/channel`), which survive renames on the recorder.
@@ -38,6 +38,11 @@ class SettingsStore(
     var showCameraNames: Boolean
         get() = prefs.getBoolean(KEY_SHOW_NAMES, false)
         set(value) = prefs.edit { putBoolean(KEY_SHOW_NAMES, value) }
+
+    /** Which corner the camera name sits in, when shown ([showCameraNames]). Bottom left by default. */
+    var cameraNamePosition: NamePosition
+        get() = NamePosition.fromName(prefs.getString(KEY_NAME_POSITION, null))
+        set(value) = prefs.edit { putString(KEY_NAME_POSITION, value.name) }
 
     /** Overlay a small rendered-frames-per-second counter on each tile. Off by default. */
     var showFrameRate: Boolean
@@ -74,10 +79,12 @@ class SettingsStore(
         val showCameraNames: Boolean,
         val showFrameRate: Boolean,
         val keepScreenOn: Boolean,
+        val cameraNamePosition: NamePosition = NamePosition.DEFAULT,
     )
 
     /** The current [Choices]. */
-    fun choices(): Choices = Choices(visibleCameraKeys, fullscreenQuality, showCameraNames, showFrameRate, keepScreenOn)
+    fun choices(): Choices =
+        Choices(visibleCameraKeys, fullscreenQuality, showCameraNames, showFrameRate, keepScreenOn, cameraNamePosition)
 
     /**
      * Replaces every choice in one write (a restore), leaving the verification code as it is.
@@ -90,6 +97,7 @@ class SettingsStore(
         putBoolean(KEY_SHOW_NAMES, choices.showCameraNames)
         putBoolean(KEY_SHOW_FPS, choices.showFrameRate)
         putBoolean(KEY_KEEP_SCREEN_ON, choices.keepScreenOn)
+        putString(KEY_NAME_POSITION, choices.cameraNamePosition.name)
     }
 
     /** Preference keys. */
@@ -101,5 +109,6 @@ class SettingsStore(
         private const val KEY_SHOW_NAMES = "showCameraNames"
         private const val KEY_SHOW_FPS = "showFrameRate"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_NAME_POSITION = "cameraNamePosition"
     }
 }

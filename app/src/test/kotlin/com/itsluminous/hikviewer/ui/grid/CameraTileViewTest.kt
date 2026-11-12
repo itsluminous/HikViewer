@@ -2,6 +2,7 @@ package com.itsluminous.hikviewer.ui.grid
 
 import android.graphics.drawable.AnimationDrawable
 import android.graphics.drawable.VectorDrawable
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -14,6 +15,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.R
+import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.player.TileLiveness
 import com.itsluminous.hikviewer.player.TileState
 import org.junit.Test
@@ -390,6 +392,29 @@ class CameraTileViewTest {
         assertThat(name.visibility).isEqualTo(View.VISIBLE)
         tile.bind(TileState.Live)
         assertThat(name.visibility).isEqualTo(View.VISIBLE)
+    }
+
+    @Test
+    fun `name position sets the label's layout gravity, bottom left by default, never the dot's corner`() {
+        val name = tile.findViewById<TextView>(R.id.name)
+        val gravity = { (name.layoutParams as android.widget.FrameLayout.LayoutParams).gravity }
+        assertThat(tile.namePosition).isEqualTo(NamePosition.BOTTOM_LEFT)
+        assertThat(gravity()).isEqualTo(Gravity.START or Gravity.BOTTOM)
+        tile.namePosition = NamePosition.TOP_LEFT
+        assertThat(gravity()).isEqualTo(Gravity.START or Gravity.TOP)
+        tile.namePosition = NamePosition.BOTTOM_RIGHT
+        assertThat(gravity()).isEqualTo(Gravity.END or Gravity.BOTTOM)
+        tile.namePosition = NamePosition.BOTTOM_LEFT
+        assertThat(gravity()).isEqualTo(Gravity.START or Gravity.BOTTOM)
+        val dot = tile.findViewById<View>(R.id.live_dot)
+        val dotGravity = (dot.layoutParams as android.widget.FrameLayout.LayoutParams).gravity
+        assertThat(dotGravity).isEqualTo(Gravity.END or Gravity.TOP)
+        NamePosition.entries.forEach { assertThat(gravityOf(it)).isNotEqualTo(Gravity.END or Gravity.TOP) }
+    }
+
+    private fun gravityOf(position: NamePosition): Int {
+        tile.namePosition = position
+        return (tile.findViewById<TextView>(R.id.name).layoutParams as android.widget.FrameLayout.LayoutParams).gravity
     }
 
     @Test

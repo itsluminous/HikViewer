@@ -223,11 +223,10 @@ class GridActivityTest {
                 vm.applySettings()
                 grid.getChildAt(4).requestFocus()
                 grid.getChildAt(7).requestFocus()
-                cloud.accounts.single().nextStreamError =
-                    StreamException.ChannelOffline(
-                        vm.playback.players.value[2]
-                            .camera,
-                    )
+                val failing =
+                    vm.playback.players.value[2]
+                        .camera
+                cloud.accounts.single().nextStreamErrorFor[failing.key] = StreamException.ChannelOffline(failing)
                 vm.retry(2)
                 awaitUi { (grid.getChildAt(2) as CameraTileView).showsRetry }
                 vm.applySettings()

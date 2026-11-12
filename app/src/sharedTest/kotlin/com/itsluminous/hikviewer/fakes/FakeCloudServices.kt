@@ -99,8 +99,15 @@ class FakeCloudServices(
         /** Streams opened, by camera key. */
         val opened = java.util.concurrent.CopyOnWriteArrayList<Pair<Camera, StreamQuality>>()
 
-        /** Exception the next stream fails with. */
+        /** Exception the next stream fails with, whichever camera opens it. */
         var nextStreamError: StreamException? = null
+
+        /**
+         * Exception the next stream of one camera (by [Camera.key]) fails with. Unlike
+         * [nextStreamError] it cannot be taken by another tile's stream that happens to reopen
+         * first on a worker thread.
+         */
+        val nextStreamErrorFor = java.util.concurrent.ConcurrentHashMap<String, StreamException>()
 
         /** Playback windows opened, in order. */
         val playbackOpened = java.util.concurrent.CopyOnWriteArrayList<Pair<Camera, PlaybackWindow>>()
@@ -140,6 +147,7 @@ class FakeCloudServices(
             onStatus: (StreamStatus) -> Unit,
         ): Flow<AccessUnit> {
             opened += camera to quality
+            nextStreamErrorFor.remove(camera.key)?.let { e -> return flow { throw e } }
             nextStreamError?.let { e ->
                 nextStreamError = null
                 return flow { throw e }

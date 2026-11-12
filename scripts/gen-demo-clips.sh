@@ -24,7 +24,7 @@ mkdir -p "$out"
 
 encode() { # <still> <crf> <out.ts>
   ffmpeg -v error -y -loop 1 -framerate 12 -i "$1" -t 3 \
-    -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='1+0.0015*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=12,eq=brightness=-0.12:contrast=0.8:saturation=0.6,setsar=1,format=yuv420p,setrange=tv,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709" \
+    -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='1+0.0015*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=12,eq=brightness=-0.20:contrast=0.67:saturation=0.6,setsar=1,format=yuv420p,setrange=tv,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709" \
     -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -g 12 -keyint_min 12 -bf 0 -refs 1 \
     -x264-params "repeat-headers=1:scenecut=0:ref=1:fullrange=off:colorprim=bt709:transfer=bt709:colormatrix=bt709" \
     -crf "$2" -f mpegts "$3"

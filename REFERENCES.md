@@ -16,6 +16,10 @@ HikViewer implements a private protocol that others reverse-engineered first. Th
 - **[aryswisnu/hermes-tv](https://github.com/aryswisnu/hermes-tv)** (Java, MIT). An Android TV launcher with an RTSP camera grid; its README lists the TV-specific pitfalls (focus handling, decoder limits on cheap TVs) that shaped our plain-View, explicit-focus grid and the decoder pool.
 - **[VibeCodingAntagonist/opah-frigate-tv-app](https://github.com/VibeCodingAntagonist/opah-frigate-tv-app)** (Kotlin, Apache-2.0). Remote-first multi-camera UI; a reference for D-pad navigation patterns.
 
+## Icons
+
+- The vector icons under `app/src/main/res/drawable/` (`ic_drag_handle`, `ic_fullscreen`, `ic_fullscreen_exit`) are glyphs from [Material Symbols](https://fonts.google.com/icons) (Apache-2.0), copied as path data; the other drawables are hand-written.
+
 ## Vendor documentation
 
 - Hikvision / EZVIZ help on video encryption and the verification code: the Hik-Connect help page ["Enabling or Disabling Video and Image Encryption"](https://www.hik-connect.com/views/terms/helpAndroid/Hik%20Enabling%20or%20Disabling%20Video%20and%20Image%20Encryption.html) and Hikvision USA knowledge base articles [17000128922](https://supportusa.hikvision.com/support/solutions/articles/17000128922-what-is-a-verification-code-encryption-key) and [17000129204](https://supportusa.hikvision.com/support/solutions/articles/17000129204-i-can-t-see-the-live-view-of-the-cameras-in-the-web-browser-i-keep-getting-a-message-the-stream-is-). These establish that encryption applies to the platform stream (live view, playback and alarm pictures) and that a device's `encryptPwd` is `MD5(MD5(verificationCode))`, which lets the app verify a typed code locally before opening a stream.

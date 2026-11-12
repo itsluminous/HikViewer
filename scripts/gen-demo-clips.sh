@@ -12,7 +12,8 @@
 # with one recorder (the script checks that at the end). Identical means identical: the PPS carries
 # x264's initial QP, which it derives from the CRF, so one CRF serves every clip and steps up for
 # all of them together until the largest is under MAX_BYTES (a detailed still costs more bits than
-# a plain wall, and the APK should stay small); and `setsar=1` keeps a still's own pixel aspect
+# a plain wall, and the APK should stay small); `eq` dims the stock photos to the flat, slightly
+# washed look of real CCTV so a wall of them does not shout from the README; and `setsar=1` keeps a still's own pixel aspect
 # ratio out of the SPS. Only stock pictures may be used here, never footage from anyone's cameras.
 set -euo pipefail
 src=${1:?usage: $0 <dir with <slug>.jpg or <slug>.jpeg for every demo camera>}
@@ -23,7 +24,7 @@ mkdir -p "$out"
 
 encode() { # <still> <crf> <out.ts>
   ffmpeg -v error -y -loop 1 -framerate 12 -i "$1" -t 3 \
-    -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='1+0.0015*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=12,setsar=1,format=yuv420p,setrange=tv,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709" \
+    -vf "scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,zoompan=z='1+0.0015*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=640x360:fps=12,eq=brightness=-0.12:contrast=0.8:saturation=0.6,setsar=1,format=yuv420p,setrange=tv,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709" \
     -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -g 12 -keyint_min 12 -bf 0 -refs 1 \
     -x264-params "repeat-headers=1:scenecut=0:ref=1:fullrange=off:colorprim=bt709:transfer=bt709:colormatrix=bt709" \
     -crf "$2" -f mpegts "$3"

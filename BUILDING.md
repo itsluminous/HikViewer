@@ -94,7 +94,7 @@ adb -s emulator-5554 shell am start -n $PKG/com.itsluminous.hikviewer.demo.DemoA
 
 Extras: `screen` = `login` | `grid` | `fullscreen` | `camera` (phone portrait screen) | `playback` | `settings`; `layout` = a `GridLayoutMode` name (`AUTO`, `GRID_3X3`, `HERO_1_7`, …); `cameras` = channel count; `index` = tile to open; `names` = overlay the camera names (default on).
 
-`scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]` drives this to produce the eight files under `docs/screenshots/` (1080p from the TV AVD, portrait from the phone AVD, each shrunk until it is under 400 KB). The clips are twelve stock pictures of empty rooms and gardens with a slow zoom; to regenerate them from a folder holding one still per camera, `back_garden`, `driveway`, `front_door`, `garage`, `hallway`, `kitchen`, `living_room`, `nursery`, `office`, `patio`, `porch` and `side_gate`, each `.jpg` or `.jpeg`:
+`scripts/demo-screenshots.sh <tv-serial> [<phone-serial>]` drives this to produce the eight files under `docs/screenshots/` (1080p from the TV AVD, portrait from the phone AVD, each shrunk until it is under 400 KB). The clips are twelve stock pictures of empty rooms and gardens with a slow zoom and a dimmed, low-contrast CCTV look; to regenerate them from a folder holding one still per camera, `back_garden`, `driveway`, `front_door`, `garage`, `hallway`, `kitchen`, `living_room`, `nursery`, `office`, `patio`, `porch` and `side_gate`, each `.jpg` or `.jpeg`:
 
 ```sh
 scripts/gen-demo-clips.sh /path/to/stills

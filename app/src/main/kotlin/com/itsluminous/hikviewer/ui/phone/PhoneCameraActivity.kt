@@ -3,12 +3,15 @@ package com.itsluminous.hikviewer.ui.phone
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -16,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.itsluminous.hikviewer.databinding.ActivityPhoneCameraBinding
 import com.itsluminous.hikviewer.di.AppGraph
 import com.itsluminous.hikviewer.player.TilePlayer
+import com.itsluminous.hikviewer.ui.common.FormFactor
 import com.itsluminous.hikviewer.ui.common.InactivityTimer
 import com.itsluminous.hikviewer.ui.common.LambdaViewModelFactory
 import com.itsluminous.hikviewer.ui.common.SwipeDetector
@@ -50,6 +54,17 @@ import java.time.LocalDateTime
  * again or, while they are up, puts them away. Any touch that lands on the controls restarts the
  * timer and is theirs alone: a drag along the bar scrubs into the footage and never switches
  * camera. Upright, the controls have their own half of the screen and never hide.
+ *
+ * A phone whose auto-rotate is off ([AutoRotateSetting]) cannot reach the sideways layout by being
+ * turned, so, like a video player, the screen then offers the turn as a button: upright, a
+ * fullscreen icon in the picture's corner forces `SENSOR_LANDSCAPE` (either way up, as a turned
+ * phone would be); sideways, an exit icon in the controls overlay forces `PORTRAIT`. The system
+ * recreates the Activity for the new orientation exactly as a physical turn does, and the forced
+ * orientation rides along in the saved state so the new instance keeps it (a fresh instance would
+ * fall back to the sensor). While forced sideways, one Back goes upright first and the next leaves
+ * the screen. With auto-rotate on, the buttons are gone, nothing is forced (`UNSPECIFIED`), and a
+ * lock still in force is released the moment the switch is flipped, so the sensor takes over. A TV
+ * neither shows the buttons nor locks anything.
  */
 class PhoneCameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPhoneCameraBinding
@@ -58,6 +73,20 @@ class PhoneCameraActivity : AppCompatActivity() {
     private var boundPlayer: TilePlayer? = null
     private var gestureStartedOnPicture = false
     private var gestureStartedOnControls = false
+    private var isTelevision = false
+    private val autoRotate by lazy { AutoRotateSetting(contentResolver) }
+
+    /**
+     * The orientation this screen forced with its fullscreen buttons (`SENSOR_LANDSCAPE` or
+     * `PORTRAIT`), or `UNSPECIFIED` while the phone decides; kept across the recreate in the saved state.
+     */
+    private var forcedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+    /** Enabled only while forced sideways: Back then goes upright instead of leaving. */
+    private val exitFullscreenOnBack =
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = exitFullscreen()
+        }
 
     /** Landscape only: the controls overlay (bar, buttons, help) hides after the grid's idle time. */
     private var landscapeControls: InactivityTimer? = null
@@ -120,6 +149,12 @@ class PhoneCameraActivity : AppCompatActivity() {
                     releaseFocus = { binding.root.requestFocus() },
                 ).also { it.onUserActivity() }
         }
+        isTelevision = FormFactor.isTelevision(this)
+        forcedOrientation =
+            savedInstanceState?.getInt(STATE_FORCED_ORIENTATION, forcedOrientation) ?: forcedOrientation
+        binding.fullscreenButton?.setOnClickListener { enterFullscreen() }
+        binding.transport.fullscreenExitButton?.setOnClickListener { exitFullscreen() }
+        onBackPressedDispatcher.addCallback(this, exitFullscreenOnBack)
         observe()
     }
 
@@ -127,6 +162,51 @@ class PhoneCameraActivity : AppCompatActivity() {
     private fun toggleControls() {
         val timer = landscapeControls ?: return
         if (timer.isVisible) timer.hideNow() else timer.onUserActivity()
+    }
+
+    /** The upright fullscreen button: sideways, either way up, until exited or auto-rotate is turned on. */
+    private fun enterFullscreen() = force(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
+
+    /** The sideways exit button, or Back while forced sideways: upright again. */
+    private fun exitFullscreen() = force(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+
+    private fun force(orientation: Int) {
+        forcedOrientation = orientation
+        refreshOrientationControls()
+    }
+
+    /**
+     * Puts the fullscreen buttons, the orientation lock and the Back behaviour in line with the
+     * auto-rotate switch: all three exist only on a phone whose switch is off. Called when the
+     * screen resumes and whenever the switch changes while it is up.
+     */
+    private fun refreshOrientationControls() {
+        if (isTelevision) return
+        val offersToggle = !autoRotate.isOn
+        if (!offersToggle) forcedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (requestedOrientation != forcedOrientation) requestedOrientation = forcedOrientation
+        binding.fullscreenButton?.isVisible = offersToggle
+        binding.transport.fullscreenExitButton?.isVisible = offersToggle
+        exitFullscreenOnBack.isEnabled =
+            offersToggle &&
+            !isUpright &&
+            forcedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_FORCED_ORIENTATION, forcedOrientation)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshOrientationControls()
+        if (!isTelevision) autoRotate.watch(::refreshOrientationControls)
+    }
+
+    override fun onPause() {
+        autoRotate.stop()
+        super.onPause()
     }
 
     override fun onStart() {
@@ -264,6 +344,9 @@ class PhoneCameraActivity : AppCompatActivity() {
          * counts in its portrait layout's arrangement (a phone keeps a layout per orientation).
          */
         const val EXTRA_PORTRAIT_GRID: String = "portraitGrid"
+
+        /** Saved state: the orientation the fullscreen buttons forced, so a recreate keeps the lock. */
+        private const val STATE_FORCED_ORIENTATION = "forcedOrientation"
 
         /**
          * Intent to open camera [index] (a position in the grid, which was upright when

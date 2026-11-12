@@ -66,5 +66,20 @@
             android:id="@+id/live_button"
             style="@style/Widget.HikViewer.BarButton"
             android:text="@string/phone_live_button" />
+
+        <!-- Phones with auto-rotate off: back upright, like turning the phone (see PhoneCameraActivity).
+             Hidden while auto-rotate is on; hides and shows with the rest of the overlay otherwise. -->
+        <ImageButton
+            android:id="@+id/fullscreen_exit_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/phone_fullscreen_exit"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_fullscreen_exit"
+            android:visibility="gone"
+            tools:visibility="visible" />
     </LinearLayout>
 </LinearLayout>

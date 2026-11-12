@@ -31,6 +31,22 @@
             android:visibility="gone"
             tools:text="@string/playback_no_recordings"
             tools:visibility="visible" />
+
+        <!-- Phones with auto-rotate off: turns the screen sideways like a rotation would (see
+             PhoneCameraActivity). Hidden while auto-rotate is on, when the phone itself does it. -->
+        <ImageButton
+            android:id="@+id/fullscreen_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/phone_fullscreen_enter"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_fullscreen"
+            android:visibility="gone"
+            tools:visibility="visible" />
     </com.itsluminous.hikviewer.ui.common.AspectRatioFrameLayout>
 
     <!-- Bottom: the camera's name, the day's timeline and transport controls (shared with landscape). -->

@@ -19,21 +19,6 @@
         android:scaleType="fitXY"
         android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/name"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="start|bottom"
-        android:layout_margin="6dp"
-        android:background="@drawable/label_background"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="2dp"
-        android:textColor="@color/on_background"
-        android:textSize="14sp"
-        tools:text="Gate" />
-
     <!-- Live dot, top-right: green while pictures reach the screen, red while none has for ~2 s. -->
     <View
         android:id="@+id/live_dot"
@@ -110,6 +95,23 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_retry" />
     </LinearLayout>
+
+    <!-- Camera name (Settings: Show camera names, Camera name position). Drawn above the dim scrim
+         so a failed tile, which shows its name whatever the setting says, stays readable. -->
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|bottom"
+        android:layout_margin="6dp"
+        android:background="@drawable/label_background"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="2dp"
+        android:textColor="@color/on_background"
+        android:textSize="14sp"
+        tools:text="Gate" />
 
     <!-- Last child: the focus border is drawn above everything else in the tile, inset inside it. -->
     <com.itsluminous.hikviewer.ui.grid.TileFocusOverlay

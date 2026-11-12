@@ -364,4 +364,40 @@ class CameraTileViewTest {
         tile.showName = false
         assertThat(name.visibility).isEqualTo(View.GONE)
     }
+
+    @Test
+    fun `a failed tile shows its name whatever the setting says, and follows the setting again once it recovers`() {
+        val name = tile.findViewById<TextView>(R.id.name)
+        tile.cameraName = "Gate"
+        tile.showName = false
+        tile.bind(TileState.Live)
+        assertThat(name.visibility).isEqualTo(View.GONE)
+        tile.bind(TileState.Error("Camera offline"))
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        // The setting flips while the tile is down: still shown.
+        tile.showName = true
+        tile.showName = false
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        tile.bind(TileState.Connecting)
+        assertThat(name.visibility).isEqualTo(View.GONE)
+        tile.bind(TileState.Error("No video"))
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        tile.bind(TileState.Live)
+        assertThat(name.visibility).isEqualTo(View.GONE)
+        tile.showName = true
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        tile.bind(TileState.Error("No video"))
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+        tile.bind(TileState.Live)
+        assertThat(name.visibility).isEqualTo(View.VISIBLE)
+    }
+
+    @Test
+    fun `the name label is drawn above the error scrim so a failed tile stays readable`() {
+        val name = tile.findViewById<TextView>(R.id.name)
+        val overlay = tile.findViewById<View>(R.id.error_overlay)
+        val border = tile.findViewById<View>(R.id.focus_frame)
+        assertThat(tile.indexOfChild(name)).isGreaterThan(tile.indexOfChild(overlay))
+        assertThat(tile.indexOfChild(border)).isEqualTo(tile.childCount - 1)
+    }
 }

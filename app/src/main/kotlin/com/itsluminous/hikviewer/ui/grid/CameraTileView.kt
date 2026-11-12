@@ -27,9 +27,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * One camera in the grid: a `SurfaceView` for the decoder, the camera name, a small spinner while
- * nothing has been drawn yet, a dim scrim with a centred retry icon while the stream is down (a
- * long press on the icon opens the decoder's own error text, [showDecoderDetail]), and a dot in
+ * One camera in the grid: a `SurfaceView` for the decoder, the camera name (shown per
+ * [showName], and always while the stream is down, so the user knows which camera failed), a
+ * small spinner while nothing has been drawn yet, a dim scrim with a centred retry icon while the
+ * stream is down (a long press on the icon opens the decoder's own error text,
+ * [showDecoderDetail]), and a dot in
  * the top-right corner that is green while pictures reach the screen and red otherwise
  * ([framesFlowing]; the player samples it twice a second, so the dot never redraws per frame).
  *
@@ -164,12 +166,20 @@ class CameraTileView
                 binding.name.text = value
             }
 
-        /** Whether the name label is drawn; off by default because the feed burns the name in. */
+        /**
+         * Whether the name label is drawn while the tile shows video; off by default because the
+         * feed burns the name in. A failed tile ([TileState.Error]) shows its name regardless, so
+         * the user can tell which camera the Retry overlay belongs to; the label follows this
+         * setting again once the tile recovers.
+         */
         var showName: Boolean = false
             set(value) {
                 field = value
-                binding.name.visibility = if (value) VISIBLE else GONE
+                updateNameVisibility()
             }
+
+        /** True while [bind] last saw an error: the name is shown whatever [showName] says. */
+        private var inError = false
 
         /** Whether the fps counter is drawn. */
         var showFrameRate: Boolean = false
@@ -253,7 +263,14 @@ class CameraTileView
                 binding.errorOverlay.visibility = GONE
                 errorDetail = null
             }
+            inError = state is TileState.Error
+            updateNameVisibility()
             updateRetryScale()
+        }
+
+        /** The name is drawn when the setting says so, and always over a Retry overlay. */
+        private fun updateNameVisibility() {
+            binding.name.visibility = if (showName || inError) VISIBLE else GONE
         }
 
         /**

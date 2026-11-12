@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.widget.ImageButton
+import android.widget.TextView
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -166,6 +167,12 @@ class TileDrawingTest {
             retry = tile.findViewById(R.id.retry)
             check(retry.drawable != null && retry.background == null) { "retry must be a bare icon" }
             check(retry.contentDescription == activity.getString(R.string.tile_retry))
+            // Names are off (the default), yet the failed tile says which camera it is.
+            val name = tile.findViewById<TextView>(R.id.name)
+            check(!tile.showName && !app.graph.settingsStore.showCameraNames) { "names must be off" }
+            check(name.isShown && name.text.toString() == "Camera 2") { "failed tile's name hidden" }
+            val liveName = tiles()[0].findViewById<TextView>(R.id.name)
+            check(liveName.visibility == View.GONE) { "a live tile shows its name" }
         }
         // The D-pad lands on the tile, never on the icon, and the icon grows all the same.
         dpad(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -190,6 +197,11 @@ class TileDrawingTest {
         awaitOnMain { account.opened.size == opened + 1 && !tile.showsRetry }
         val reopened = account.opened.last().first
         check(reopened.channelNo == 2) { "wrong stream reopened: channel ${reopened.channelNo}" }
+        // Recovered: the name follows the setting again.
+        scenario.onActivity {
+            val name = tile.findViewById<TextView>(R.id.name)
+            check(name.visibility == View.GONE) { "name still up after the stream reopened" }
+        }
     }
 
     /** Pumps the main thread until [condition] holds (read on the main thread), at most 5 s. */

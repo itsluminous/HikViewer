@@ -303,7 +303,7 @@ class PlaybackActivityTest {
                 val local = a.findViewById<TextView>(R.id.local_time_label)
                 assertThat(local.visibility).isEqualTo(View.VISIBLE)
                 assertThat(local.text.toString())
-                    .isEqualTo("Local time  10:25 ${RecorderTimeLabel.zoneName()} (+13:30)")
+                    .isEqualTo("Local time  10:25 ${RecorderTimeLabel.zoneName()} (-13:30)")
             }
         }
     }

@@ -16,9 +16,10 @@ import android.icu.util.TimeZone as IcuTimeZone
 /**
  * The two time lines under the bar. Line 1 is `HH:mm:ss` in recorder time, the same numbers the
  * recorder burns into the picture, always. Line 2 appears only when the recorder's clock differs
- * from the device's and reads `Local time  10:34 PT (+13:30)`: the device-local time that matches
- * the playhead, the device zone's short name and the learnt offset, so a user in another zone can
- * see both clocks without doing the sum. With no offset the screen is exactly the single line it
+ * from the device's and reads `Local time  10:34 PT (-13:30)`: the device-local time that matches
+ * the playhead, the device zone's short name and how far the device's clock is from the
+ * recorder's (device minus recorder, so a phone behind the recorder shows a minus), so a user in
+ * another zone can see both clocks without doing the sum. With no offset the screen is exactly the single line it
  * was before recorder time existed.
  */
 object RecorderTimeLabel {
@@ -51,7 +52,9 @@ object RecorderTimeLabel {
     ): String? {
         if (!clock.isShifted) return null
         val device = clock.toDevice(time).format(localTime)
-        return resources.getString(R.string.local_time_line, device, zoneName(zone), clock.offsetLabel())
+        // Local relative to the recorder: the opposite sign of the learnt recorder-minus-device offset.
+        val localOffset = RecorderClock.formatOffset(clock.offset.negated())
+        return resources.getString(R.string.local_time_line, device, zoneName(zone), localOffset)
     }
 
     /**

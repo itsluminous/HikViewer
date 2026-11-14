@@ -393,7 +393,7 @@ class PhoneCameraActivityTest {
                 val local = a.findViewById<TextView>(R.id.local_time_label)
                 assertThat(time.text.toString()).matches("23:5\\d:\\d\\d")
                 assertThat(local.visibility).isEqualTo(View.VISIBLE)
-                assertThat(local.text.toString()).matches("Local time  10:2\\d \\S+ \\(\\+13:30\\)")
+                assertThat(local.text.toString()).matches("Local time  10:2\\d \\S+ \\(-13:30\\)")
                 assertThat(local.text.toString()).contains(" ${RecorderTimeLabel.zoneName()} ")
                 // Directly below line 1, inside the controls overlay.
                 assertThat(local.top).isAtLeast(time.bottom)
@@ -630,7 +630,7 @@ class PhoneCameraActivityTest {
                 // Live: line 2 is the phone's now, 11:00, under the recorder's 00:30.
                 assertThat(a.findViewById<View>(R.id.local_time_label).visibility).isEqualTo(View.VISIBLE)
                 assertThat(a.text(R.id.local_time_label))
-                    .isEqualTo("Local time  11:00 ${RecorderTimeLabel.zoneName()} (+13:30)")
+                    .isEqualTo("Local time  11:00 ${RecorderTimeLabel.zoneName()} (-13:30)")
                 val bar = a.findViewById<TimeBarView>(R.id.time_bar)
                 assertThat(bar.positionFraction)
                     .isWithin(0.0001f)
@@ -656,7 +656,7 @@ class PhoneCameraActivityTest {
                         .withSecond(0)
                         .toString()
                 assertThat(a.text(R.id.local_time_label))
-                    .isEqualTo("Local time  $deviceMinute ${RecorderTimeLabel.zoneName()} (+13:30)")
+                    .isEqualTo("Local time  $deviceMinute ${RecorderTimeLabel.zoneName()} (-13:30)")
             }
         }
     }

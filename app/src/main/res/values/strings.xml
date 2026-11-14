@@ -58,7 +58,7 @@
     <string name="playback_paused">Paused</string>
     <string name="playback_date_chip">◀ %1$s ▶</string>
     <!-- Under the recorder time when the recorder's clock differs from this device's: the device time of the
-         playhead, the device zone's short name (PT, IST) and the offset such as +13:30. Quoted to keep the two spaces. -->
+         playhead, the device zone's short name (PT, IST) and the device's offset from the recorder, such as -13:30. Quoted to keep the two spaces. -->
     <string name="local_time_line">"Local time  %1$s %2$s (%3$s)"</string>
     <string name="grid_move_hint">Moving: ◀ ▲ ▼ ▶ swap · OK drop · Back cancel</string>
 

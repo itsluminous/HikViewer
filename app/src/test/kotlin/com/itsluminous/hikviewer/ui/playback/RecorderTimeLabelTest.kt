@@ -55,7 +55,7 @@ class RecorderTimeLabelTest {
         RecorderTimeLabel.bind(timeLabel, localLabel, recorderTime, RecorderClock(ist))
         assertThat(timeLabel.text.toString()).isEqualTo("21:37:43")
         assertThat(localLabel.visibility).isEqualTo(View.VISIBLE)
-        assertThat(localLabel.text.toString()).isEqualTo("Local time  08:07 $zone (+13:30)")
+        assertThat(localLabel.text.toString()).isEqualTo("Local time  08:07 $zone (-13:30)")
     }
 
     @Test
@@ -70,7 +70,7 @@ class RecorderTimeLabelTest {
     fun `a recorder behind the device formats a negative offset and a later device time`() {
         val behind = RecorderClock(Duration.ofMinutes(-(3 * 60 + 45)))
         val line = RecorderTimeLabel.localLine(context.resources, recorderTime, behind, pacific)
-        assertThat(line).isEqualTo("Local time  01:22 ${RecorderTimeLabel.zoneName(pacific)} (-03:45)")
+        assertThat(line).isEqualTo("Local time  01:22 ${RecorderTimeLabel.zoneName(pacific)} (+03:45)")
     }
 
     @Test

@@ -55,15 +55,32 @@
                 android:textSize="14sp"
                 tools:text="◀ 2026-11-04 ▶" />
 
-            <TextView
-                android:id="@+id/time_label"
+            <!-- Recorder time, and under it the device's local time only when the two clocks differ. -->
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:textColor="@color/on_background"
-                android:textSize="16sp"
-                tools:text="17:13:51" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/time_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/on_background"
+                    android:textSize="16sp"
+                    tools:text="17:13:51" />
+
+                <TextView
+                    android:id="@+id/local_time_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/on_background_secondary"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    tools:text="Local time  10:34 PT (+13:30)"
+                    tools:visibility="visible" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/speed_button"

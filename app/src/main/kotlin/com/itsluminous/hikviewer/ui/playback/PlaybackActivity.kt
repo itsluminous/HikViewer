@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Recorded footage of one camera, full screen, with a 24 h time bar in recorder time: it opens on
- * the recorder's today ([com.itsluminous.hikviewer.data.RecorderClocks]) and the time label says
- * by how much the recorder's clock differs from this device's when it does ([RecorderTimeLabel]).
+ * the recorder's today ([com.itsluminous.hikviewer.data.RecorderClocks]) and, when the recorder's
+ * clock differs from this device's, a second line gives the device's local time ([RecorderTimeLabel]).
  *
  * The D-pad never moves view focus here: the controls hide after the shared idle time and a
  * hidden view cannot hold focus, so the ViewModel keeps a logical [PlaybackControl] (UP/DOWN
@@ -109,7 +109,7 @@ class PlaybackActivity : AppCompatActivity() {
         binding.timeBar.segments = state.segments
         binding.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
         binding.timeBar.highlighted = state.control == PlaybackControl.BAR
-        binding.timeLabel.text = RecorderTimeLabel.of(resources, state.position, viewModel.recorderClock)
+        RecorderTimeLabel.bind(binding.timeLabel, binding.localTimeLabel, state.position, viewModel.recorderClock)
         val status = state.phase.statusRes?.let(::getString)
         binding.status.text = status
         binding.status.visibility = if (status == null) View.GONE else View.VISIBLE

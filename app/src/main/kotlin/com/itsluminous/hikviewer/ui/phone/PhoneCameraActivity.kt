@@ -298,8 +298,8 @@ class PhoneCameraActivity : AppCompatActivity() {
 
     /**
      * In live mode the playhead is the clock, the recorder's: its now on the bar (which is in
-     * recorder time, like the clock burnt into the picture), and the label with the offset hint
-     * when the phone's clock differs. The recorded state's position takes over otherwise.
+     * recorder time, like the clock burnt into the picture), and under it the phone's own time
+     * when the two clocks differ. The recorded state's position takes over otherwise.
      */
     private fun renderClock() {
         if (viewModel.mode.value != PhoneCameraMode.LIVE) return
@@ -312,7 +312,7 @@ class PhoneCameraActivity : AppCompatActivity() {
                 ?.day
         val onToday = engineDay == null || engineDay == now.toLocalDate()
         binding.transport.timeBar.positionFraction = if (onToday) PlaybackTimeline.fractionOfDay(now) else 0f
-        binding.transport.timeLabel.text = RecorderTimeLabel.of(resources, now, clock)
+        RecorderTimeLabel.bind(binding.transport.timeLabel, binding.transport.localTimeLabel, now, clock)
     }
 
     private fun renderRecorded(state: PlaybackUiState) {
@@ -325,8 +325,12 @@ class PhoneCameraActivity : AppCompatActivity() {
             renderClock()
         } else {
             binding.transport.timeBar.positionFraction = PlaybackTimeline.fractionOfDay(state.position)
-            binding.transport.timeLabel.text =
-                RecorderTimeLabel.of(resources, state.position, viewModel.recorderClock())
+            RecorderTimeLabel.bind(
+                binding.transport.timeLabel,
+                binding.transport.localTimeLabel,
+                state.position,
+                viewModel.recorderClock(),
+            )
         }
         // While live, only what concerns the day's listing is worth a line; the transport is the clock.
         val status =

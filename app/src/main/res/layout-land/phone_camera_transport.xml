@@ -16,6 +16,18 @@
         android:textSize="14sp"
         tools:text="17:13:51" />
 
+    <!-- The device's local time, only when the recorder's clock differs; part of the overlay, so it
+         hides with the rest of the controls (see RecorderTimeLabel). -->
+    <TextView
+        android:id="@+id/local_time_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/on_background_secondary"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:text="Local time  10:34 PT (+13:30)"
+        tools:visibility="visible" />
+
     <com.itsluminous.hikviewer.ui.playback.TimeBarView
         android:id="@+id/time_bar"
         android:layout_width="match_parent"

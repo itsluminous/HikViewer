@@ -274,7 +274,7 @@ class PlaybackActivityTest {
         }
     }
 
-    /** On a TV in another zone the label carries the recorder's offset; the bar's numbers stay the recorder's. */
+    /** On a TV in another zone a second line gives the device's time; the bar's numbers stay the recorder's. */
     @Test
     fun `the time label names the recorder's offset when its clock differs`() {
         val cloud =
@@ -298,8 +298,12 @@ class PlaybackActivityTest {
             scenario.onActivity { a ->
                 // The recorder's today, 20:13 there, is the day after the device's.
                 assertThat(a.text(R.id.date_chip)).contains(LocalDate.now().toString())
-                assertThat(a.text(R.id.time_label)).startsWith("23:55:0")
-                assertThat(a.text(R.id.time_label)).endsWith(" (recorder, +13:30)")
+                assertThat(a.text(R.id.time_label)).matches("23:55:0\\d")
+                // Line 2: the device time of that playhead (13 h 30 earlier), the zone and the offset.
+                val local = a.findViewById<TextView>(R.id.local_time_label)
+                assertThat(local.visibility).isEqualTo(View.VISIBLE)
+                assertThat(local.text.toString())
+                    .isEqualTo("Local time  10:25 ${RecorderTimeLabel.zoneName()} (+13:30)")
             }
         }
     }

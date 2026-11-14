@@ -57,8 +57,9 @@
     <string name="playback_error">Could not list recordings</string>
     <string name="playback_paused">Paused</string>
     <string name="playback_date_chip">◀ %1$s ▶</string>
-    <!-- The time label when the recorder's clock differs from this device's: time, then its offset such as +13:30. -->
-    <string name="time_label_recorder">%1$s (recorder, %2$s)</string>
+    <!-- Under the recorder time when the recorder's clock differs from this device's: the device time of the
+         playhead, the device zone's short name (PT, IST) and the offset such as +13:30. Quoted to keep the two spaces. -->
+    <string name="local_time_line">"Local time  %1$s %2$s (%3$s)"</string>
     <string name="grid_move_hint">Moving: ◀ ▲ ▼ ▶ swap · OK drop · Back cancel</string>
 
     <!-- Layouts -->

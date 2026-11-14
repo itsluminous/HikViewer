@@ -18,10 +18,12 @@ import com.itsluminous.hikviewer.core.auth.Region
 import com.itsluminous.hikviewer.core.playback.RecordSegment
 import com.itsluminous.hikviewer.data.StoredRecorderClocks
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
+import com.itsluminous.hikviewer.fakes.FixedRecorderClocks
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
 import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
 import com.itsluminous.hikviewer.ui.playback.PlaybackTimeline
+import com.itsluminous.hikviewer.ui.playback.RecorderTimeLabel
 import com.itsluminous.hikviewer.ui.playback.SeekController
 import com.itsluminous.hikviewer.ui.playback.TimeBarView
 import org.junit.Before
@@ -33,6 +35,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /** A phone held upright, with a touch screen and no leanback. */
 @RunWith(AndroidJUnit4::class)
@@ -361,6 +364,48 @@ class PhoneCameraActivityTest {
         }
     }
 
+    /** Sideways with the recorder's clock ahead: both lines are in the overlay and go away with it. */
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-land-xhdpi")
+    fun `sideways the local time line sits under the recorder time and hides with the controls`() {
+        val ist = Duration.ofMinutes(13 * 60 + 30)
+        val cloud =
+            FakeCloudServices(cameraCount = 4, signalCount = 3).apply {
+                playbackPaced = false
+                playbackHold = true
+                playbackFramesPerWindow = 24
+            }
+        app.graph =
+            TestGraph.create(app, cloud, topBarAutoHideMillis = IDLE_MILLIS) {
+                FixedRecorderClocks(ist) { LocalDate.now().atTime(6, 43) }
+            }
+        kotlinx.coroutines.runBlocking {
+            app.graph.account.login("a", "secret", Region.INDIA)
+            app.graph.account.loadInventory()
+        }
+        app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
+        val account = cloud.accounts.single()
+        val intent = PhoneCameraActivity.intent(app, 2, playback = true)
+        ActivityScenario.launch<PhoneCameraActivity>(intent).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                val time = a.findViewById<TextView>(R.id.time_label)
+                val local = a.findViewById<TextView>(R.id.local_time_label)
+                assertThat(time.text.toString()).matches("23:5\\d:\\d\\d")
+                assertThat(local.visibility).isEqualTo(View.VISIBLE)
+                assertThat(local.text.toString()).matches("Local time  10:2\\d \\S+ \\(\\+13:30\\)")
+                assertThat(local.text.toString()).contains(" ${RecorderTimeLabel.zoneName()} ")
+                // Directly below line 1, inside the controls overlay.
+                assertThat(local.top).isAtLeast(time.bottom)
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isEqualTo(View.VISIBLE)
+            }
+            ShadowLooper.idleMainLooper(IDLE_MILLIS + 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+            scenario.onActivity { a ->
+                assertThat(a.findViewById<View>(R.id.controls).visibility).isNotEqualTo(View.VISIBLE)
+            }
+        }
+    }
+
     /**
      * Sideways, the controls overlay is shown for the idle time when the screen opens and hides
      * after it, and swiping the picture still switches camera while it is up.
@@ -560,8 +605,9 @@ class PhoneCameraActivityTest {
 
     /**
      * The user's case: a phone in Pacific time, the recorder on Indian time, 13 h 30 ahead and
-     * already on the next date. Live, the playhead and label are the recorder's now with the offset
-     * hint, and the bar shows the recorder's today; the tile menu's Playback opens the newest footage.
+     * already on the next date. Live, the playhead and label are the recorder's now with the phone's
+     * time on a second line, and the bar shows the recorder's today; the tile menu's Playback opens
+     * the newest footage.
      */
     @Test
     fun `live playhead, label and day are the recorder's when its clock is ahead of the phone's`() {
@@ -570,6 +616,61 @@ class PhoneCameraActivityTest {
         val ist = Duration.ofMinutes(13 * 60 + 30)
         val recorderToday = deviceToday.plusDays(1) // 00:30 there
         val newestEnd = deviceNow.plus(ist).minusMinutes(8)
+        val account = recorderAheadOfPhone(deviceNow, recorderToday, newestEnd)
+
+        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
+            awaitUi { account.searched.size == 2 }
+            awaitUi { scenario.bar().segments.isNotEmpty() }
+            scenario.onActivity { a ->
+                assertThat(account.searched.map { it.second })
+                    .containsExactly(deviceToday, recorderToday)
+                    .inOrder()
+                assertThat(a.text(R.id.date_chip)).isEqualTo(recorderToday.toString())
+                assertThat(a.text(R.id.time_label)).isEqualTo("00:30:00")
+                // Live: line 2 is the phone's now, 11:00, under the recorder's 00:30.
+                assertThat(a.findViewById<View>(R.id.local_time_label).visibility).isEqualTo(View.VISIBLE)
+                assertThat(a.text(R.id.local_time_label))
+                    .isEqualTo("Local time  11:00 ${RecorderTimeLabel.zoneName()} (+13:30)")
+                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
+                assertThat(bar.positionFraction)
+                    .isWithin(0.0001f)
+                    .of(PlaybackTimeline.fractionOfDay(recorderToday.atTime(0, 30)))
+            }
+        }
+        // Playback from the tile menu: the newest footage, in recorder terms, not the device's date.
+        val playback = PhoneCameraActivity.intent(app, 1, playback = true)
+        ActivityScenario.launch<PhoneCameraActivity>(playback).use { scenario ->
+            awaitUi { account.playbackOpened.isNotEmpty() }
+            scenario.onActivity { a ->
+                val window = account.playbackOpened.last().second
+                assertThat(window.begin).isEqualTo(newestEnd.minusMinutes(5))
+                assertThat(a.text(R.id.date_chip)).isEqualTo(recorderToday.toString())
+                // Recorded: line 2 is the phone's time of the playhead (which has run on a little), not its now.
+                val minute = PlaybackTimeline.label(window.begin).substring(0, 6)
+                assertThat(a.text(R.id.time_label)).startsWith(minute)
+                assertThat(a.text(R.id.time_label)).doesNotContain("(")
+                val deviceMinute =
+                    window.begin
+                        .minus(ist)
+                        .toLocalTime()
+                        .withSecond(0)
+                        .toString()
+                assertThat(a.text(R.id.local_time_label))
+                    .isEqualTo("Local time  $deviceMinute ${RecorderTimeLabel.zoneName()} (+13:30)")
+            }
+        }
+    }
+
+    /**
+     * A graph whose recorder's clock is learnt from footage: the device's day runs to midnight, the
+     * recorder's next day up to [newestEnd], while the phone reads [deviceNow]. Returns the fake account.
+     */
+    private fun recorderAheadOfPhone(
+        deviceNow: LocalDateTime,
+        recorderToday: LocalDate,
+        newestEnd: LocalDateTime,
+    ): FakeCloudServices.FakeAccount {
+        val deviceToday = deviceNow.toLocalDate()
         val cloud =
             FakeCloudServices(cameraCount = 4, signalCount = 3).apply {
                 playbackPaced = false
@@ -596,34 +697,7 @@ class PhoneCameraActivityTest {
             app.graph.account.loadInventory()
         }
         app.graph.settingsStore.verificationCode = FakeCloudServices.GOOD_CODE
-        val account = cloud.accounts.single()
-
-        ActivityScenario.launch<PhoneCameraActivity>(PhoneCameraActivity.intent(app, 1)).use { scenario ->
-            awaitUi { account.searched.size == 2 }
-            awaitUi { scenario.bar().segments.isNotEmpty() }
-            scenario.onActivity { a ->
-                assertThat(account.searched.map { it.second })
-                    .containsExactly(deviceToday, recorderToday)
-                    .inOrder()
-                assertThat(a.text(R.id.date_chip)).isEqualTo(recorderToday.toString())
-                assertThat(a.text(R.id.time_label)).isEqualTo("00:30:00 (recorder, +13:30)")
-                val bar = a.findViewById<TimeBarView>(R.id.time_bar)
-                assertThat(bar.positionFraction)
-                    .isWithin(0.0001f)
-                    .of(PlaybackTimeline.fractionOfDay(recorderToday.atTime(0, 30)))
-            }
-        }
-        // Playback from the tile menu: the newest footage, in recorder terms, not the device's date.
-        val playback = PhoneCameraActivity.intent(app, 1, playback = true)
-        ActivityScenario.launch<PhoneCameraActivity>(playback).use { scenario ->
-            awaitUi { account.playbackOpened.isNotEmpty() }
-            scenario.onActivity { a ->
-                val window = account.playbackOpened.last().second
-                assertThat(window.begin).isEqualTo(newestEnd.minusMinutes(5))
-                assertThat(a.text(R.id.date_chip)).isEqualTo(recorderToday.toString())
-                assertThat(a.text(R.id.time_label)).endsWith(" (recorder, +13:30)")
-            }
-        }
+        return cloud.accounts.single()
     }
 
     /** With the clocks in step nothing about the screen mentions the recorder. */
@@ -633,6 +707,7 @@ class PhoneCameraActivityTest {
             awaitUi { account.searched.isNotEmpty() }
             scenario.onActivity { a ->
                 assertThat(a.text(R.id.time_label)).matches("\\d\\d:\\d\\d:\\d\\d")
+                assertThat(a.findViewById<View>(R.id.local_time_label).visibility).isEqualTo(View.GONE)
                 assertThat(a.text(R.id.date_chip)).isEqualTo(LocalDate.now().toString())
             }
         }

@@ -82,6 +82,13 @@ class CameraTileView
         /** The video surface. */
         val surfaceView: View get() = binding.surface
 
+        /**
+         * What the retry icon does on a screen that is not the grid. The grid leaves it null: the
+         * icon then clicks the tile, whose listener retries. A single-camera screen makes its tile
+         * unclickable (a tap there is a swipe or a controls toggle), so it sets this instead.
+         */
+        var onRetry: (() -> Unit)? = null
+
         /** True while the dimmed Retry overlay is up; the owner routes OK to a retry then. */
         val showsRetry: Boolean get() = binding.errorOverlay.isVisible
 
@@ -130,7 +137,7 @@ class CameraTileView
             // D-pad never reaches the icon itself, since the tile takes focus before its
             // descendants, so this is how a D-pad user sees that OK will retry. The icon is an
             // ordinary view inside the scrim: scaling it never touches the surface.
-            binding.retry.setOnClickListener { performClick() }
+            binding.retry.setOnClickListener { onRetry?.invoke() ?: performClick() }
             // A long press on the icon (pointer, touch, or OK held on a screen where the icon
             // itself has focus) shows the codec's words; the grid does the same for a long press
             // on the tile, which is where the D-pad is.

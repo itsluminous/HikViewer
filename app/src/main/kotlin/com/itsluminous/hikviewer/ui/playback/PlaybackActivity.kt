@@ -57,6 +57,7 @@ class PlaybackActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.video.isFocusable = false
         binding.video.isClickable = false
+        binding.video.onRetry = viewModel::retry
         binding.video.cameraName = viewModel.camera.name
         binding.video.showName = AppGraph.of(this).settingsStore.showCameraNames
         binding.video.showFrameRate = AppGraph.of(this).settingsStore.showFrameRate
@@ -194,6 +195,11 @@ class PlaybackActivity : AppCompatActivity() {
     }
 
     private fun select(control: PlaybackControl) {
+        // OK on a failed picture retries it, whichever control is selected.
+        if (binding.video.showsRetry) {
+            viewModel.retry()
+            return
+        }
         when (control) {
             PlaybackControl.BAR, PlaybackControl.DATE -> viewModel.togglePause()
             PlaybackControl.SPEED -> viewModel.cycleSpeed()

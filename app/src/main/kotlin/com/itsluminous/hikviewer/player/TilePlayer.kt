@@ -292,11 +292,20 @@ class TilePlayer(
     /** The user pressed Retry on a failed tile: forget the failure and open the stream again. */
     fun retry(scope: CoroutineScope) {
         stop()
+        forgetFailure()
+        start(scope)
+    }
+
+    /**
+     * Forgets a decoder failure and the hardware backoff, so the next stream opened builds a
+     * decoder again. For an owner that reopens the stream itself (recorded playback) instead of
+     * calling [retry].
+     */
+    fun forgetFailure() {
         synchronized(lock) {
             decoderDisabled = false
             resetHardwareBackoffLocked()
         }
-        start(scope)
     }
 
     /**

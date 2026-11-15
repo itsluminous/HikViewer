@@ -655,4 +655,44 @@ class PlaybackViewModelTest {
         assertThat(account.searched.map { it.second }).containsExactly(today)
         assertThat(vm.state.value.day).isEqualTo(today)
     }
+
+    @Test
+    fun `retry lists a day whose listing failed again`() {
+        cloud.nextSearchError = IOException("boom")
+        val vm = started()
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.ERROR)
+        val searches = account.searched.size
+        vm.retry()
+        run()
+        assertThat(account.searched.size).isGreaterThan(searches)
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PLAYING)
+    }
+
+    @Test
+    fun `retry while playing reopens the footage at the playhead`() {
+        val vm = started()
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PLAYING)
+        val windows = account.playbackOpened.size
+        val position = vm.state.value.position
+        vm.retry()
+        run()
+        assertThat(account.playbackOpened.size).isEqualTo(windows + 1)
+        assertThat(
+            account.playbackOpened
+                .last()
+                .second.begin,
+        ).isEqualTo(position)
+    }
+
+    @Test
+    fun `retry while paused does nothing until the user plays`() {
+        val vm = started()
+        vm.togglePause()
+        run()
+        val windows = account.playbackOpened.size
+        vm.retry()
+        run()
+        assertThat(account.playbackOpened.size).isEqualTo(windows)
+        assertThat(vm.state.value.phase).isEqualTo(PlaybackPhase.PAUSED)
+    }
 }

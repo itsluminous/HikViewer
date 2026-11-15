@@ -14,11 +14,15 @@ import com.google.common.truth.Truth.assertThat
 import com.itsluminous.hikviewer.HikViewerApp
 import com.itsluminous.hikviewer.R
 import com.itsluminous.hikviewer.core.auth.Region
+import com.itsluminous.hikviewer.core.devices.Camera
+import com.itsluminous.hikviewer.core.stream.StreamException
 import com.itsluminous.hikviewer.core.stream.StreamQuality
 import com.itsluminous.hikviewer.data.NamePosition
 import com.itsluminous.hikviewer.fakes.FakeCloudServices
 import com.itsluminous.hikviewer.fakes.TestGraph
 import com.itsluminous.hikviewer.player.TileMode
+import com.itsluminous.hikviewer.ui.UI_DEADLINE_MILLIS
+import com.itsluminous.hikviewer.ui.UI_POLL_MILLIS
 import com.itsluminous.hikviewer.ui.grid.CameraTileView
 import com.itsluminous.hikviewer.ui.grid.GridLayoutMode
 import org.junit.Before
@@ -205,5 +209,49 @@ class FullscreenActivityTest {
                 assertThat(hint.visibility).isEqualTo(android.view.View.INVISIBLE)
             }
         }
+    }
+
+    @Test
+    fun `the retry icon and OK reopen a failed camera, though the tile itself is not clickable`() {
+        val camera = cloud.accounts.single()
+        val failing = Camera(FakeCloudServices.SERIAL, 2, "Camera 2", hasSignal = true, isOnline = true)
+        camera.nextStreamErrorFor[failing.key] = StreamException.ChannelOffline(failing)
+        ActivityScenario.launch<FullscreenActivity>(FullscreenActivity.intent(app, 1)).use { scenario ->
+            awaitTile(scenario) { it.showsRetry }
+            scenario.onActivity { a ->
+                val tile = a.findViewById<CameraTileView>(R.id.tile)
+                assertThat(tile.isClickable).isFalse()
+                assertThat(camera.opened).hasSize(1)
+                // Touch or mouse: the icon.
+                a.findViewById<View>(R.id.retry).performClick()
+            }
+            awaitTile(scenario) { !it.showsRetry }
+            assertThat(camera.opened).hasSize(2)
+
+            // The remote: OK on a failed picture retries too.
+            camera.nextStreamErrorFor[failing.key] = StreamException.ChannelOffline(failing)
+            scenario.onActivity { a -> a.findViewById<View>(R.id.retry).performClick() }
+            awaitTile(scenario) { it.showsRetry }
+            scenario.onActivity { a ->
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
+                a.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))
+            }
+            awaitTile(scenario) { !it.showsRetry }
+            assertThat(camera.opened).hasSize(4)
+        }
+    }
+
+    private fun awaitTile(
+        scenario: ActivityScenario<FullscreenActivity>,
+        condition: (CameraTileView) -> Boolean,
+    ) {
+        val deadline = System.currentTimeMillis() + UI_DEADLINE_MILLIS
+        var met = false
+        while (!met && System.currentTimeMillis() < deadline) {
+            ShadowLooper.idleMainLooper()
+            scenario.onActivity { a -> met = condition(a.findViewById(R.id.tile)) }
+            if (!met) Thread.sleep(UI_POLL_MILLIS)
+        }
+        assertThat(met).isTrue()
     }
 }

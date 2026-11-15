@@ -154,6 +154,18 @@ class PhoneCameraViewModel(
         engine.seekToFraction(fraction)
     }
 
+    /** Retry on the failed picture: the footage when it is on screen, else the live stream. */
+    fun retry() {
+        val engine = recordedFlow.value
+        if (modeFlow.value != PhoneCameraMode.LIVE && engine != null) {
+            engine.retry()
+        } else {
+            live.players.value
+                .firstOrNull()
+                ?.let(live::retry)
+        }
+    }
+
     /** The Live button: drop the footage and reopen the live stream. */
     fun goLive() {
         if (modeFlow.value == PhoneCameraMode.LIVE) return

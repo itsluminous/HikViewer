@@ -125,7 +125,12 @@ data class PlaybackUiState(
  * timers is re-dispatched to the main thread through the engine's scope: [viewModelScope] on the
  * TV playback screen, or the owning ViewModel's scope when the phone screen embeds one engine
  * per camera ([externalScope]); that owner calls [close] when it drops the engine.
+ *
+ * Every public function is one input of the playback screen (a D-pad key, a tap, a lifecycle
+ * step), hence the detekt suppression: splitting them across classes would only scatter one
+ * screen's controls.
  */
+@Suppress("TooManyFunctions")
 class PlaybackViewModel(
     /** The camera whose recording plays. */
     val camera: Camera,
@@ -200,6 +205,25 @@ class PlaybackViewModel(
     fun listDay() {
         if (stateFlow.value.segments.isEmpty() && stateFlow.value.phase == PlaybackPhase.LOADING) {
             loadDay(stateFlow.value.day, initial = true)
+        }
+    }
+
+    /**
+     * Retry on the failed picture. A day whose listing failed is listed again; footage that was
+     * playing reopens where the playhead is, with the decoder failure forgotten. Paused or ended
+     * footage waits for the user to play it again.
+     */
+    fun retry() {
+        val s = stateFlow.value
+        when {
+            s.phase == PlaybackPhase.ERROR -> {
+                stateFlow.update { it.copy(phase = PlaybackPhase.LOADING) }
+                loadDay(s.day, initial = true)
+            }
+            s.isPlaying -> {
+                player.forgetFailure()
+                resumeTransport()
+            }
         }
     }
 

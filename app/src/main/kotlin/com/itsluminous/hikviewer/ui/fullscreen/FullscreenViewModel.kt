@@ -56,6 +56,13 @@ class FullscreenViewModel(
         playback.heroIndex = 0
     }
 
+    /** Retry on the failed picture: reopens the camera's stream. */
+    fun retry() {
+        playback.players.value
+            .firstOrNull()
+            ?.let(playback::retry)
+    }
+
     /** Streams may run. */
     fun onStart() {
         show()

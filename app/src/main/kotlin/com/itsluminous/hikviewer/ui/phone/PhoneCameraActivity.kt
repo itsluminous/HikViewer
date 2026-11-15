@@ -128,6 +128,7 @@ class PhoneCameraActivity : AppCompatActivity() {
         SystemBarInsets.pad(binding.root)
         binding.video.isFocusable = false
         binding.video.isClickable = false
+        binding.video.onRetry = viewModel::retry
         val settings = AppGraph.of(this).settingsStore
         // Upright, the name has its own line below the picture; sideways it is an overlay, as on the TV.
         binding.video.showName = if (isUpright) false else settings.showCameraNames

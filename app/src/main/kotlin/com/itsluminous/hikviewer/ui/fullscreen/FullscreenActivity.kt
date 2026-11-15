@@ -61,6 +61,7 @@ class FullscreenActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.tile.isFocusable = false
         binding.tile.isClickable = false
+        binding.tile.onRetry = viewModel::retry
         hint = InactivityTimer(binding.hint, AppGraph.of(this).topBarAutoHideMillis)
         if (!FormFactor.isTelevision(this)) binding.hint.setText(R.string.fullscreen_hint_phone)
         hint.onUserActivity()
@@ -118,6 +119,14 @@ class FullscreenActivity : AppCompatActivity() {
             viewModel.step(+1)
             true
         }
+        // The tile is not clickable here, so OK on a failed picture retries through this.
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER ->
+            if (binding.tile.showsRetry) {
+                if (event.repeatCount == 0) viewModel.retry()
+                true
+            } else {
+                super.onKeyDown(keyCode, event)
+            }
         else -> super.onKeyDown(keyCode, event)
     }
 

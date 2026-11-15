@@ -25,9 +25,9 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:textColor="@color/on_background_secondary"
-        android:textSize="20sp"
+        android:textSize="14sp"
         android:visibility="gone"
-        tools:text="Local time  10:34 PT (-13:30)"
+        tools:text="Local time  10:34 PST (-13:30)"
         tools:visibility="visible" />
 
     <com.itsluminous.hikviewer.ui.playback.TimeBarView

@@ -10,14 +10,12 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import android.icu.text.SimpleDateFormat as IcuDateFormat
-import android.icu.util.TimeZone as IcuTimeZone
 
 /**
  * The two time lines under the bar. Line 1 is `HH:mm:ss` in recorder time, the same numbers the
  * recorder burns into the picture, always. Line 2 appears only when the recorder's clock differs
  * from the device's and reads `Local time  10:34 PT (-13:30)`: the device-local time that matches
- * the playhead, the device zone's short name and how far the device's clock is from the
+ * the playhead, the device zone's abbreviation (PST, EST, IST) and how far the device's clock is from the
  * recorder's (device minus recorder, so a phone behind the recorder shows a minus), so a user in
  * another zone can see both clocks without doing the sum. With no offset the screen is exactly the single line it
  * was before recorder time existed.
@@ -58,15 +56,13 @@ object RecorderTimeLabel {
     }
 
     /**
-     * The short generic name of [zone] in the user's language, such as `PT`, `IST` or `GMT+5:30`,
-     * from ICU's `v` pattern. Generic, so it does not flip between PST and PDT with the season.
+     * The short name of [zone] at [instant], such as `PST` (or `PDT` in summer), `EST` or `IST`:
+     * the abbreviation people write, taken from the platform's zone names in US English, where
+     * those abbreviations exist for every common zone. A zone without one reads as `GMT+05:45`.
+     * Display only: the season decides which of the zone's two names is shown, nothing else.
      */
     fun zoneName(
         zone: TimeZone = TimeZone.getDefault(),
-        locale: Locale = Locale.getDefault(),
-    ): String {
-        val format = IcuDateFormat("v", locale)
-        format.timeZone = IcuTimeZone.getTimeZone(zone.id)
-        return format.format(Date())
-    }
+        instant: Date = Date(),
+    ): String = zone.getDisplayName(zone.inDaylightTime(instant), TimeZone.SHORT, Locale.US)
 }

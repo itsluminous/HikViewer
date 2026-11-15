@@ -13,10 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Duration
 import java.time.LocalDateTime
-import java.util.Locale
 import java.util.TimeZone
-import android.icu.text.SimpleDateFormat as IcuDateFormat
-import android.icu.util.TimeZone as IcuTimeZone
 
 /** The two lines under the bar, for a phone in Pacific time looking at a recorder on Indian time. */
 @RunWith(AndroidJUnit4::class)
@@ -59,11 +56,17 @@ class RecorderTimeLabelTest {
     }
 
     @Test
-    fun `the zone name is ICU's short generic name of the default zone`() {
-        val expected = IcuDateFormat("v", Locale.getDefault()).apply { timeZone = IcuTimeZone.getTimeZone(pacific.id) }
-        assertThat(RecorderTimeLabel.zoneName()).isNotEmpty()
-        assertThat(RecorderTimeLabel.zoneName()).isEqualTo(expected.format(java.util.Date()))
-        assertThat(RecorderTimeLabel.zoneName(pacific, Locale.US)).isEqualTo("PT")
+    fun `the zone name is the short abbreviation, standard or daylight by season`() {
+        val winter = java.util.Date.from(java.time.Instant.parse("2026-01-15T12:00:00Z"))
+        val summer = java.util.Date.from(java.time.Instant.parse("2026-07-15T12:00:00Z"))
+        assertThat(RecorderTimeLabel.zoneName(pacific, winter)).isEqualTo("PST")
+        assertThat(RecorderTimeLabel.zoneName(pacific, summer)).isEqualTo("PDT")
+        assertThat(
+            RecorderTimeLabel.zoneName(java.util.TimeZone.getTimeZone("America/New_York"), winter),
+        ).isEqualTo("EST")
+        assertThat(RecorderTimeLabel.zoneName(java.util.TimeZone.getTimeZone("Asia/Kolkata"), winter)).isEqualTo("IST")
+        // Never the long location name some locales give ("Los Angeles Time").
+        assertThat(RecorderTimeLabel.zoneName(pacific)).doesNotContain(" ")
     }
 
     @Test

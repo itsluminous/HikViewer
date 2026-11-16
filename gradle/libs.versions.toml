@@ -34,7 +34,7 @@ okhttp = "5.5.1"
 #   * the same @Serializable models work unchanged in the pure-JVM :core module and in :app,
 #   * it is maintained by JetBrains alongside the Kotlin version we compile with,
 #   * Hik-Connect responses are plain JSON objects; we need no Moshi-only adapters.
-serialization = "1.12.0"
+serialization = "1.13.0"
 
 # --- test libraries ----------------------------------------------------------
 androidxJunit = "1.2.1"

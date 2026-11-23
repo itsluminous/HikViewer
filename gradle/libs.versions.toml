@@ -6,7 +6,7 @@
 
 [versions]
 # --- build tooling -----------------------------------------------------------
-agp = "9.5.1"                # Android Gradle Plugin; 9.x applies Kotlin itself (built-in Kotlin), needs Gradle >= 9.6 and build-tools 36
+agp = "9.5.2"                # Android Gradle Plugin; 9.x applies Kotlin itself (built-in Kotlin), needs Gradle >= 9.6 and build-tools 36
 kotlin = "2.4.21"            # Kotlin 2.x with K2 compiler; the kotlin-jvm plugin on the root classpath is the KGP that AGP's built-in Kotlin uses
 detekt = "1.23.8"
 kover = "0.9.11"             # >= 0.9.5 for AGP 9 variants
